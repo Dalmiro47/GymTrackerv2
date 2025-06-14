@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect } from 'react';
@@ -21,29 +22,37 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useToast } from '@/hooks/use-toast';
 
-const exerciseSchema = z.object({
+// Schema for form validation, does not include 'id'
+const exerciseFormSchema = z.object({
   name: z.string().min(3, "Name must be at least 3 characters"),
   muscleGroup: z.enum(MUSCLE_GROUPS_LIST, { message: "Please select a muscle group" }),
   description: z.string().optional(),
   image: z.string().url("Must be a valid URL").optional().or(z.literal('')),
+  // dataAiHint could be added here if needed in the form
 });
 
-type ExerciseFormData = z.infer<typeof exerciseSchema>;
+export type ExerciseFormData = z.infer<typeof exerciseFormSchema>;
 
 interface AddExerciseDialogProps {
-  exerciseToEdit?: Exercise | null;
-  onSave: (exercise: Exercise) => void;
-  triggerButton?: React.ReactNode; // Optional custom trigger
+  exerciseToEdit?: Exercise | null; // Full exercise object if editing
+  onSave: (data: ExerciseFormData) => void; // Passes form data up
+  triggerButton?: React.ReactNode;
+  isOpen: boolean;
+  setIsOpen: (open: boolean) => void;
+  isSaving: boolean;
 }
 
-export function AddExerciseDialog({ exerciseToEdit, onSave, triggerButton }: AddExerciseDialogProps) {
-  const [isOpen, setIsOpen] = useState(false);
-  const { toast } = useToast();
-
-  const { control, register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<ExerciseFormData>({
-    resolver: zodResolver(exerciseSchema),
+export function AddExerciseDialog({ 
+  exerciseToEdit, 
+  onSave, 
+  triggerButton,
+  isOpen,
+  setIsOpen,
+  isSaving
+}: AddExerciseDialogProps) {
+  const { control, register, handleSubmit, reset, formState: { errors } } = useForm<ExerciseFormData>({
+    resolver: zodResolver(exerciseFormSchema),
     defaultValues: {
       name: '',
       muscleGroup: undefined,
@@ -53,47 +62,27 @@ export function AddExerciseDialog({ exerciseToEdit, onSave, triggerButton }: Add
   });
 
   useEffect(() => {
-    if (exerciseToEdit) {
-      reset({
-        name: exerciseToEdit.name,
-        muscleGroup: exerciseToEdit.muscleGroup,
-        description: exerciseToEdit.description || '',
-        image: exerciseToEdit.image || '',
-      });
-    } else {
-      reset({ name: '', muscleGroup: undefined, description: '', image: '' });
+    if (isOpen) {
+      if (exerciseToEdit) {
+        reset({
+          name: exerciseToEdit.name,
+          muscleGroup: exerciseToEdit.muscleGroup,
+          description: exerciseToEdit.description || '',
+          image: exerciseToEdit.image || '',
+        });
+      } else {
+        reset({ name: '', muscleGroup: undefined, description: '', image: '' });
+      }
     }
-  }, [exerciseToEdit, reset, isOpen]); // Reset form when dialog opens or exerciseToEdit changes
+  }, [exerciseToEdit, reset, isOpen]);
 
   const onSubmit = (data: ExerciseFormData) => {
-    const exerciseData: Exercise = {
-      id: exerciseToEdit ? exerciseToEdit.id : crypto.randomUUID(), // Generate new ID or use existing
-      name: data.name,
-      muscleGroup: data.muscleGroup,
-      description: data.description,
-      image: data.image || undefined, // No default placeholder image
-      // dataAiHint can be added here if there's a way to input it or generate it
-    };
-    onSave(exerciseData);
-    toast({
-      title: exerciseToEdit ? "Exercise Updated" : "Exercise Added",
-      description: `${data.name} has been successfully ${exerciseToEdit ? 'updated' : 'added'}.`,
-      variant: "default",
-    });
-    setIsOpen(false);
+    onSave(data); // `ExerciseClientPage` will handle if it's an add or update
   };
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      {triggerButton ? (
-        <DialogTrigger asChild>{triggerButton}</DialogTrigger>
-      ) : (
-        <DialogTrigger asChild>
-          <Button variant="default" className="bg-accent hover:bg-accent/90 text-accent-foreground">
-            {exerciseToEdit ? "Edit Exercise" : "Add New Exercise"}
-          </Button>
-        </DialogTrigger>
-      )}
+      {triggerButton && <DialogTrigger asChild>{triggerButton}</DialogTrigger>}
       <DialogContent className="sm:max-w-[480px]">
         <DialogHeader>
           <DialogTitle className="font-headline">{exerciseToEdit ? 'Edit Exercise' : 'Add New Exercise'}</DialogTitle>
@@ -143,11 +132,11 @@ export function AddExerciseDialog({ exerciseToEdit, onSave, triggerButton }: Add
           </div>
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setIsOpen(false)} disabled={isSubmitting}>
+            <Button type="button" variant="outline" onClick={() => setIsOpen(false)} disabled={isSaving}>
               Cancel
             </Button>
-            <Button type="submit" disabled={isSubmitting} className="bg-primary hover:bg-primary/90 text-primary-foreground">
-              {isSubmitting ? (exerciseToEdit ? "Saving..." : "Adding...") : (exerciseToEdit ? "Save Changes" : "Add Exercise")}
+            <Button type="submit" disabled={isSaving} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+              {isSaving ? (exerciseToEdit ? "Saving..." : "Adding...") : (exerciseToEdit ? "Save Changes" : "Add Exercise")}
             </Button>
           </DialogFooter>
         </form>

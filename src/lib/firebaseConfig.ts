@@ -1,6 +1,7 @@
+
 import { initializeApp, getApps, getApp, type FirebaseOptions } from "firebase/app";
 import { getAuth } from "firebase/auth";
-// import { getFirestore } from "firebase/firestore"; // Uncomment when you start using Firestore
+import { getFirestore } from "firebase/firestore"; // Enabled Firestore
 
 const firebaseConfig: FirebaseOptions = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -21,6 +22,6 @@ if (!getApps().length) {
 }
 
 const auth = getAuth(app);
-// const db = getFirestore(app); // Uncomment when you start using Firestore
+const db = getFirestore(app); // Initialize Firestore
 
-export { app, auth /*, db */ };
+export { app, auth, db };
