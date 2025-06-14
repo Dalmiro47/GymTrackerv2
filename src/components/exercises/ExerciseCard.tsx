@@ -1,4 +1,3 @@
-import Image from 'next/image';
 import type { Exercise } from '@/types';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -16,17 +15,6 @@ export function ExerciseCard({ exercise, onEdit, onDelete, onViewDetails }: Exer
   return (
     <Card className="flex h-full flex-col overflow-hidden shadow-lg transition-shadow hover:shadow-xl">
       <CardHeader className="pb-2">
-        {exercise.image && (
-          <div className="relative mb-2 aspect-video w-full overflow-hidden rounded-md">
-            <Image 
-              src={exercise.image} 
-              alt={exercise.name} 
-              layout="fill" 
-              objectFit="cover" 
-              data-ai-hint="exercise equipment"
-            />
-          </div>
-        )}
         <CardTitle className="font-headline text-xl leading-tight">
           {exercise.name}
         </CardTitle>

@@ -71,7 +71,8 @@ export function AddExerciseDialog({ exerciseToEdit, onSave, triggerButton }: Add
       name: data.name,
       muscleGroup: data.muscleGroup,
       description: data.description,
-      image: data.image || `https://placehold.co/300x200.png?text=${encodeURIComponent(data.name.substring(0,2).toUpperCase())}`, // Default placeholder
+      image: data.image || undefined, // No default placeholder image
+      // dataAiHint can be added here if there's a way to input it or generate it
     };
     onSave(exerciseData);
     toast({

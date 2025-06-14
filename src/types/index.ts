@@ -22,6 +22,7 @@ export interface Exercise {
   description?: string;
   image?: string; // URL to image
   instructions?: string;
+  dataAiHint?: string; // Hint for AI image generation if applicable
 }
 
 export interface RoutineExercise extends Exercise {

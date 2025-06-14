@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import type { Exercise, MuscleGroup } from '@/types';
 import { MUSCLE_GROUPS_LIST } from '@/lib/constants';
 import { PageHeader } from '@/components/PageHeader';
@@ -84,10 +84,35 @@ const initialExercises: Exercise[] = [
   { id: 'abs-007', name: 'Ab Wheel Rollout', muscleGroup: 'Abs', description: 'Targets the entire core for stability using an ab wheel.', image: 'https://placehold.co/300x200.png?text=AWR', dataAiHint: "ab wheel" },
 ];
 
+interface GroupedExercise {
+  muscleGroup: MuscleGroup;
+  exercises: Exercise[];
+}
+
+// Helper function to group exercises by muscle group, maintaining order from MUSCLE_GROUPS_LIST
+const groupExercisesByMuscle = (exercises: Exercise[], muscleOrder: readonly MuscleGroup[]): GroupedExercise[] => {
+  const grouped = new Map<MuscleGroup, Exercise[]>();
+  muscleOrder.forEach(groupName => {
+    grouped.set(groupName, []);
+  });
+
+  exercises.forEach(exercise => {
+    const list = grouped.get(exercise.muscleGroup) || [];
+    list.push(exercise);
+    grouped.set(exercise.muscleGroup, list);
+  });
+
+  return muscleOrder
+    .map(muscleGroup => ({
+      muscleGroup,
+      exercises: grouped.get(muscleGroup) || [],
+    }))
+    .filter(group => group.exercises.length > 0); // Only include groups that have exercises
+};
+
 
 export function ExerciseClientPage() {
   const [exercises, setExercises] = useState<Exercise[]>([]);
-  const [filteredExercises, setFilteredExercises] = useState<Exercise[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedMuscleGroup, setSelectedMuscleGroup] = useState<MuscleGroup | 'All'>('All');
   const [exerciseToEdit, setExerciseToEdit] = useState<Exercise | null>(null);
@@ -95,33 +120,40 @@ export function ExerciseClientPage() {
   const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
 
-
   useEffect(() => {
-    // Simulate data fetching
     setTimeout(() => {
       setExercises(initialExercises);
-      setFilteredExercises(initialExercises);
       setIsLoading(false);
     }, 500);
   }, []);
 
-  useEffect(() => {
-    let tempExercises = exercises;
-    if (searchTerm) {
-      tempExercises = tempExercises.filter(ex => ex.name.toLowerCase().includes(searchTerm.toLowerCase()));
+  const isFilteringOrSearching = useMemo(() => {
+    return searchTerm.trim() !== '' || selectedMuscleGroup !== 'All';
+  }, [searchTerm, selectedMuscleGroup]);
+
+  const displayedExercises = useMemo(() => {
+    if (!isFilteringOrSearching) return [];
+    
+    let tempExercises = [...exercises];
+    if (searchTerm.trim() !== '') {
+      tempExercises = tempExercises.filter(ex => ex.name.toLowerCase().includes(searchTerm.toLowerCase().trim()));
     }
     if (selectedMuscleGroup !== 'All') {
       tempExercises = tempExercises.filter(ex => ex.muscleGroup === selectedMuscleGroup);
     }
-    setFilteredExercises(tempExercises);
-  }, [searchTerm, selectedMuscleGroup, exercises]);
+    return tempExercises;
+  }, [exercises, searchTerm, selectedMuscleGroup, isFilteringOrSearching]);
+
+  const exercisesGroupedByMuscle = useMemo(() => {
+    if (isFilteringOrSearching) return [];
+    return groupExercisesByMuscle(exercises, MUSCLE_GROUPS_LIST);
+  }, [exercises, isFilteringOrSearching]);
+
 
   const handleSaveExercise = (exercise: Exercise) => {
     if (exerciseToEdit) {
-      // Edit existing
       setExercises(prev => prev.map(ex => ex.id === exercise.id ? exercise : ex));
     } else {
-      // Add new
       setExercises(prev => [...prev, exercise]);
     }
     setExerciseToEdit(null); 
@@ -129,11 +161,6 @@ export function ExerciseClientPage() {
 
   const handleEditExercise = (exercise: Exercise) => {
     setExerciseToEdit(exercise);
-    // This assumes the AddExerciseDialog is controlled by a state that is set here
-    // or that the dialog's trigger is part of the ExerciseCard which handles opening.
-    // For the current setup, the `AddExerciseDialog` in PageHeader is used.
-    // Ideally, `AddExerciseDialog` would take an `isOpen` prop controlled here.
-    // For now, the user clicks the "Edit Exercise" (formerly "Add") button after `exerciseToEdit` is set.
   };
 
   const openDeleteConfirmation = (exerciseId: string) => {
@@ -152,19 +179,10 @@ export function ExerciseClientPage() {
     setExerciseToDelete(null);
   };
   
-  const addExerciseDialogTrigger = (
-    <Button variant="default" className="bg-accent hover:bg-accent/90 text-accent-foreground">
-      <PlusCircle className="mr-2 h-4 w-4" /> 
-      {exerciseToEdit ? "Edit Current Exercise" : "Add Exercise"}
-    </Button>
-  );
-
-  // This function is intended to be called to open the dialog for editing
-  // It requires AddExerciseDialog to be controllable (e.g., via isOpen prop)
-  // For now, it just sets the exercise to edit.
   const triggerEditDialog = (exercise: Exercise) => {
     setExerciseToEdit(exercise);
-    // Here you would also set an `isEditDialogOpen` state to true if AddExerciseDialog was controlled
+    // Dialog will open via its own trigger which will now show "Edit Selected Exercise"
+    // The user needs to click the main button in PageHeader.
   };
 
 
@@ -179,22 +197,16 @@ export function ExerciseClientPage() {
   return (
     <>
       <PageHeader title="Exercise Library" description="Browse, add, and manage your exercises.">
-        {/* The single dialog instance for both adding and editing */}
         <AddExerciseDialog 
           exerciseToEdit={exerciseToEdit} 
-          onSave={handleSaveExercise} 
-          // The trigger for adding new. Editing is handled by buttons on cards.
-          // To make card edit buttons open *this* dialog, AddExerciseDialog needs to be controllable.
-          // A simple workaround for now: text changes, user clicks.
+          onSave={handleSaveExercise}
           triggerButton={
              <Button variant="default" className="bg-accent hover:bg-accent/90 text-accent-foreground" onClick={() => {
                 if (exerciseToEdit) {
-                  // This button is now effectively "Save Edit" if exerciseToEdit is set
-                  // But the dialog itself has the save button. This trigger just opens it.
+                  // This button click will open the dialog for editing the selected exercise.
                 } else {
-                  setExerciseToEdit(null); // Ensure it's for adding new
+                  setExerciseToEdit(null); // Ensure it's for adding new if no exercise is selected for edit.
                 }
-                // The dialog's own open state mechanism will handle showing it.
              }}>
               <PlusCircle className="mr-2 h-4 w-4" /> 
               {exerciseToEdit ? "Edit Selected Exercise" : "Add New Exercise"}
@@ -231,26 +243,54 @@ export function ExerciseClientPage() {
         </div>
       </div>
       
-      {filteredExercises.length > 0 ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {filteredExercises.map(exercise => (
-            <ExerciseCard 
-              key={exercise.id} 
-              exercise={exercise} 
-              onEdit={() => {
-                triggerEditDialog(exercise);
-                // The user now needs to click the main "Edit Selected Exercise" button in PageHeader
-                // to open the dialog. This is because AddExerciseDialog isn't fully controlled yet.
-              }}
-              onDelete={openDeleteConfirmation} 
-            />
-          ))}
-        </div>
+      {isFilteringOrSearching ? (
+        displayedExercises.length > 0 ? (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {displayedExercises.map(exercise => (
+              <ExerciseCard 
+                key={exercise.id} 
+                exercise={exercise} 
+                onEdit={() => triggerEditDialog(exercise)}
+                onDelete={openDeleteConfirmation} 
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-12">
+            <p className="text-xl text-muted-foreground font-semibold mb-2">No exercises found for your current filter/search.</p>
+            <p className="text-muted-foreground">Try adjusting your search or filters, or add a new exercise!</p>
+          </div>
+        )
       ) : (
-        <div className="text-center py-12">
-          <p className="text-xl text-muted-foreground font-semibold mb-2">No exercises found.</p>
-          <p className="text-muted-foreground">Try adjusting your search or filters, or add a new exercise!</p>
-        </div>
+        exercisesGroupedByMuscle.length > 0 ? (
+          <div className="space-y-8">
+            {exercisesGroupedByMuscle.map(group => (
+              <section key={group.muscleGroup} aria-labelledby={`muscle-group-${group.muscleGroup}`}>
+                <h2 
+                  id={`muscle-group-${group.muscleGroup}`} 
+                  className="text-2xl font-headline font-semibold mb-4 text-primary border-b pb-2"
+                >
+                  {group.muscleGroup}
+                </h2>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  {group.exercises.map(exercise => (
+                    <ExerciseCard 
+                      key={exercise.id} 
+                      exercise={exercise} 
+                      onEdit={() => triggerEditDialog(exercise)}
+                      onDelete={openDeleteConfirmation} 
+                    />
+                  ))}
+                </div>
+              </section>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-12">
+            <p className="text-xl text-muted-foreground font-semibold mb-2">No exercises available.</p>
+            <p className="text-muted-foreground">Add some exercises to get started!</p>
+          </div>
+        )
       )}
 
       <AlertDialog open={!!exerciseToDelete} onOpenChange={(open) => !open && setExerciseToDelete(null)}>
@@ -273,4 +313,3 @@ export function ExerciseClientPage() {
     </>
   );
 }
-
