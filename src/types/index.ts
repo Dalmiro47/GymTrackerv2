@@ -54,6 +54,7 @@ export interface LoggedExercise {
   exerciseId: string; // Reference to the Exercise document ID
   name: string;
   muscleGroup: MuscleGroup; // Copied for convenience if needed
+  exerciseSetup?: string; // Copied from the base exercise definition
   sets: LoggedSet[];
   notes?: string;
   lastPerformanceDisplay?: string; // e.g., "3x10 @ 50kg"

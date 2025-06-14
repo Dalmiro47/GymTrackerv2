@@ -6,7 +6,7 @@ import type { LoggedExercise, LoggedSet } from '@/types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { PlusCircle, Trash2, Save, RotateCcw, GripVertical, Loader2 } from 'lucide-react'; // Added Loader2
+import { PlusCircle, Trash2, Save, RotateCcw, GripVertical, Loader2, Check, Settings2 } from 'lucide-react';
 import { SetInputRow } from './SetInputRow'; 
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -15,7 +15,7 @@ import { cn } from '@/lib/utils';
 interface LoggedExerciseCardProps {
   loggedExercise: LoggedExercise;
   onUpdateSets: (sets: LoggedSet[]) => void;
-  onSaveProgress: () => void; 
+  onSaveProgress: () => Promise<void>; // Make it async for the card to await
   onRemove: () => void;
   onRefreshLastPerformance: () => void;
   isSavingParentLog: boolean; 
@@ -47,6 +47,7 @@ export function LoggedExerciseCard({
 
   const [localSets, setLocalSets] = useState<LoggedSet[]>(loggedExercise.sets);
   const [isSavingThisExercise, setIsSavingThisExercise] = useState(false);
+  const [justSaved, setJustSaved] = useState(false);
 
   useEffect(() => {
     setLocalSets(loggedExercise.sets);
@@ -77,8 +78,17 @@ export function LoggedExerciseCard({
 
   const handleSaveThisExercise = async () => {
     setIsSavingThisExercise(true);
-    await onSaveProgress(); 
-    setIsSavingThisExercise(false);
+    setJustSaved(false); // Reset justSaved state
+    try {
+      await onSaveProgress(); 
+      setJustSaved(true);
+      setTimeout(() => setJustSaved(false), 2000); // Display "Saved!" for 2 seconds
+    } catch (error) {
+      // Handle error if needed (e.g., show a toast from the card, though hook might also show one)
+      console.error("Error saving exercise progress from card:", error);
+    } finally {
+      setIsSavingThisExercise(false);
+    }
   };
 
   return (
@@ -90,7 +100,7 @@ export function LoggedExerciseCard({
                 type="button" 
                 {...attributes} 
                 {...listeners} 
-                className="cursor-grab p-1 text-muted-foreground hover:text-foreground"
+                className="cursor-grab p-1 text-muted-foreground hover:text-foreground touch-none" // Added touch-none
                 aria-label={`Drag to reorder ${loggedExercise.name}`}
             >
               <GripVertical className="h-5 w-5" />
@@ -101,11 +111,19 @@ export function LoggedExerciseCard({
             <Trash2 className="h-4 w-4" />
           </Button>
         </div>
-        <div className="flex items-center justify-between text-xs text-muted-foreground mt-1">
-            <span>Last: {loggedExercise.lastPerformanceDisplay || 'N/A'}</span>
-            <Button variant="link" size="sm" onClick={onRefreshLastPerformance} className="p-0 h-auto text-xs">
-                <RotateCcw className="mr-1 h-3 w-3"/> Refresh
-            </Button>
+        <div className="pl-8 space-y-1"> {/* Indent details to align with title after drag handle */}
+            <div className="flex items-center justify-between text-xs text-muted-foreground mt-1">
+                <span>Last: {loggedExercise.lastPerformanceDisplay || 'N/A'}</span>
+                <Button variant="link" size="sm" onClick={onRefreshLastPerformance} className="p-0 h-auto text-xs">
+                    <RotateCcw className="mr-1 h-3 w-3"/> Refresh
+                </Button>
+            </div>
+            {loggedExercise.exerciseSetup && (
+                <div className="text-xs text-muted-foreground flex items-center">
+                    <Settings2 className="mr-1 h-3 w-3 text-primary" />
+                    Setup: {loggedExercise.exerciseSetup}
+                </div>
+            )}
         </div>
       </CardHeader>
       <CardContent className="p-4 space-y-3">
@@ -131,19 +149,20 @@ export function LoggedExerciseCard({
             onClick={handleSaveThisExercise} 
             disabled={isSavingThisExercise || isSavingParentLog}
             size="sm"
-            className="bg-primary/90 hover:bg-primary"
+            className="bg-primary/90 hover:bg-primary min-w-[120px]" // Added min-width
             >
-            {isSavingThisExercise ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4" />}
-            Save Exercise
+            {isSavingThisExercise ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : 
+             justSaved ? <Check className="mr-2 h-4 w-4" /> : <Save className="mr-2 h-4 w-4" />}
+            {isSavingThisExercise ? "Saving..." : justSaved ? "Saved!" : "Save Exercise"}
           </Button>
         </div>
-        {loggedExercise.notes !== undefined && ( 
-            <Input 
-                placeholder="Notes for this exercise (e.g., form cues)" 
-                defaultValue={loggedExercise.notes}
-                className="mt-2 text-sm"
-            />
-        )}
+        {/* Input for notes on the specific exercise for that day - To be implemented if needed */}
+        {/* <Input 
+            placeholder="Notes for this exercise (e.g., form cues)" 
+            defaultValue={loggedExercise.notes} // This should come from LoggedExercise.notes
+            className="mt-2 text-sm"
+            // onChange={(e) => onUpdateNotes(e.target.value)} // Need an onUpdateNotes prop
+        /> */}
       </CardContent>
     </Card>
   );
