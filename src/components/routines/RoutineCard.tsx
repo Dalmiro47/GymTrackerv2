@@ -40,8 +40,9 @@ export function RoutineCard({ routine, onEdit, onDelete }: RoutineCardProps) {
       )}
     >
       <CardHeader className="pb-2 relative">
-        <div className="flex items-start justify-between">
-            <CardTitle className="font-headline text-xl leading-tight pr-8"> {/* Added pr-8 for drag handle space */}
+        {/* This div now has pr-10 to make space for the absolute drag handle */}
+        <div className="flex items-start justify-between pr-10"> 
+            <CardTitle className="font-headline text-xl leading-tight">
             {routine.name}
             </CardTitle>
             <ListChecks className="h-5 w-5 text-primary flex-shrink-0" />
