@@ -26,8 +26,10 @@ export const addExercise = async (userId: string, exerciseData: ExerciseData): P
     const docRef = await addDoc(userExercisesColRef, exerciseData);
     return { id: docRef.id, ...exerciseData };
   } catch (error) {
-    console.error("Error adding exercise to Firestore: ", error);
-    throw new Error("Failed to add exercise.");
+    console.error("Detailed error adding exercise to Firestore: ", error); // Log the full error object
+    // Check for specific Firebase error codes if needed
+    // if (error.code === 'permission-denied') { ... }
+    throw new Error(`Failed to add exercise. Firestore error: ${error.message || error}`);
   }
 };
 

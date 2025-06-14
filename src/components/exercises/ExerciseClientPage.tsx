@@ -2,10 +2,11 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import type { Exercise, MuscleGroup, ExerciseData } from '@/types';
-import type { ExerciseFormData } from './AddExerciseDialog'; // Import ExerciseFormData
+import type { ExerciseFormData } from './AddExerciseDialog';
 import { MUSCLE_GROUPS_LIST } from '@/lib/constants';
-import { defaultExercises } from '@/lib/defaultExercises'; // Import default exercises
+import { defaultExercises } from '@/lib/defaultExercises';
 import { useAuth } from '@/contexts/AuthContext';
 import { addExercise, getExercises, updateExercise, deleteExercise, addDefaultExercisesBatch } from '@/services/exerciseService';
 
@@ -28,7 +29,6 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from '@/hooks/use-toast';
 
-// Helper function to group exercises by muscle group, maintaining order from MUSCLE_GROUPS_LIST
 const groupExercisesByMuscle = (exercises: Exercise[], muscleOrder: readonly MuscleGroup[]): { muscleGroup: MuscleGroup; exercises: Exercise[] }[] => {
   const grouped = new Map<MuscleGroup, Exercise[]>();
   muscleOrder.forEach(groupName => {
@@ -53,80 +53,91 @@ const groupExercisesByMuscle = (exercises: Exercise[], muscleOrder: readonly Mus
 export function ExerciseClientPage() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const router = useRouter(); 
 
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedMuscleGroup, setSelectedMuscleGroup] = useState<MuscleGroup | 'All'>('All');
-  
+
   const [exerciseToEdit, setExerciseToEdit] = useState<Exercise | null>(null);
   const [exerciseToDeleteId, setExerciseToDeleteId] = useState<string | null>(null);
-  
-  const [isLoading, setIsLoading] = useState(true);
+
+  const [isLoading, setIsLoading] = useState(true); // General page loading, including initial exercise fetch/seed
   const [isDialogSaving, setIsDialogSaving] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isSeeding, setIsSeeding] = useState(false);
+  const [hasAttemptedSeedForCurrentUser, setHasAttemptedSeedForCurrentUser] = useState(false);
 
 
-  const fetchUserExercises = useCallback(async (isInitialFetch = false) => {
-    if (!user?.id) {
-      setIsLoading(false); 
-      setExercises([]); // Clear exercises if no user
-      return;
+  const fetchUserExercises = useCallback(async (currentUserId: string | null | undefined): Promise<Exercise[]> => {
+    if (!currentUserId) {
+      return [];
     }
-    // Avoid setting main loader if we are already in a seeding process initiated by this function
-    if (!isSeeding) setIsLoading(true);
-
+    // setIsLoading(true); // Managed by the calling useEffect's loadData
     try {
-      const userExercises = await getExercises(user.id);
-      
-      if (isInitialFetch && userExercises.length === 0 && user.id) { // Added user.id check for safety during seeding
-        setIsSeeding(true);
-        toast({ title: "Setting up your library...", description: "Adding default exercises."});
-        try {
-          await addDefaultExercisesBatch(user.id, defaultExercises);
-          const seededExercises = await getExercises(user.id);
-          setExercises(seededExercises);
-          toast({ title: "Library Ready!", description: "Default exercises added."});
-        } catch (seedError) {
-          console.error("Failed to seed default exercises:", seedError);
-          toast({
-            title: "Error Seeding Library",
-            description: "Could not add default exercises. You can add them manually.",
-            variant: "destructive",
-          });
-          setExercises([]); 
-        } finally {
-          setIsSeeding(false);
-        }
-      } else {
-        setExercises(userExercises);
-      }
+      const userExercises = await getExercises(currentUserId);
+      return userExercises;
     } catch (error) {
       console.error("Failed to fetch exercises:", error);
       toast({
-        title: "Error",
+        title: "Error Fetching Exercises",
         description: "Could not fetch your exercises. Please try again later.",
         variant: "destructive",
       });
-      setExercises([]); // Clear exercises on error
+      return [];
     } finally {
-      setIsLoading(false);
-      // If isSeeding was true and this fetch was not the one that initiated it,
-      // it might have been set by another process. However, this function
-      // controls its own seeding cycle with setIsSeeding(true/false).
+      // setIsLoading(false); // Managed by the calling useEffect's loadData
     }
-  }, [user?.id, toast, isSeeding, setIsSeeding]); // Added isSeeding & setIsSeeding for correct re-render and logic flow
+  }, [toast]);
+
 
   useEffect(() => {
-    if (user?.id) {
-      fetchUserExercises(true); // Pass true for initial fetch
-    } else {
-      // No user, clear exercises and reset loading states
-      setExercises([]);
-      setIsLoading(false);
-      setIsSeeding(false); // Also reset seeding if user logs out
+    const loadData = async () => {
+      if (user?.id) {
+        setIsLoading(true); // Start loading when user ID is available
+        let userExercises = await fetchUserExercises(user.id);
+
+        if (userExercises.length === 0 && !hasAttemptedSeedForCurrentUser) {
+          setHasAttemptedSeedForCurrentUser(true); // Mark seeding attempt
+          setIsSeeding(true);
+          toast({ title: "Setting up your library...", description: "Adding default exercises."});
+          try {
+            await addDefaultExercisesBatch(user.id, defaultExercises);
+            userExercises = await fetchUserExercises(user.id); 
+            toast({ title: "Library Ready!", description: "Default exercises added."});
+          } catch (seedError: any) {
+            console.error("Failed to seed default exercises:", seedError);
+            toast({
+              title: "Error Seeding Library",
+              description: `Could not add default exercises. ${seedError.message}`,
+              variant: "destructive",
+            });
+          } finally {
+            setIsSeeding(false);
+          }
+        }
+        setExercises(userExercises);
+        setIsLoading(false); // Stop loading after all operations
+      } else if (user === null && !isLoading) { 
+        setExercises([]);
+        setIsLoading(false);
+        setIsSeeding(false);
+        setHasAttemptedSeedForCurrentUser(false); 
+      }
+    };
+
+    if (user !== undefined) { // Only run if user auth state is determined
+        loadData();
     }
-  }, [user?.id, fetchUserExercises]); // user?.id ensures this runs on login/logout
+    
+    // Reset seed attempt flag if user changes
+    return () => {
+        if(user?.id) { // This check might be too simplistic if component unmounts for other reasons
+          // If we want to reset only on USER change, this effect needs to depend on user.id
+          // setHasAttemptedSeedForCurrentUser(false); // Consider the implications
+        }
+    };
+  }, [user, fetchUserExercises, toast]); // Removed hasAttemptedSeedForCurrentUser from deps to avoid re-runs on its change
 
 
   const isFilteringOrSearching = useMemo(() => {
@@ -134,8 +145,8 @@ export function ExerciseClientPage() {
   }, [searchTerm, selectedMuscleGroup]);
 
   const displayedExercises = useMemo(() => {
-    if (!isFilteringOrSearching) return []; 
-    
+    if (!isFilteringOrSearching) return [];
+
     let tempExercises = [...exercises];
     if (searchTerm.trim() !== '') {
       tempExercises = tempExercises.filter(ex => ex.name.toLowerCase().includes(searchTerm.toLowerCase().trim()));
@@ -147,7 +158,7 @@ export function ExerciseClientPage() {
   }, [exercises, searchTerm, selectedMuscleGroup, isFilteringOrSearching]);
 
   const exercisesGroupedByMuscle = useMemo(() => {
-    if (isFilteringOrSearching) return []; 
+    if (isFilteringOrSearching) return [];
     return groupExercisesByMuscle(exercises, MUSCLE_GROUPS_LIST);
   }, [exercises, isFilteringOrSearching]);
 
@@ -166,9 +177,10 @@ export function ExerciseClientPage() {
       toast({ title: "Authentication Error", description: "You must be logged in to save exercises.", variant: "destructive" });
       return;
     }
-    // Diagnostic log
-    console.log(`Attempting to save exercise for user ID: ${user.id}. Path: users/${user.id}/exercises`);
-    
+
+    const path = `users/${user.id}/exercises`;
+    console.log(`Attempting to save exercise for user ID: ${user.id}. Path: ${path}`);
+
     setIsDialogSaving(true);
     try {
       const exercisePayload: ExerciseData = {
@@ -176,82 +188,108 @@ export function ExerciseClientPage() {
         muscleGroup: formData.muscleGroup,
         description: formData.description || '',
         image: formData.image || '',
-        dataAiHint: formData.image ? formData.name.toLowerCase().split(" ").slice(0,2).join(" ") : '',
+        dataAiHint: formData.image 
+          ? formData.name.toLowerCase().split(" ").slice(0,2).join(" ") 
+          : (formData.name.toLowerCase().split(" ").slice(0,2).join(" ") || 'exercise'),
       };
 
-      if (exerciseToEdit) { 
+      if (exerciseToEdit) {
         await updateExercise(user.id, exerciseToEdit.id, exercisePayload);
         toast({ title: "Exercise Updated", description: `${formData.name} has been successfully updated.` });
-      } else { 
+      } else {
         await addExercise(user.id, exercisePayload);
         toast({ title: "Exercise Added", description: `${formData.name} has been successfully added.` });
       }
-      await fetchUserExercises(); 
+      
+      const updatedExercises = await fetchUserExercises(user.id);
+      setExercises(updatedExercises);
+
       setIsDialogOpen(false);
       setExerciseToEdit(null);
-    } catch (error) {
-      console.error("Failed to save exercise:", error);
+    } catch (error: any) {
+      console.error("Detailed error adding exercise to Firestore: ", error);
       toast({
         title: "Save Error",
-        description: `Could not save ${formData.name}. Please try again.`,
+        description: `Could not save ${formData.name}. Firestore error: ${error.message || 'Unknown error'}`,
         variant: "destructive",
       });
     } finally {
       setIsDialogSaving(false);
     }
   };
-  
+
   const openDeleteConfirmation = (exerciseId: string) => {
     setExerciseToDeleteId(exerciseId);
   };
-  
+
   const handleDeleteExercise = async () => {
     if (!exerciseToDeleteId || !user?.id) {
       toast({ title: "Error", description: "Could not delete exercise. User or Exercise ID missing.", variant: "destructive" });
       return;
     }
-    
+
     const exerciseName = exercises.find(ex => ex.id === exerciseToDeleteId)?.name || "The exercise";
     try {
       await deleteExercise(user.id, exerciseToDeleteId);
       toast({ title: "Exercise Deleted", description: `${exerciseName} has been removed.` });
-      await fetchUserExercises(); 
-    } catch (error) {
+      
+      const updatedExercises = await fetchUserExercises(user.id);
+      setExercises(updatedExercises);
+
+    } catch (error: any) {
       console.error("Failed to delete exercise:", error);
-      toast({ title: "Delete Error", description: `Could not delete ${exerciseName}.`, variant: "destructive" });
+      toast({ title: "Delete Error", description: `Could not delete ${exerciseName}. ${error.message}`, variant: "destructive" });
     } finally {
       setExerciseToDeleteId(null);
     }
   };
-  
 
-  if (isLoading && !exercises.length && !isSeeding) { 
+  // Auth loading state (initial, before user object is known)
+  // `useAuth` isLoading refers to auth state determination
+  const authContext = useAuth(); 
+  if (authContext.isLoading) { 
     return (
       <div className="flex justify-center items-center h-screen">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
-        <p className="ml-4 text-xl text-primary font-semibold">Loading your exercises...</p>
+        <p className="ml-4 text-xl text-primary font-semibold">Loading authentication...</p>
       </div>
     );
   }
-   if (!user && !isLoading) { // Show login prompt if not loading and no user
+
+  // User is not authenticated and auth is not loading
+  if (!user && !authContext.isLoading) { 
     return (
       <div className="flex flex-col justify-center items-center h-64">
         <p className="text-xl text-primary font-semibold mb-4">Please log in to manage your exercises.</p>
-        <Button onClick={() => window.location.href = '/login'}>Go to Login</Button>
+        <Button onClick={() => router.push('/login')}>Go to Login</Button>
       </div>
     );
   }
+  
+  // User is authenticated, but exercise data is still loading (initial fetch or seeding)
+  // `isLoading` here is the page's specific loading state for exercises
+  if (user && isLoading && (!exercises.length || isSeeding)) { 
+     return (
+      <div className="flex justify-center items-center h-screen">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        <p className="ml-4 text-xl text-primary font-semibold">
+          {isSeeding ? "Setting up your library..." : "Loading your exercises..."}
+        </p>
+      </div>
+    );
+  }
+
 
   return (
     <>
       <PageHeader title="Exercise Library" description="Browse, add, and manage your exercises.">
-         <Button 
-            variant="default" 
-            className="bg-accent hover:bg-accent/90 text-accent-foreground" 
+         <Button
+            variant="default"
+            className="bg-accent hover:bg-accent/90 text-accent-foreground"
             onClick={handleOpenAddDialog}
-            disabled={isSeeding || (isLoading && exercises.length === 0 && !user)} // Disable if seeding, or loading initial and no user yet
+            disabled={isSeeding || isLoading} 
           >
-          <PlusCircle className="mr-2 h-4 w-4" /> 
+          <PlusCircle className="mr-2 h-4 w-4" />
           Add New Exercise
         </Button>
       </PageHeader>
@@ -274,15 +312,15 @@ export function ExerciseClientPage() {
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full rounded-lg bg-card py-2 pl-10 pr-4 shadow-sm focus:ring-primary"
             aria-label="Search exercises"
-            disabled={isSeeding || (isLoading && exercises.length === 0)}
+            disabled={isSeeding || (isLoading && !exercises.length)}
           />
         </div>
         <div className="relative">
           <Filter className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
-           <Select 
-              value={selectedMuscleGroup} 
+           <Select
+              value={selectedMuscleGroup}
               onValueChange={(value) => setSelectedMuscleGroup(value as MuscleGroup | 'All')}
-              disabled={isSeeding || (isLoading && exercises.length === 0)}
+              disabled={isSeeding || (isLoading && !exercises.length)}
             >
             <SelectTrigger className="w-full rounded-lg bg-card py-2 pl-10 pr-4 shadow-sm focus:ring-primary" aria-label="Filter by muscle group">
               <SelectValue placeholder="Filter by muscle group" />
@@ -296,73 +334,60 @@ export function ExerciseClientPage() {
           </Select>
         </div>
       </div>
-      
-      {(isLoading && exercises.length > 0 && !isSeeding && user) && ( 
-        <div className="my-4 flex items-center justify-center text-muted-foreground">
-          <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Refreshing...
-        </div>
-      )}
 
-      {isFilteringOrSearching ? (
-        displayedExercises.length > 0 ? (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {displayedExercises.map(exercise => (
-              <ExerciseCard 
-                key={exercise.id} 
-                exercise={exercise} 
-                onEdit={() => handleOpenEditDialog(exercise)}
-                onDelete={() => openDeleteConfirmation(exercise.id)} 
-              />
-            ))}
-          </div>
-        ) : (
-         (!isLoading && !isSeeding) && ( // Only show "no exercises found" if not loading/seeding
-          <div className="text-center py-12">
-            <p className="text-xl text-muted-foreground font-semibold mb-2">No exercises found for your current filter/search.</p>
-            <p className="text-muted-foreground">Try adjusting your search or filters, or add a new exercise!</p>
-          </div>
-         )
-        )
-      ) : (
-        exercisesGroupedByMuscle.length > 0 ? (
-          <div className="space-y-8">
-            {exercisesGroupedByMuscle.map(group => (
-              <section key={group.muscleGroup} aria-labelledby={`muscle-group-${group.muscleGroup}`}>
-                <h2 
-                  id={`muscle-group-${group.muscleGroup}`} 
-                  className="text-2xl font-headline font-semibold mb-4 text-primary border-b pb-2"
-                >
-                  {group.muscleGroup}
-                </h2>
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                  {group.exercises.map(exercise => (
-                    <ExerciseCard 
-                      key={exercise.id} 
-                      exercise={exercise} 
-                      onEdit={() => handleOpenEditDialog(exercise)}
-                      onDelete={() => openDeleteConfirmation(exercise.id)} 
-                    />
-                  ))}
-                </div>
-              </section>
-            ))}
-          </div>
-        ) : (
-         (!isLoading && !isSeeding && exercises.length === 0 && user) && ( 
-            <div className="text-center py-12">
-              <p className="text-xl text-muted-foreground font-semibold mb-2">Your exercise library is empty.</p>
-              <p className="text-muted-foreground">Add some exercises to get started!</p>
-            </div>
-          )
-        )
-      )}
-      
-      {isSeeding && (
+      {isSeeding ? (
         <div className="flex justify-center items-center h-40">
           <Loader2 className="h-10 w-10 animate-spin text-primary" />
           <p className="ml-3 text-lg text-primary font-semibold">Populating your library with default exercises...</p>
         </div>
-      )}
+      ) : !isLoading && isFilteringOrSearching ? (
+        displayedExercises.length > 0 ? (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {displayedExercises.map(exercise => (
+              <ExerciseCard
+                key={exercise.id}
+                exercise={exercise}
+                onEdit={() => handleOpenEditDialog(exercise)}
+                onDelete={() => openDeleteConfirmation(exercise.id)}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-12">
+            <p className="text-xl text-muted-foreground font-semibold mb-2">No exercises found for your current filter/search.</p>
+            <p className="text-muted-foreground">Try adjusting your search or filters, or add a new exercise!</p>
+          </div>
+        )
+      ) : !isLoading && exercisesGroupedByMuscle.length > 0 ? (
+        <div className="space-y-8">
+          {exercisesGroupedByMuscle.map(group => (
+            <section key={group.muscleGroup} aria-labelledby={`muscle-group-${group.muscleGroup}`}>
+              <h2
+                id={`muscle-group-${group.muscleGroup}`}
+                className="text-2xl font-headline font-semibold mb-4 text-primary border-b pb-2"
+              >
+                {group.muscleGroup}
+              </h2>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {group.exercises.map(exercise => (
+                  <ExerciseCard
+                    key={exercise.id}
+                    exercise={exercise}
+                    onEdit={() => handleOpenEditDialog(exercise)}
+                    onDelete={() => openDeleteConfirmation(exercise.id)}
+                  />
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
+      ) : (!isLoading && !isSeeding && exercises.length === 0 && user) ? ( // Check !isLoading here too
+          <div className="text-center py-12">
+            <p className="text-xl text-muted-foreground font-semibold mb-2">Your exercise library is empty.</p>
+            <p className="text-muted-foreground">Add some exercises to get started or wait for defaults to load if this is your first time!</p>
+          </div>
+        )
+      : null }
 
 
       <AlertDialog open={!!exerciseToDeleteId} onOpenChange={(open) => !open && setExerciseToDeleteId(null)}>
@@ -386,3 +411,4 @@ export function ExerciseClientPage() {
   );
 }
 
+    
