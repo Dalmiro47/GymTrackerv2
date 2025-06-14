@@ -81,6 +81,7 @@ export default function RoutinesPage() {
   };
 
   const handleSaveRoutine = async (data: RoutineData, id?: string) => {
+    console.log("handleSaveRoutine called with data:", data, "and id:", id); // Diagnostic log
     if (!user?.id) {
       toast({ title: "Authentication Error", description: "You must be logged in.", variant: "destructive" });
       return;
