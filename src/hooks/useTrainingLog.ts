@@ -6,9 +6,9 @@ import type { WorkoutLog, LoggedExercise, LoggedSet, Routine, Exercise, Exercise
 import { useAuth } from '@/contexts/AuthContext';
 import { 
   getWorkoutLog as fetchLogService, 
-  saveWorkoutLog as saveLogService, // This is for the whole day's log
+  saveWorkoutLog as saveLogService,
   getLastLoggedPerformance as fetchLastPerformanceService,
-  saveExercisePerformanceEntry as savePerformanceEntryService // This is for individual exercise "last time"
+  saveExercisePerformanceEntry as savePerformanceEntryService
 } from '@/services/trainingLogService';
 import { getExercises as fetchAllUserExercises } from '@/services/exerciseService';
 import { getRoutines as fetchUserRoutines, getRoutineById } from '@/services/routineService';
@@ -22,7 +22,7 @@ export const useTrainingLog = (initialDate: Date) => {
   const [selectedDate, setSelectedDate] = useState<Date>(initialDate);
   const [currentLog, setCurrentLog] = useState<WorkoutLog | null>(null);
   const [isLoadingLog, setIsLoadingLog] = useState(true);
-  const [isSavingLog, setIsSavingLog] = useState(false); // For the "Save Day's Log" button
+  const [isSavingLog, setIsSavingLog] = useState(false); 
 
   const [availableRoutines, setAvailableRoutines] = useState<Routine[]>([]);
   const [isLoadingRoutines, setIsLoadingRoutines] = useState(true);
@@ -60,7 +60,9 @@ export const useTrainingLog = (initialDate: Date) => {
   
   const fetchAndSetLastPerformance = async (exerciseId: string) => {
     if (!user?.id) return;
+    console.log(`[HOOK] fetchAndSetLastPerformance called for exerciseId: ${exerciseId}`);
     const perf = await fetchLastPerformanceService(user.id, exerciseId);
+    console.log(`[HOOK] Performance data received for ${exerciseId}:`, perf ? JSON.stringify(perf) : 'null');
     const display = formatLastPerformance(perf);
     setCurrentLog(prevLog => {
       if (!prevLog) return null;
@@ -95,7 +97,7 @@ export const useTrainingLog = (initialDate: Date) => {
                 routineDetails = availableRoutines.find(r => r.id === logRoutineId);
             }
             
-            if (!routineDetails && !isLoadingRoutines) { 
+            if (!routineDetails && !isLoadingRoutines && user?.id) { 
                 routineDetails = await getRoutineById(user.id, logRoutineId);
             }
 
@@ -108,19 +110,22 @@ export const useTrainingLog = (initialDate: Date) => {
                         exerciseId: routineEx.id,
                         name: routineEx.name,
                         muscleGroup: routineEx.muscleGroup,
-                        exerciseSetup: routineEx.exerciseSetup || '', // Populate exerciseSetup
-                        sets: loggedVersion?.sets || [{ id: `set-${dateId}-${routineEx.id}-0`, reps: null, weight: null }],
+                        exerciseSetup: routineEx.exerciseSetup || '',
+                        sets: loggedVersion?.sets && loggedVersion.sets.length > 0 ? loggedVersion.sets : [{ id: `set-${dateId}-${routineEx.id}-0`, reps: null, weight: null }],
                         notes: loggedVersion?.notes || '',
                         lastPerformanceDisplay: 'Loading...',
                     };
                 });
             } else if (fetchedLog) {
-                finalExercises = fetchedLog.exercises.map(ex => ({...ex, exerciseSetup: ex.exerciseSetup || ''})); // Ensure exerciseSetup
+                finalExercises = fetchedLog.exercises.map(ex => ({...ex, exerciseSetup: ex.exerciseSetup || '', lastPerformanceDisplay: 'Loading...'}));
             }
         } else if (fetchedLog) {
-             finalExercises = fetchedLog.exercises.map(ex => ({...ex, exerciseSetup: ex.exerciseSetup || ''})); // Ensure exerciseSetup
+             finalExercises = fetchedLog.exercises.map(ex => ({...ex, exerciseSetup: ex.exerciseSetup || '', lastPerformanceDisplay: 'Loading...'}));
+        } else {
+            // No fetched log and no routine ID from a fetched log -> completely new day, no pre-filled exercises
+            finalExercises = [];
         }
-
+        
         const exercisesWithPerformance = await Promise.all(
             finalExercises.map(async (ex) => {
                 const perf = await fetchLastPerformanceService(user.id, ex.exerciseId);
@@ -146,19 +151,13 @@ export const useTrainingLog = (initialDate: Date) => {
   }, [user?.id, toast, availableRoutines, isLoadingRoutines]);
 
   useEffect(() => {
-    // console.log('[useTrainingLog] Auth user in hook:', user);
     if (user?.id) {
-        // console.log(`[useTrainingLog] User ID available: ${user.id}. Calling loadLogForDate for ${selectedDate}.`);
         loadLogForDate(selectedDate);
     } else if (!user?.id && !authIsLoading) { 
-        // console.log(`[useTrainingLog] No user ID and not auth loading. Clearing log for ${selectedDate}.`);
         const dateIdForEmpty = format(selectedDate, 'yyyy-MM-dd');
         setCurrentLog({ id: dateIdForEmpty, date: dateIdForEmpty, exercises: [], notes: '' });
         setIsLoadingLog(false);
     }
-    // else {
-    //    console.log(`[useTrainingLog] Conditions not met for loadLogForDate. User: ${user?.id}, AuthLoading: ${authIsLoading}`);
-    // }
   }, [selectedDate, loadLogForDate, user?.id, authIsLoading]);
   
   const handleSelectRoutine = (routineId: string) => {
@@ -166,24 +165,27 @@ export const useTrainingLog = (initialDate: Date) => {
     const selectedRoutine = availableRoutines.find(r => r.id === routineId);
     if (!selectedRoutine) return;
 
+    const currentNotes = currentLog?.notes || '';
+    const dateOfLog = format(selectedDate, 'yyyy-MM-dd');
+
     const exercisesFromRoutine: LoggedExercise[] = selectedRoutine.exercises.map((ex, index) => ({
-      id: `${ex.id}-${formattedDateId}-${index}`, 
+      id: `${ex.id}-${dateOfLog}-${index}`, 
       exerciseId: ex.id,
       name: ex.name,
       muscleGroup: ex.muscleGroup,
-      exerciseSetup: ex.exerciseSetup || '', // Populate exerciseSetup
-      sets: [{ id: `set-${formattedDateId}-${ex.id}-0`, reps: null, weight: null }],
+      exerciseSetup: ex.exerciseSetup || '',
+      sets: [{ id: `set-${dateOfLog}-${ex.id}-0`, reps: null, weight: null }],
       notes: '',
       lastPerformanceDisplay: 'Loading...', 
     }));
     
     setCurrentLog({
-      id: formattedDateId,
-      date: formattedDateId,
+      id: dateOfLog,
+      date: dateOfLog,
       routineId: selectedRoutine.id,
       routineName: selectedRoutine.name,
       exercises: exercisesFromRoutine,
-      notes: currentLog?.notes || '',
+      notes: currentNotes,
     });
 
     exercisesFromRoutine.forEach(ex => fetchAndSetLastPerformance(ex.exerciseId));
@@ -191,13 +193,14 @@ export const useTrainingLog = (initialDate: Date) => {
 
   const addExerciseToLog = async (exercise: Exercise) => {
     if (!currentLog || !user?.id) return;
+    const dateOfLog = format(selectedDate, 'yyyy-MM-dd');
     const newLoggedExercise: LoggedExercise = {
       id: `${exercise.id}-${Date.now()}`,
       exerciseId: exercise.id,
       name: exercise.name,
       muscleGroup: exercise.muscleGroup,
-      exerciseSetup: exercise.exerciseSetup || '', // Populate exerciseSetup
-      sets: [{ id: `set-${Date.now()}-1`, reps: null, weight: null }],
+      exerciseSetup: exercise.exerciseSetup || '',
+      sets: [{ id: `set-${dateOfLog}-${exercise.id}-${Date.now()}`, reps: null, weight: null }],
       notes: '',
       lastPerformanceDisplay: 'Loading...',
     };
@@ -233,26 +236,23 @@ export const useTrainingLog = (initialDate: Date) => {
       const logToSave: WorkoutLog = {
         ...currentLog,
         exercises: currentLog.exercises
-          .map(ex => ({ // Ensure sets are numbers and exerciseSetup is included
+          .map(ex => ({ 
               ...ex,
-              exerciseSetup: ex.exerciseSetup || '', // Ensure exerciseSetup is part of saved data
+              exerciseSetup: ex.exerciseSetup || '', 
               sets: ex.sets.map(s => ({
                   id: s.id,
                   reps: s.reps === null || isNaN(s.reps) ? 0 : Number(s.reps),
                   weight: s.weight === null || isNaN(s.weight) ? 0 : Number(s.weight),
               }))
           }))
-          // Removed filter that might discard exercises with 0 rep/weight sets if user intends to log 0
       };
       
       // console.log('[useTrainingLog] logToSave prepared:', JSON.stringify(logToSave, null, 2));
 
       if (logToSave.exercises.length === 0 && !logToSave.notes && !logToSave.routineId) {
-        // console.log('[useTrainingLog] Empty log (no exercises, no notes, no routineId), not saving.');
-        // Consider deleting the log from Firestore if it exists and is now empty, or just don't save.
-        // For now, we'll prevent saving an absolutely empty log unless it was based on a routine (keeps routine context)
+        // console.log('[useTrainingLog] Empty log, not saving.');
       } else {
-        await saveLogService(user.id, formattedDateId, logToSave); // Pass the full logToSave
+        await saveLogService(user.id, formattedDateId, logToSave); 
         toast({ title: "Log Saved", description: `Workout for ${formattedDateId} saved.` });
       }
 
@@ -266,7 +266,7 @@ export const useTrainingLog = (initialDate: Date) => {
   const saveExerciseProgress = async (loggedExercise: LoggedExercise) => {
     if (!user?.id || !currentLog) return;
     
-    updateExerciseInLog(loggedExercise); // Update local state immediately
+    updateExerciseInLog(loggedExercise); 
 
     const validSets = loggedExercise.sets.filter(s => (s.reps ?? 0) > 0 || (s.weight ?? 0) > 0);
     if (validSets.length > 0) {
@@ -278,10 +278,7 @@ export const useTrainingLog = (initialDate: Date) => {
       await savePerformanceEntryService(user.id, loggedExercise.exerciseId, numericSets);
     }
     
-    // The "Save Day's Log" button is responsible for saving the entire log to Firestore.
-    // This function focuses on updating the "last performance" and local state.
-
-    await fetchAndSetLastPerformance(loggedExercise.exerciseId); // Refresh "last performance" display
+    await fetchAndSetLastPerformance(loggedExercise.exerciseId); 
   };
 
   const updateOverallLogNotes = (notes: string) => {

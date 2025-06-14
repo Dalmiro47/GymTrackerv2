@@ -30,27 +30,18 @@ const getExercisePerformanceEntriesCollectionPath = (userId: string, exerciseId:
  * Saves or updates the workout log for a specific date.
  * The log ID is the date string in 'YYYY-MM-DD' format.
  */
-export const saveWorkoutLog = async (userId: string, date: string, logData: Omit<WorkoutLog, 'id' | 'date' >): Promise<void> => {
+export const saveWorkoutLog = async (userId: string, date: string, workoutLogPayload: WorkoutLog): Promise<void> => {
   if (!userId) throw new Error("User ID is required.");
   if (!date) throw new Error("Date is required to save a workout log.");
+  if (workoutLogPayload.id !== date || workoutLogPayload.date !== date) {
+    console.error("Mismatched date information in workoutLogPayload:", workoutLogPayload, "Expected date:", date);
+    throw new Error("Log data integrity issue: ID and date fields must match the provided date parameter.");
+  }
   
   const logDocRef = doc(db, getUserWorkoutLogsCollectionPath(userId), date);
-  const dataToSave: WorkoutLog = {
-    id: date,
-    date: date,
-    ...logData,
-    exercises: logData.exercises.map(ex => ({
-      ...ex,
-      sets: ex.sets.map(s => ({
-        id: s.id,
-        reps: s.reps === null || isNaN(s.reps) ? 0 : Number(s.reps),
-        weight: s.weight === null || isNaN(s.weight) ? 0 : Number(s.weight),
-      })).filter(s => s.reps > 0 || s.weight > 0) // Only save sets with actual values
-    }))
-  };
 
   try {
-    await setDoc(logDocRef, dataToSave, { merge: true }); // Use merge to update if exists, or create
+    await setDoc(logDocRef, workoutLogPayload, { merge: true }); 
   } catch (error: any) {
     console.error("Error saving workout log:", error);
     throw new Error(`Failed to save workout log. ${error.message}`);
@@ -70,16 +61,16 @@ export const getWorkoutLog = async (userId: string, date: string): Promise<Worko
     console.error("[trainingLogService] getWorkoutLog called with no date");
     throw new Error("Date is required to fetch a workout log.");
   }
-  console.log(`[trainingLogService] Attempting to fetch log for userId: ${userId}, date: ${date}`);
+  // console.log(`[trainingLogService] Attempting to fetch log for userId: ${userId}, date: ${date}`);
 
   const logDocRef = doc(db, getUserWorkoutLogsCollectionPath(userId), date);
   try {
     const docSnap = await getDoc(logDocRef);
     if (docSnap.exists()) {
-      console.log(`[trainingLogService] Log found for userId: ${userId}, date: ${date}`, docSnap.data());
+      // console.log(`[trainingLogService] Log found for userId: ${userId}, date: ${date}`, docSnap.data());
       return docSnap.data() as WorkoutLog;
     }
-    console.log(`[trainingLogService] No log found for userId: ${userId}, date: ${date}`);
+    // console.log(`[trainingLogService] No log found for userId: ${userId}, date: ${date}`);
     return null;
   } catch (error: any) {
     console.error(`[trainingLogService] Error fetching workout log for userId: ${userId}, date: ${date}:`, error);
@@ -100,10 +91,10 @@ export const saveExercisePerformanceEntry = async (userId: string, exerciseId: s
     weight: s.weight === null || isNaN(s.weight) ? 0 : Number(s.weight),
   })).filter(s => s.reps > 0 || s.weight > 0);
 
-  if (validSets.length === 0) return; // Don't save empty performance
+  if (validSets.length === 0) return; 
 
   const entry: ExercisePerformanceEntry = {
-    date: Timestamp.now().toMillis(), // Store as milliseconds for ordering
+    date: Timestamp.now().toMillis(), 
     sets: validSets,
   };
   try {
@@ -111,7 +102,6 @@ export const saveExercisePerformanceEntry = async (userId: string, exerciseId: s
     await addDoc(performanceEntriesColRef, entry);
   } catch (error: any) {
     console.error("Error saving exercise performance entry:", error);
-    // Non-critical, so don't throw, just log. The main log save is more important.
   }
 };
 
@@ -120,29 +110,29 @@ export const saveExercisePerformanceEntry = async (userId: string, exerciseId: s
  */
 export const getLastLoggedPerformance = async (userId: string, exerciseId: string): Promise<ExercisePerformanceEntry | null> => {
   if (!userId) {
-    console.error("[trainingLogService] getLastLoggedPerformance called with no userId");
+    console.error("[SERVICE] getLastLoggedPerformance called with no userId");
     throw new Error("User ID is required.");
   }
   if (!exerciseId) {
-    console.error("[trainingLogService] getLastLoggedPerformance called with no exerciseId");
+    console.error("[SERVICE] getLastLoggedPerformance called with no exerciseId");
     throw new Error("Exercise ID is required.");
   }
-  console.log(`[trainingLogService] Attempting to fetch last performance for userId: ${userId}, exerciseId: ${exerciseId}`);
-
+  console.log(`[SERVICE] getLastLoggedPerformance: userId=${userId}, exerciseId=${exerciseId}`);
 
   const performanceEntriesColRef = collection(db, getExercisePerformanceEntriesCollectionPath(userId, exerciseId));
+  console.log(`[SERVICE] Querying path: ${performanceEntriesColRef.path}`);
   const q = query(performanceEntriesColRef, orderBy("date", "desc"), limit(1));
   try {
     const querySnapshot = await getDocs(q);
     if (!querySnapshot.empty) {
-      console.log(`[trainingLogService] Last performance found for userId: ${userId}, exerciseId: ${exerciseId}`);
-      return querySnapshot.docs[0].data() as ExercisePerformanceEntry;
+      const data = querySnapshot.docs[0].data() as ExercisePerformanceEntry;
+      console.log(`[SERVICE] Last performance FOUND for exerciseId=${exerciseId}:`, JSON.stringify(data));
+      return data;
     }
-    console.log(`[trainingLogService] No last performance found for userId: ${userId}, exerciseId: ${exerciseId}`);
+    console.log(`[SERVICE] No last performance found for exerciseId=${exerciseId}`);
     return null;
   } catch (error: any) {
-    console.error(`[trainingLogService] Error fetching last logged performance for userId: ${userId}, exerciseId: ${exerciseId}:`, error);
-    // Don't throw, let UI handle missing last performance gracefully
+    console.error(`[SERVICE] Error getLastLoggedPerformance for exerciseId=${exerciseId}:`, error);
     return null;
   }
 };
@@ -168,4 +158,3 @@ export const deleteAllPerformanceEntriesForExercise = async (userId: string, exe
         throw new Error(`Failed to delete performance entries. ${error.message}`);
     }
 };
-
