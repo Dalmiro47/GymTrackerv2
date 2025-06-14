@@ -10,6 +10,7 @@ import {
   deleteDoc, 
   query, 
   where,
+  writeBatch, // Import writeBatch
   Timestamp // If you plan to use server timestamps
 } from 'firebase/firestore';
 
@@ -29,6 +30,28 @@ export const addExercise = async (userId: string, exerciseData: ExerciseData): P
     throw new Error("Failed to add exercise.");
   }
 };
+
+// Add a batch of default exercises for a user
+export const addDefaultExercisesBatch = async (userId: string, defaultExercises: ExerciseData[]): Promise<void> => {
+  if (!userId) throw new Error("User ID is required to add default exercises.");
+  if (!defaultExercises || defaultExercises.length === 0) return;
+
+  try {
+    const userExercisesColRef = collection(db, getUserExercisesCollectionPath(userId));
+    const batch = writeBatch(db);
+
+    defaultExercises.forEach((exerciseData) => {
+      const newExerciseRef = doc(userExercisesColRef); // Firestore generates ID
+      batch.set(newExerciseRef, exerciseData);
+    });
+
+    await batch.commit();
+  } catch (error) {
+    console.error("Error adding default exercises batch to Firestore: ", error);
+    throw new Error("Failed to add default exercises.");
+  }
+};
+
 
 // Get all exercises for a user
 export const getExercises = async (userId: string): Promise<Exercise[]> => {
@@ -72,3 +95,4 @@ export const deleteExercise = async (userId: string, exerciseId: string): Promis
     throw new Error("Failed to delete exercise.");
   }
 };
+

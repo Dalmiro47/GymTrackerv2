@@ -5,8 +5,9 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import type { Exercise, MuscleGroup, ExerciseData } from '@/types';
 import type { ExerciseFormData } from './AddExerciseDialog'; // Import ExerciseFormData
 import { MUSCLE_GROUPS_LIST } from '@/lib/constants';
+import { defaultExercises } from '@/lib/defaultExercises'; // Import default exercises
 import { useAuth } from '@/contexts/AuthContext';
-import { addExercise, getExercises, updateExercise, deleteExercise } from '@/services/exerciseService';
+import { addExercise, getExercises, updateExercise, deleteExercise, addDefaultExercisesBatch } from '@/services/exerciseService';
 
 import { PageHeader } from '@/components/PageHeader';
 import { ExerciseCard } from './ExerciseCard';
@@ -63,17 +64,42 @@ export function ExerciseClientPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isDialogSaving, setIsDialogSaving] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isSeeding, setIsSeeding] = useState(false);
 
 
-  const fetchUserExercises = useCallback(async () => {
+  const fetchUserExercises = useCallback(async (isInitialFetch = false) => {
     if (!user?.id) {
-      setIsLoading(false); // Not logged in, stop loading
+      setIsLoading(false); 
       return;
     }
-    setIsLoading(true);
+    if (!isSeeding) setIsLoading(true); // Don't show main loader if only seeding in background
+
     try {
       const userExercises = await getExercises(user.id);
-      setExercises(userExercises);
+      
+      if (isInitialFetch && userExercises.length === 0) {
+        setIsSeeding(true);
+        toast({ title: "Setting up your library...", description: "Adding default exercises."});
+        try {
+          await addDefaultExercisesBatch(user.id, defaultExercises);
+          // After seeding, fetch again to get the newly added exercises
+          const seededExercises = await getExercises(user.id);
+          setExercises(seededExercises);
+          toast({ title: "Library Ready!", description: "Default exercises added."});
+        } catch (seedError) {
+          console.error("Failed to seed default exercises:", seedError);
+          toast({
+            title: "Error Seeding Library",
+            description: "Could not add default exercises. You can add them manually.",
+            variant: "destructive",
+          });
+          setExercises([]); // Still set to empty if seeding failed
+        } finally {
+          setIsSeeding(false);
+        }
+      } else {
+        setExercises(userExercises);
+      }
     } catch (error) {
       console.error("Failed to fetch exercises:", error);
       toast({
@@ -83,19 +109,21 @@ export function ExerciseClientPage() {
       });
     } finally {
       setIsLoading(false);
+      if (isSeeding) setIsSeeding(false); // Ensure seeding flag is reset
     }
-  }, [user?.id, toast]);
+  }, [user?.id, toast, isSeeding]); // Added isSeeding to dependencies
 
   useEffect(() => {
-    fetchUserExercises();
+    fetchUserExercises(true); // Pass true for initial fetch
   }, [fetchUserExercises]);
+
 
   const isFilteringOrSearching = useMemo(() => {
     return searchTerm.trim() !== '' || selectedMuscleGroup !== 'All';
   }, [searchTerm, selectedMuscleGroup]);
 
   const displayedExercises = useMemo(() => {
-    if (!isFilteringOrSearching) return []; // Don't filter if not searching/filtering
+    if (!isFilteringOrSearching) return []; 
     
     let tempExercises = [...exercises];
     if (searchTerm.trim() !== '') {
@@ -108,7 +136,7 @@ export function ExerciseClientPage() {
   }, [exercises, searchTerm, selectedMuscleGroup, isFilteringOrSearching]);
 
   const exercisesGroupedByMuscle = useMemo(() => {
-    if (isFilteringOrSearching) return []; // Don't group if filtering/searching
+    if (isFilteringOrSearching) return []; 
     return groupExercisesByMuscle(exercises, MUSCLE_GROUPS_LIST);
   }, [exercises, isFilteringOrSearching]);
 
@@ -134,17 +162,17 @@ export function ExerciseClientPage() {
         muscleGroup: formData.muscleGroup,
         description: formData.description || '',
         image: formData.image || '',
-        // dataAiHint can be derived or added if part of formData
+        dataAiHint: formData.image ? formData.name.toLowerCase().split(" ").slice(0,2).join(" ") : '', // Basic hint
       };
 
-      if (exerciseToEdit) { // Editing existing exercise
+      if (exerciseToEdit) { 
         await updateExercise(user.id, exerciseToEdit.id, exercisePayload);
         toast({ title: "Exercise Updated", description: `${formData.name} has been successfully updated.` });
-      } else { // Adding new exercise
+      } else { 
         await addExercise(user.id, exercisePayload);
         toast({ title: "Exercise Added", description: `${formData.name} has been successfully added.` });
       }
-      await fetchUserExercises(); // Re-fetch all exercises
+      await fetchUserExercises(); 
       setIsDialogOpen(false);
       setExerciseToEdit(null);
     } catch (error) {
@@ -173,7 +201,7 @@ export function ExerciseClientPage() {
     try {
       await deleteExercise(user.id, exerciseToDeleteId);
       toast({ title: "Exercise Deleted", description: `${exerciseName} has been removed.` });
-      await fetchUserExercises(); // Re-fetch
+      await fetchUserExercises(); 
     } catch (error) {
       console.error("Failed to delete exercise:", error);
       toast({ title: "Delete Error", description: `Could not delete ${exerciseName}.`, variant: "destructive" });
@@ -183,7 +211,7 @@ export function ExerciseClientPage() {
   };
   
 
-  if (isLoading && !exercises.length) { // Show full page loader only on initial load
+  if (isLoading && !exercises.length && !isSeeding) { 
     return (
       <div className="flex justify-center items-center h-screen">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
@@ -207,6 +235,7 @@ export function ExerciseClientPage() {
             variant="default" 
             className="bg-accent hover:bg-accent/90 text-accent-foreground" 
             onClick={handleOpenAddDialog}
+            disabled={isSeeding || isLoading}
           >
           <PlusCircle className="mr-2 h-4 w-4" /> 
           Add New Exercise
@@ -219,7 +248,6 @@ export function ExerciseClientPage() {
         isOpen={isDialogOpen}
         setIsOpen={setIsDialogOpen}
         isSaving={isDialogSaving}
-        // No trigger button here, it's controlled by isDialogOpen state
       />
 
       <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -232,11 +260,16 @@ export function ExerciseClientPage() {
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full rounded-lg bg-card py-2 pl-10 pr-4 shadow-sm focus:ring-primary"
             aria-label="Search exercises"
+            disabled={isSeeding || isLoading && exercises.length === 0}
           />
         </div>
         <div className="relative">
           <Filter className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
-           <Select value={selectedMuscleGroup} onValueChange={(value) => setSelectedMuscleGroup(value as MuscleGroup | 'All')}>
+           <Select 
+              value={selectedMuscleGroup} 
+              onValueChange={(value) => setSelectedMuscleGroup(value as MuscleGroup | 'All')}
+              disabled={isSeeding || isLoading && exercises.length === 0}
+            >
             <SelectTrigger className="w-full rounded-lg bg-card py-2 pl-10 pr-4 shadow-sm focus:ring-primary" aria-label="Filter by muscle group">
               <SelectValue placeholder="Filter by muscle group" />
             </SelectTrigger>
@@ -250,7 +283,7 @@ export function ExerciseClientPage() {
         </div>
       </div>
       
-      {isLoading && exercises.length > 0 && ( // Show subtle loader if data already exists but refetching
+      {(isLoading && exercises.length > 0 && !isSeeding) && ( 
         <div className="my-4 flex items-center justify-center text-muted-foreground">
           <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Refreshing...
         </div>
@@ -299,14 +332,22 @@ export function ExerciseClientPage() {
             ))}
           </div>
         ) : (
-         !isLoading && exercises.length === 0 && ( // Show this only if not loading and no exercises
+         (!isLoading && !isSeeding && exercises.length === 0) && ( 
             <div className="text-center py-12">
               <p className="text-xl text-muted-foreground font-semibold mb-2">Your exercise library is empty.</p>
-              <p className="text-muted-foreground">Add some exercises to get started!</p>
+              <p className="text-muted-foreground">Add some exercises to get started or they might be loading!</p>
             </div>
           )
         )
       )}
+      
+      {isSeeding && (
+        <div className="flex justify-center items-center h-40">
+          <Loader2 className="h-10 w-10 animate-spin text-primary" />
+          <p className="ml-3 text-lg text-primary font-semibold">Populating your library with default exercises...</p>
+        </div>
+      )}
+
 
       <AlertDialog open={!!exerciseToDeleteId} onOpenChange={(open) => !open && setExerciseToDeleteId(null)}>
         <AlertDialogContent>
@@ -328,3 +369,4 @@ export function ExerciseClientPage() {
     </>
   );
 }
+
