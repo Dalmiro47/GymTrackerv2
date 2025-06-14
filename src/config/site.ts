@@ -1,3 +1,4 @@
+
 import type { NavItem } from '@/types';
 import { LayoutDashboard, Dumbbell, ListChecks, ClipboardEdit, CalendarDays } from 'lucide-react';
 
@@ -20,18 +21,6 @@ export const navItems: NavItem[] = [
     label: 'Dashboard',
   },
   {
-    title: 'Exercises',
-    href: '/exercises',
-    icon: Dumbbell,
-    label: 'Exercises',
-  },
-  {
-    title: 'Routines',
-    href: '/routines',
-    icon: ListChecks,
-    label: 'Routines',
-  },
-  {
     title: 'Training Log',
     href: '/log',
     icon: ClipboardEdit,
@@ -43,4 +32,17 @@ export const navItems: NavItem[] = [
     icon: CalendarDays,
     label: 'Training Calendar',
   },
+  {
+    title: 'Exercises',
+    href: '/exercises',
+    icon: Dumbbell,
+    label: 'Exercises',
+  },
+  {
+    title: 'Routines',
+    href: '/routines',
+    icon: ListChecks,
+    label: 'Routines',
+  },
 ];
+
