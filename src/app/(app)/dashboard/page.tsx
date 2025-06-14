@@ -1,8 +1,8 @@
+
 "use client";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/contexts/AuthContext";
-import Image from 'next/image';
 
 export default function DashboardPage() {
   const { user } = useAuth();
@@ -38,16 +38,6 @@ export default function DashboardPage() {
                 <p className="text-sm text-muted-foreground">Stay hydrated! Drink plenty of water throughout the day, especially before, during, and after your workouts.</p>
               </CardContent>
             </Card>
-          </div>
-           <div className="mt-6 rounded-lg overflow-hidden">
-            <Image 
-              src="https://placehold.co/800x300.png" 
-              alt="Fitness motivation" 
-              width={800} 
-              height={300}
-              className="w-full h-auto object-cover"
-              data-ai-hint="fitness motivation"
-            />
           </div>
         </CardContent>
       </Card>
