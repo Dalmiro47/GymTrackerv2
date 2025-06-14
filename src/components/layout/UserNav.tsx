@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react"; // Added React import
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
