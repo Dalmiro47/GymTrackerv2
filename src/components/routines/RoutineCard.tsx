@@ -2,7 +2,7 @@
 import type { Routine } from '@/types';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Edit3, Trash2, ListChecks, GripVertical } from 'lucide-react';
+import { Edit3, Trash2, GripVertical } from 'lucide-react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { cn } from '@/lib/utils';
@@ -40,12 +40,11 @@ export function RoutineCard({ routine, onEdit, onDelete }: RoutineCardProps) {
       )}
     >
       <CardHeader className="pb-2 relative">
-        {/* This div now has pr-10 to make space for the absolute drag handle */}
         <div className="flex items-start justify-between pr-10"> 
             <CardTitle className="font-headline text-xl leading-tight">
             {routine.name}
             </CardTitle>
-            <ListChecks className="h-5 w-5 text-primary flex-shrink-0" />
+            {/* ListChecks icon removed */}
         </div>
         <CardDescription className="text-xs text-muted-foreground">
             {routine.exercises.length} exercise{routine.exercises.length === 1 ? '' : 's'}
