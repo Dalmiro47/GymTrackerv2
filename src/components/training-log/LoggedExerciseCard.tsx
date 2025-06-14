@@ -6,8 +6,8 @@ import type { LoggedExercise, LoggedSet } from '@/types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { PlusCircle, Trash2, Save, RotateCcw, GripVertical } from 'lucide-react';
-import { SetInputRow } from './SetInputRow'; // To be created
+import { PlusCircle, Trash2, Save, RotateCcw, GripVertical, Loader2 } from 'lucide-react'; // Added Loader2
+import { SetInputRow } from './SetInputRow'; 
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { cn } from '@/lib/utils';
@@ -15,10 +15,10 @@ import { cn } from '@/lib/utils';
 interface LoggedExerciseCardProps {
   loggedExercise: LoggedExercise;
   onUpdateSets: (sets: LoggedSet[]) => void;
-  onSaveProgress: () => void; // Called when this specific exercise's "Save" button is clicked
+  onSaveProgress: () => void; 
   onRemove: () => void;
   onRefreshLastPerformance: () => void;
-  isSavingParentLog: boolean; // To disable save button if main log is saving
+  isSavingParentLog: boolean; 
 }
 
 export function LoggedExerciseCard({
@@ -49,17 +49,16 @@ export function LoggedExerciseCard({
   const [isSavingThisExercise, setIsSavingThisExercise] = useState(false);
 
   useEffect(() => {
-    // Sync localSets if the prop changes from parent (e.g., after loading log)
     setLocalSets(loggedExercise.sets);
   }, [loggedExercise.sets]);
 
   const handleSetChange = (index: number, field: keyof Omit<LoggedSet, 'id'>, value: string) => {
     const newSets = [...localSets];
-    const numericValue = value === '' ? null : parseFloat(value); // Allow empty input temporarily
+    const numericValue = value === '' ? null : parseFloat(value); 
     if (newSets[index]) {
        newSets[index] = { ...newSets[index], [field]: numericValue };
        setLocalSets(newSets);
-       onUpdateSets(newSets); // Update parent immediately for overall log state
+       onUpdateSets(newSets); 
     }
   };
 
@@ -78,8 +77,6 @@ export function LoggedExerciseCard({
 
   const handleSaveThisExercise = async () => {
     setIsSavingThisExercise(true);
-    // onUpdateSets should have already updated the parent's state
-    // So current `loggedExercise` prop (or rather the version in parent state) has the latest sets
     await onSaveProgress(); 
     setIsSavingThisExercise(false);
   };
@@ -140,11 +137,10 @@ export function LoggedExerciseCard({
             Save Exercise
           </Button>
         </div>
-        {loggedExercise.notes !== undefined && ( // Optional notes per exercise
+        {loggedExercise.notes !== undefined && ( 
             <Input 
                 placeholder="Notes for this exercise (e.g., form cues)" 
                 defaultValue={loggedExercise.notes}
-                // onChange={(e) => onUpdateNotes(e.target.value)} // Needs onUpdateNotes prop
                 className="mt-2 text-sm"
             />
         )}
