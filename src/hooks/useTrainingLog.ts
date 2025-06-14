@@ -58,7 +58,7 @@ export const useTrainingLog = (initialDate: Date) => {
     return perf.sets.map(s => `${s.reps ?? '0'}x${s.weight ?? '0'}kg`).join(', ');
   };
   
-  const fetchAndSetLastPerformance = async (exerciseId: string) => {
+  const fetchAndSetLastPerformance = useCallback(async (exerciseId: string) => {
     if (!user?.id) return;
     console.log(`[HOOK] fetchAndSetLastPerformance called for exerciseId: ${exerciseId}`);
     const perf = await fetchLastPerformanceService(user.id, exerciseId);
@@ -73,7 +73,7 @@ export const useTrainingLog = (initialDate: Date) => {
         )
       };
     });
-  };
+  }, [user?.id]);
 
   const loadLogForDate = useCallback(async (dateToLoad: Date) => {
     if (!user?.id) {
@@ -93,7 +93,7 @@ export const useTrainingLog = (initialDate: Date) => {
 
         if (logRoutineId) {
             let routineDetails: Routine | null | undefined = null;
-            if (availableRoutines.length > 0) {
+            if (availableRoutines.length > 0 && !isLoadingRoutines) { // Ensure routines are loaded
                 routineDetails = availableRoutines.find(r => r.id === logRoutineId);
             }
             
@@ -113,13 +113,13 @@ export const useTrainingLog = (initialDate: Date) => {
                         exerciseSetup: routineEx.exerciseSetup || '',
                         sets: loggedVersion?.sets && loggedVersion.sets.length > 0 ? loggedVersion.sets : [{ id: `set-${dateId}-${routineEx.id}-0`, reps: null, weight: null }],
                         notes: loggedVersion?.notes || '',
-                        lastPerformanceDisplay: 'Loading...',
+                        lastPerformanceDisplay: 'Loading...', // Will be fetched next
                     };
                 });
-            } else if (fetchedLog) {
-                finalExercises = fetchedLog.exercises.map(ex => ({...ex, exerciseSetup: ex.exerciseSetup || '', lastPerformanceDisplay: 'Loading...'}));
+            } else if (fetchedLog) { // Routine details not found, but log exists
+                 finalExercises = fetchedLog.exercises.map(ex => ({...ex, exerciseSetup: ex.exerciseSetup || '', lastPerformanceDisplay: 'Loading...'}));
             }
-        } else if (fetchedLog) {
+        } else if (fetchedLog) { // Log exists, but not from a routine (or routineId was cleared)
              finalExercises = fetchedLog.exercises.map(ex => ({...ex, exerciseSetup: ex.exerciseSetup || '', lastPerformanceDisplay: 'Loading...'}));
         } else {
             // No fetched log and no routine ID from a fetched log -> completely new day, no pre-filled exercises
@@ -148,17 +148,17 @@ export const useTrainingLog = (initialDate: Date) => {
     } finally {
         setIsLoadingLog(false);
     }
-  }, [user?.id, toast, availableRoutines, isLoadingRoutines]);
+  }, [user?.id, toast, availableRoutines, isLoadingRoutines, fetchAndSetLastPerformance]);
 
   useEffect(() => {
-    if (user?.id) {
+    if (user?.id && !isLoadingRoutines) { // Ensure routines are loaded before trying to load log
         loadLogForDate(selectedDate);
     } else if (!user?.id && !authIsLoading) { 
         const dateIdForEmpty = format(selectedDate, 'yyyy-MM-dd');
         setCurrentLog({ id: dateIdForEmpty, date: dateIdForEmpty, exercises: [], notes: '' });
         setIsLoadingLog(false);
     }
-  }, [selectedDate, loadLogForDate, user?.id, authIsLoading]);
+  }, [selectedDate, loadLogForDate, user?.id, authIsLoading, isLoadingRoutines]);
   
   const handleSelectRoutine = (routineId: string) => {
     if (!user?.id) return;
@@ -195,7 +195,7 @@ export const useTrainingLog = (initialDate: Date) => {
     if (!currentLog || !user?.id) return;
     const dateOfLog = format(selectedDate, 'yyyy-MM-dd');
     const newLoggedExercise: LoggedExercise = {
-      id: `${exercise.id}-${Date.now()}`,
+      id: `${exercise.id}-${Date.now()}`, // More unique ID
       exerciseId: exercise.id,
       name: exercise.name,
       muscleGroup: exercise.muscleGroup,
@@ -233,12 +233,32 @@ export const useTrainingLog = (initialDate: Date) => {
     }
     setIsSavingLog(true);
     try {
+      // First, update performance entries for all exercises in the current log that have valid sets
+      for (const loggedEx of currentLog.exercises) {
+        const validSets = loggedEx.sets.filter(s => (s.reps ?? 0) > 0 || (s.weight ?? 0) > 0);
+        if (validSets.length > 0) {
+          const numericSets = validSets.map(s => ({
+            id: s.id,
+            reps: Number(s.reps ?? 0),
+            weight: Number(s.weight ?? 0)
+          }));
+          try {
+            await savePerformanceEntryService(user.id, loggedEx.exerciseId, numericSets);
+          } catch (perfError: any) {
+            console.error(`Failed to save performance entry for ${loggedEx.name} during day log save: ${perfError.message}`);
+            // Optionally toast this individual error. For now, just logging.
+          }
+        }
+      }
+
+      // Then, prepare and save the main workout log document
       const logToSave: WorkoutLog = {
         ...currentLog,
         exercises: currentLog.exercises
           .map(ex => ({ 
               ...ex,
               exerciseSetup: ex.exerciseSetup || '', 
+              lastPerformanceDisplay: ex.lastPerformanceDisplay || 'N/A', 
               sets: ex.sets.map(s => ({
                   id: s.id,
                   reps: s.reps === null || isNaN(s.reps) ? 0 : Number(s.reps),
@@ -247,10 +267,11 @@ export const useTrainingLog = (initialDate: Date) => {
           }))
       };
       
-      // console.log('[useTrainingLog] logToSave prepared:', JSON.stringify(logToSave, null, 2));
+      console.log('[useTrainingLog] logToSave prepared:', JSON.stringify(logToSave, null, 2));
 
       if (logToSave.exercises.length === 0 && !logToSave.notes && !logToSave.routineId) {
-        // console.log('[useTrainingLog] Empty log, not saving.');
+        console.log('[useTrainingLog] Empty log, not saving main log document.');
+         toast({ title: "Log Not Saved", description: "Log is empty. Add exercises or notes."});
       } else {
         await saveLogService(user.id, formattedDateId, logToSave); 
         toast({ title: "Log Saved", description: `Workout for ${formattedDateId} saved.` });
@@ -260,8 +281,16 @@ export const useTrainingLog = (initialDate: Date) => {
       toast({ title: "Error Saving Log", description: error.message, variant: "destructive" });
     } finally {
       setIsSavingLog(false);
+      // After saving the day's log and potentially updating performance entries,
+      // refresh all last performance displays for the current log.
+      if (currentLog) {
+        for (const ex of currentLog.exercises) {
+          await fetchAndSetLastPerformance(ex.exerciseId);
+        }
+      }
     }
   };
+
 
   const saveExerciseProgress = async (loggedExercise: LoggedExercise) => {
     if (!user?.id || !currentLog) return;
@@ -271,11 +300,11 @@ export const useTrainingLog = (initialDate: Date) => {
     const validSets = loggedExercise.sets.filter(s => (s.reps ?? 0) > 0 || (s.weight ?? 0) > 0);
     if (validSets.length > 0) {
       const numericSets = validSets.map(s => ({
-        id: s.id,
+        id: s.id, 
         reps: Number(s.reps ?? 0),
         weight: Number(s.weight ?? 0)
       }));
-      await savePerformanceEntryService(user.id, loggedExercise.exerciseId, numericSets);
+      await savePerformanceEntryService(user.id, loggedExercise.exerciseId, numericSets); 
     }
     
     await fetchAndSetLastPerformance(loggedExercise.exerciseId); 

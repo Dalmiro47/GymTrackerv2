@@ -41,6 +41,7 @@ export const saveWorkoutLog = async (userId: string, date: string, workoutLogPay
   const logDocRef = doc(db, getUserWorkoutLogsCollectionPath(userId), date);
 
   try {
+    // The workoutLogPayload is assumed to be correctly formatted by the calling hook
     await setDoc(logDocRef, workoutLogPayload, { merge: true }); 
   } catch (error: any) {
     console.error("Error saving workout log:", error);
@@ -85,23 +86,29 @@ export const saveExercisePerformanceEntry = async (userId: string, exerciseId: s
   if (!userId) throw new Error("User ID is required.");
   if (!exerciseId) throw new Error("Exercise ID is required.");
 
+  // Ensure sets are numeric and filter out empty/invalid sets before saving to performance entry
   const validSets = sets.map(s => ({
-    id: s.id,
+    id: s.id, // Set ID is kept
     reps: s.reps === null || isNaN(s.reps) ? 0 : Number(s.reps),
     weight: s.weight === null || isNaN(s.weight) ? 0 : Number(s.weight),
-  })).filter(s => s.reps > 0 || s.weight > 0);
+  })).filter(s => s.reps > 0 || s.weight > 0); // Only save sets with actual performance
 
-  if (validSets.length === 0) return; 
+  if (validSets.length === 0) {
+    console.log(`[SERVICE] saveExercisePerformanceEntry: No valid sets with reps/weight > 0 to save for exerciseId=${exerciseId}. Skipping performance entry.`);
+    return; // Do not save an entry if there's no actual performance data
+  }
 
   const entry: ExercisePerformanceEntry = {
-    date: Timestamp.now().toMillis(), 
+    date: Timestamp.now().toMillis(), // Use Firestore Timestamp converted to milliseconds
     sets: validSets,
   };
   try {
     const performanceEntriesColRef = collection(db, getExercisePerformanceEntriesCollectionPath(userId, exerciseId));
     await addDoc(performanceEntriesColRef, entry);
+    console.log(`[SERVICE] Successfully saved performance entry for exerciseId=${exerciseId}:`, JSON.stringify(entry));
   } catch (error: any) {
-    console.error("Error saving exercise performance entry:", error);
+    console.error(`Error saving exercise performance entry for exerciseId=${exerciseId}:`, error);
+    throw new Error(`Failed to save performance entry for ${exerciseId}. ${error.message}`);
   }
 };
 
@@ -133,7 +140,7 @@ export const getLastLoggedPerformance = async (userId: string, exerciseId: strin
     return null;
   } catch (error: any) {
     console.error(`[SERVICE] Error getLastLoggedPerformance for exerciseId=${exerciseId}:`, error);
-    return null;
+    return null; // Return null on error to prevent breaking the UI flow
   }
 };
 
@@ -153,6 +160,7 @@ export const deleteAllPerformanceEntriesForExercise = async (userId: string, exe
             batch.delete(doc.ref);
         });
         await batch.commit();
+        console.log(`[SERVICE] Successfully deleted all performance entries for exerciseId=${exerciseId}`);
     } catch (error: any) {
         console.error(`Error deleting performance entries for exercise ${exerciseId}:`, error);
         throw new Error(`Failed to delete performance entries. ${error.message}`);
