@@ -55,6 +55,7 @@ function SortableExerciseItem({ exercise, onRemoveExercise }: SortableExerciseIt
     >
       <div className="flex items-center flex-1">
         <button
+          type="button" // This is the fix!
           {...attributes}
           {...listeners}
           className="p-1 cursor-grab mr-2 text-muted-foreground hover:text-foreground"
@@ -68,6 +69,7 @@ function SortableExerciseItem({ exercise, onRemoveExercise }: SortableExerciseIt
         </div>
       </div>
       <Button
+        type="button" // Also good practice for buttons not intended to submit
         variant="ghost"
         size="icon"
         onClick={() => onRemoveExercise(exercise.id)}
