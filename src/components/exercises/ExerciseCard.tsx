@@ -13,7 +13,7 @@ interface ExerciseCardProps {
 }
 
 export function ExerciseCard({ exercise, onEdit, onDelete, onViewDetails }: ExerciseCardProps) {
-  console.log('ExerciseCard received exercise:', exercise); // DEBUGGING LINE
+  // console.log('ExerciseCard received exercise:', exercise); // DEBUGGING LINE
   return (
     <Card className="flex h-full flex-col overflow-hidden shadow-lg transition-shadow hover:shadow-xl">
       <CardHeader className="pb-2">
@@ -35,7 +35,7 @@ export function ExerciseCard({ exercise, onEdit, onDelete, onViewDetails }: Exer
         {exercise.exerciseSetup && (
           <div>
             <p className="text-xs font-semibold text-muted-foreground flex items-center">
-              <Settings2 className="h-3 w-3 mr-1" />
+              <Settings2 className="h-3 w-3 mr-1 text-primary" />
               Setup:
             </p>
             <CardDescription className="line-clamp-2 text-sm">
