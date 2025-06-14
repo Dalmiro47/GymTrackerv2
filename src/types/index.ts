@@ -21,7 +21,6 @@ export interface Exercise {
   name: string;
   muscleGroup: MuscleGroup;
   description?: string;
-  image?: string; // URL to image
   instructions?: string;
   dataAiHint?: string; 
 }

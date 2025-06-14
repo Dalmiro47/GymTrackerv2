@@ -23,13 +23,12 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
-// Schema for form validation, does not include 'id'
+// Schema for form validation, does not include 'id' or 'image'
 const exerciseFormSchema = z.object({
   name: z.string().min(3, "Name must be at least 3 characters"),
   muscleGroup: z.enum(MUSCLE_GROUPS_LIST, { message: "Please select a muscle group" }),
   description: z.string().optional(),
-  image: z.string().url("Must be a valid URL").optional().or(z.literal('')),
-  // dataAiHint could be added here if needed in the form
+  // dataAiHint could be added here if needed in the form, but typically generated
 });
 
 export type ExerciseFormData = z.infer<typeof exerciseFormSchema>;
@@ -57,7 +56,6 @@ export function AddExerciseDialog({
       name: '',
       muscleGroup: undefined,
       description: '',
-      image: '',
     },
   });
 
@@ -68,10 +66,9 @@ export function AddExerciseDialog({
           name: exerciseToEdit.name,
           muscleGroup: exerciseToEdit.muscleGroup,
           description: exerciseToEdit.description || '',
-          image: exerciseToEdit.image || '',
         });
       } else {
-        reset({ name: '', muscleGroup: undefined, description: '', image: '' });
+        reset({ name: '', muscleGroup: undefined, description: '' });
       }
     }
   }, [exerciseToEdit, reset, isOpen]);
@@ -123,12 +120,6 @@ export function AddExerciseDialog({
           <div className="grid gap-2">
             <Label htmlFor="description">Description (Optional)</Label>
             <Textarea id="description" {...register('description')} />
-          </div>
-
-          <div className="grid gap-2">
-            <Label htmlFor="image">Image URL (Optional)</Label>
-            <Input id="image" {...register('image')} placeholder="https://example.com/image.png" aria-invalid={errors.image ? "true" : "false"}/>
-             {errors.image && <p className="text-sm text-destructive">{errors.image.message}</p>}
           </div>
 
           <DialogFooter>

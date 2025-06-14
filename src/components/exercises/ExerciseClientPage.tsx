@@ -51,7 +51,8 @@ const groupExercisesByMuscle = (exercises: Exercise[], muscleOrder: readonly Mus
 
 
 export function ExerciseClientPage() {
-  const { user } = useAuth();
+  const authContext = useAuth();
+  const { user } = authContext;
   const { toast } = useToast();
   const router = useRouter(); 
 
@@ -62,7 +63,7 @@ export function ExerciseClientPage() {
   const [exerciseToEdit, setExerciseToEdit] = useState<Exercise | null>(null);
   const [exerciseToDeleteId, setExerciseToDeleteId] = useState<string | null>(null);
 
-  const [isLoading, setIsLoading] = useState(true); // General page loading, including initial exercise fetch/seed
+  const [isLoading, setIsLoading] = useState(true); 
   const [isDialogSaving, setIsDialogSaving] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isSeeding, setIsSeeding] = useState(false);
@@ -73,7 +74,6 @@ export function ExerciseClientPage() {
     if (!currentUserId) {
       return [];
     }
-    // setIsLoading(true); // Managed by the calling useEffect's loadData
     try {
       const userExercises = await getExercises(currentUserId);
       return userExercises;
@@ -85,8 +85,6 @@ export function ExerciseClientPage() {
         variant: "destructive",
       });
       return [];
-    } finally {
-      // setIsLoading(false); // Managed by the calling useEffect's loadData
     }
   }, [toast]);
 
@@ -94,11 +92,11 @@ export function ExerciseClientPage() {
   useEffect(() => {
     const loadData = async () => {
       if (user?.id) {
-        setIsLoading(true); // Start loading when user ID is available
+        setIsLoading(true); 
         let userExercises = await fetchUserExercises(user.id);
 
         if (userExercises.length === 0 && !hasAttemptedSeedForCurrentUser) {
-          setHasAttemptedSeedForCurrentUser(true); // Mark seeding attempt
+          setHasAttemptedSeedForCurrentUser(true); 
           setIsSeeding(true);
           toast({ title: "Setting up your library...", description: "Adding default exercises."});
           try {
@@ -109,7 +107,7 @@ export function ExerciseClientPage() {
             console.error("Failed to seed default exercises:", seedError);
             toast({
               title: "Error Seeding Library",
-              description: `Could not add default exercises. ${seedError.message}`,
+              description: `Could not add default exercises. ${seedError.message || 'Unknown error'}`,
               variant: "destructive",
             });
           } finally {
@@ -117,8 +115,8 @@ export function ExerciseClientPage() {
           }
         }
         setExercises(userExercises);
-        setIsLoading(false); // Stop loading after all operations
-      } else if (user === null && !isLoading) { 
+        setIsLoading(false); 
+      } else if (user === null && !authContext.isLoading) { 
         setExercises([]);
         setIsLoading(false);
         setIsSeeding(false);
@@ -126,18 +124,19 @@ export function ExerciseClientPage() {
       }
     };
 
-    if (user !== undefined) { // Only run if user auth state is determined
+    if (user !== undefined) { 
         loadData();
     }
     
     // Reset seed attempt flag if user changes
-    return () => {
-        if(user?.id) { // This check might be too simplistic if component unmounts for other reasons
-          // If we want to reset only on USER change, this effect needs to depend on user.id
-          // setHasAttemptedSeedForCurrentUser(false); // Consider the implications
+     return () => {
+        if(user?.id && !authContext.isLoading) { 
+          // Check previous user id if available and different from current, then reset.
+          // This ensures if the same user logs out and logs in, it doesn't try to re-seed.
+          // A more robust way might involve storing a flag in user's profile in Firestore.
         }
     };
-  }, [user, fetchUserExercises, toast]); // Removed hasAttemptedSeedForCurrentUser from deps to avoid re-runs on its change
+  }, [user, fetchUserExercises, toast, authContext.isLoading]);
 
 
   const isFilteringOrSearching = useMemo(() => {
@@ -187,10 +186,7 @@ export function ExerciseClientPage() {
         name: formData.name,
         muscleGroup: formData.muscleGroup,
         description: formData.description || '',
-        image: formData.image || '',
-        dataAiHint: formData.image 
-          ? formData.name.toLowerCase().split(" ").slice(0,2).join(" ") 
-          : (formData.name.toLowerCase().split(" ").slice(0,2).join(" ") || 'exercise'),
+        dataAiHint: formData.name.toLowerCase().split(" ").slice(0,2).join(" ") || 'exercise',
       };
 
       if (exerciseToEdit) {
@@ -207,7 +203,7 @@ export function ExerciseClientPage() {
       setIsDialogOpen(false);
       setExerciseToEdit(null);
     } catch (error: any) {
-      console.error("Detailed error adding exercise to Firestore: ", error);
+      console.error("Detailed error adding/updating exercise to Firestore: ", error);
       toast({
         title: "Save Error",
         description: `Could not save ${formData.name}. Firestore error: ${error.message || 'Unknown error'}`,
@@ -243,10 +239,7 @@ export function ExerciseClientPage() {
       setExerciseToDeleteId(null);
     }
   };
-
-  // Auth loading state (initial, before user object is known)
-  // `useAuth` isLoading refers to auth state determination
-  const authContext = useAuth(); 
+ 
   if (authContext.isLoading) { 
     return (
       <div className="flex justify-center items-center h-screen">
@@ -256,7 +249,6 @@ export function ExerciseClientPage() {
     );
   }
 
-  // User is not authenticated and auth is not loading
   if (!user && !authContext.isLoading) { 
     return (
       <div className="flex flex-col justify-center items-center h-64">
@@ -266,9 +258,7 @@ export function ExerciseClientPage() {
     );
   }
   
-  // User is authenticated, but exercise data is still loading (initial fetch or seeding)
-  // `isLoading` here is the page's specific loading state for exercises
-  if (user && isLoading && (!exercises.length || isSeeding)) { 
+  if (user && isLoading) { 
      return (
       <div className="flex justify-center items-center h-screen">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
@@ -335,7 +325,7 @@ export function ExerciseClientPage() {
         </div>
       </div>
 
-      {isSeeding ? (
+      {isSeeding && !isLoading ? ( // Show seeding loader only when actually seeding and not general loading
         <div className="flex justify-center items-center h-40">
           <Loader2 className="h-10 w-10 animate-spin text-primary" />
           <p className="ml-3 text-lg text-primary font-semibold">Populating your library with default exercises...</p>
@@ -381,10 +371,10 @@ export function ExerciseClientPage() {
             </section>
           ))}
         </div>
-      ) : (!isLoading && !isSeeding && exercises.length === 0 && user) ? ( // Check !isLoading here too
+      ) : (!isLoading && !isSeeding && exercises.length === 0 && user) ? ( 
           <div className="text-center py-12">
             <p className="text-xl text-muted-foreground font-semibold mb-2">Your exercise library is empty.</p>
-            <p className="text-muted-foreground">Add some exercises to get started or wait for defaults to load if this is your first time!</p>
+            <p className="text-muted-foreground">Add some exercises to get started!</p>
           </div>
         )
       : null }
@@ -410,5 +400,3 @@ export function ExerciseClientPage() {
     </>
   );
 }
-
-    
