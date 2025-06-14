@@ -32,11 +32,11 @@ export function RoutineCard({ routine, onEdit, onDelete }: RoutineCardProps) {
         {routine.exercises.length > 0 && (
           <div className="mt-2">
             <p className="text-xs font-semibold text-muted-foreground mb-1">Exercises:</p>
-            <ul className="list-disc list-inside text-xs text-muted-foreground space-y-0.5 max-h-20 overflow-y-auto">
-              {routine.exercises.slice(0, 5).map(ex => ( // Show first 5 exercises
+            <ul className="list-disc list-inside text-xs text-muted-foreground space-y-0.5 max-h-48 overflow-y-auto">
+              {routine.exercises.slice(0, 8).map(ex => ( // Show first 8 exercises
                 <li key={ex.id} className="truncate">{ex.name}</li>
               ))}
-              {routine.exercises.length > 5 && <li>...and {routine.exercises.length - 5} more</li>}
+              {routine.exercises.length > 8 && <li>...and {routine.exercises.length - 8} more</li>}
             </ul>
           </div>
         )}
