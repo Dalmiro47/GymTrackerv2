@@ -62,18 +62,27 @@ export const saveWorkoutLog = async (userId: string, date: string, logData: Omit
  * The log ID is the date string in 'YYYY-MM-DD' format.
  */
 export const getWorkoutLog = async (userId: string, date: string): Promise<WorkoutLog | null> => {
-  if (!userId) throw new Error("User ID is required.");
-  if (!date) throw new Error("Date is required to fetch a workout log.");
+  if (!userId) {
+    console.error("[trainingLogService] getWorkoutLog called with no userId");
+    throw new Error("User ID is required.");
+  }
+  if (!date) {
+    console.error("[trainingLogService] getWorkoutLog called with no date");
+    throw new Error("Date is required to fetch a workout log.");
+  }
+  console.log(`[trainingLogService] Attempting to fetch log for userId: ${userId}, date: ${date}`);
 
   const logDocRef = doc(db, getUserWorkoutLogsCollectionPath(userId), date);
   try {
     const docSnap = await getDoc(logDocRef);
     if (docSnap.exists()) {
+      console.log(`[trainingLogService] Log found for userId: ${userId}, date: ${date}`, docSnap.data());
       return docSnap.data() as WorkoutLog;
     }
+    console.log(`[trainingLogService] No log found for userId: ${userId}, date: ${date}`);
     return null;
   } catch (error: any) {
-    console.error("Error fetching workout log:", error);
+    console.error(`[trainingLogService] Error fetching workout log for userId: ${userId}, date: ${date}:`, error);
     throw new Error(`Failed to fetch workout log. ${error.message}`);
   }
 };
@@ -110,19 +119,29 @@ export const saveExercisePerformanceEntry = async (userId: string, exerciseId: s
  * Retrieves the most recent logged performance for a specific exercise.
  */
 export const getLastLoggedPerformance = async (userId: string, exerciseId: string): Promise<ExercisePerformanceEntry | null> => {
-  if (!userId) throw new Error("User ID is required.");
-  if (!exerciseId) throw new Error("Exercise ID is required.");
+  if (!userId) {
+    console.error("[trainingLogService] getLastLoggedPerformance called with no userId");
+    throw new Error("User ID is required.");
+  }
+  if (!exerciseId) {
+    console.error("[trainingLogService] getLastLoggedPerformance called with no exerciseId");
+    throw new Error("Exercise ID is required.");
+  }
+  console.log(`[trainingLogService] Attempting to fetch last performance for userId: ${userId}, exerciseId: ${exerciseId}`);
+
 
   const performanceEntriesColRef = collection(db, getExercisePerformanceEntriesCollectionPath(userId, exerciseId));
   const q = query(performanceEntriesColRef, orderBy("date", "desc"), limit(1));
   try {
     const querySnapshot = await getDocs(q);
     if (!querySnapshot.empty) {
+      console.log(`[trainingLogService] Last performance found for userId: ${userId}, exerciseId: ${exerciseId}`);
       return querySnapshot.docs[0].data() as ExercisePerformanceEntry;
     }
+    console.log(`[trainingLogService] No last performance found for userId: ${userId}, exerciseId: ${exerciseId}`);
     return null;
   } catch (error: any) {
-    console.error("Error fetching last logged performance:", error);
+    console.error(`[trainingLogService] Error fetching last logged performance for userId: ${userId}, exerciseId: ${exerciseId}:`, error);
     // Don't throw, let UI handle missing last performance gracefully
     return null;
   }
@@ -149,3 +168,4 @@ export const deleteAllPerformanceEntriesForExercise = async (userId: string, exe
         throw new Error(`Failed to delete performance entries. ${error.message}`);
     }
 };
+

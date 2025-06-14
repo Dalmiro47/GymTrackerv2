@@ -34,6 +34,7 @@ export const useTrainingLog = (initialDate: Date) => {
 
   // Fetch available routines and exercises for the user
   useEffect(() => {
+    console.log('[useTrainingLog] Auth user in hook (for routines/exercises fetch):', user);
     if (user?.id) {
       setIsLoadingRoutines(true);
       fetchUserRoutines(user.id)
@@ -52,7 +53,18 @@ export const useTrainingLog = (initialDate: Date) => {
 
   // Fetch log for the selected date
   const loadLogForDate = useCallback(async (dateToLoad: Date) => {
-    if (!user?.id) return;
+    console.log('[useTrainingLog] loadLogForDate called. User:', user);
+    if (!user?.id) {
+      console.log('[useTrainingLog] loadLogForDate: No user ID, aborting log fetch.');
+      setIsLoadingLog(false); // Ensure loading state is cleared
+      setCurrentLog({ // Set to a default empty log state
+        id: format(dateToLoad, 'yyyy-MM-dd'),
+        date: format(dateToLoad, 'yyyy-MM-dd'),
+        exercises: [],
+        notes: '',
+      });
+      return;
+    }
     setIsLoadingLog(true);
     const dateId = format(dateToLoad, 'yyyy-MM-dd');
     try {
@@ -73,11 +85,16 @@ export const useTrainingLog = (initialDate: Date) => {
       }
     } catch (error: any) {
       toast({ title: "Error Loading Log", description: error.message, variant: "destructive" });
-      setCurrentLog(null); // Or a default empty state
+      setCurrentLog({ // Ensure a fallback empty state on error too
+          id: dateId,
+          date: dateId,
+          exercises: [],
+          notes: '',
+        });
     } finally {
       setIsLoadingLog(false);
     }
-  }, [user?.id, toast]);
+  }, [user, toast]); // Added user to dependency array of useCallback
 
   useEffect(() => {
     loadLogForDate(selectedDate);

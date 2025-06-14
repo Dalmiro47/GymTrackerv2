@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Calendar as CalendarIcon, PlusCircle, Save, RotateCcw, Trash2, GripVertical } from "lucide-react";
@@ -13,7 +13,7 @@ import { Textarea } from "@/components/ui/textarea"; // For overall log notes
 import { useTrainingLog } from '@/hooks/useTrainingLog';
 import type { LoggedExercise, Exercise } from '@/types';
 import { LoggedExerciseCard } from '@/components/training-log/LoggedExerciseCard';
-import { AddExerciseDialog } from '@/components/training-log/AddExerciseDialog'; // To be created
+import { AddExerciseDialog } from '@/components/training-log/AddExerciseDialog';
 import { format, parseISO } from 'date-fns';
 import { Loader2 } from 'lucide-react';
 
@@ -38,6 +38,11 @@ import { useRouter } from 'next/navigation';
 export default function TrainingLogPage() {
   const { user, isLoading: authIsLoading } = useAuth();
   const router = useRouter();
+
+  useEffect(() => {
+    console.log('[TrainingLogPage] Auth state:', { user, authIsLoading });
+  }, [user, authIsLoading]);
+  
   const {
     selectedDate,
     setSelectedDate,
@@ -215,3 +220,4 @@ export default function TrainingLogPage() {
     </div>
   );
 }
+
