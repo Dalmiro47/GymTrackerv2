@@ -2,11 +2,11 @@
 
 GymFlow is a Next.js application designed to help you manage exercises, build workout routines, log your training sessions, and track your fitness journey, enhanced with AI capabilities powered by Genkit and Gemini.
 
-This project is a starter for Firebase Studio.
+This project is a starter for Firebase Studio. You can find the repository at [https://github.com/Dalmiro47/GymTrackerv2](https://github.com/Dalmiro47/GymTrackerv2).
 
 ## Getting Started
 
-Follow these instructions to get the project set up and running on your local machine.
+Follow these instructions to get the project set up and running on your local machine or in your development environment.
 
 ### Prerequisites
 
@@ -15,12 +15,8 @@ Follow these instructions to get the project set up and running on your local ma
 
 ### Installation
 
-1.  **Clone the repository** (if you haven't already):
-    ```bash
-    # If you're working outside Firebase Studio and cloned manually
-    # git clone <repository-url>
-    # cd <repository-name>
-    ```
+1.  **Set up the project**:
+    If you're working in an environment like Firebase Studio, the project files should already be available. If you're setting this up locally from an existing GitHub repository, you would typically clone it.
 
 2.  **Install dependencies**:
     Open your terminal in the project root and run:
