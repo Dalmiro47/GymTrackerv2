@@ -8,6 +8,13 @@ import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
 import { PlusCircle, Loader2, ListChecks } from 'lucide-react';
 import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
