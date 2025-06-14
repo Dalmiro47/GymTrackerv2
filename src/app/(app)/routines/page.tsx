@@ -6,7 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import type { Routine, RoutineData } from '@/types';
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
-import { PlusCircle, Loader2, ListChecks } from 'lucide-react';
+import { PlusCircle, Loader2, ListChecks, GripVertical } from 'lucide-react';
 import {
   Card,
   CardContent,
@@ -28,7 +28,24 @@ import { useToast } from '@/hooks/use-toast';
 import { RoutineCard } from '@/components/routines/RoutineCard';
 import { AddEditRoutineDialog } from '@/components/routines/AddEditRoutineDialog';
 import { addRoutine, getRoutines, updateRoutine, deleteRoutine as deleteRoutineService } from '@/services/routineService';
-import { useRouter } from 'next/navigation'; // For redirecting if not logged in
+import { useRouter } from 'next/navigation';
+
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  rectSortingStrategy,
+  sortableKeyboardCoordinates,
+} from '@dnd-kit/sortable';
+
 
 export default function RoutinesPage() {
   const authContext = useAuth();
@@ -130,6 +147,26 @@ export default function RoutinesPage() {
     }
   };
 
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  function handleDragEndRoutines(event: DragEndEvent) {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      setRoutines((currentRoutines) => {
+        const oldIndex = currentRoutines.findIndex((r) => r.id === active.id);
+        const newIndex = currentRoutines.findIndex((r) => r.id === over.id);
+        return arrayMove(currentRoutines, oldIndex, newIndex);
+      });
+      // Note: Order persistence to Firestore is not implemented in this step.
+    }
+  }
+
+
   if (authContext.isLoading) {
     return (
       <div className="flex justify-center items-center h-screen">
@@ -175,16 +212,24 @@ export default function RoutinesPage() {
           <p className="ml-3 text-lg text-primary">Loading your routines...</p>
         </div>
       ) : routines.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {routines.map(routine => (
-            <RoutineCard
-              key={routine.id}
-              routine={routine}
-              onEdit={handleOpenEditDialog}
-              onDelete={openDeleteConfirmation}
-            />
-          ))}
-        </div>
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEndRoutines}
+        >
+          <SortableContext items={routines.map(r => r.id)} strategy={rectSortingStrategy}>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {routines.map(routine => (
+                <RoutineCard
+                  key={routine.id}
+                  routine={routine}
+                  onEdit={handleOpenEditDialog}
+                  onDelete={openDeleteConfirmation}
+                />
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
       ) : (
         <Card className="shadow-lg">
           <CardHeader>
