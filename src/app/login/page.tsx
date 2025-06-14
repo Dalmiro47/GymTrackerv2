@@ -5,7 +5,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Logo } from "@/components/Logo";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRouter } from "next/navigation";
-import type { UserProfile } from "@/types";
+import { useEffect } from "react";
+import { Loader2 } from "lucide-react";
 
 // Google Icon SVG
 const GoogleIcon = () => (
@@ -19,19 +20,32 @@ const GoogleIcon = () => (
 
 
 export default function LoginPage() {
-  const { login } = useAuth();
+  const { loginWithGoogle, isAuthenticated, isLoading } = useAuth();
   const router = useRouter();
 
-  const handleMockLogin = () => {
-    const mockUser: UserProfile = {
-      id: "mock-user-123",
-      email: "user@example.com",
-      name: "Mock User",
-      avatarUrl: "https://placehold.co/100x100.png?text=MU"
-    };
-    login(mockUser);
-    router.push("/dashboard");
+  useEffect(() => {
+    if (!isLoading && isAuthenticated) {
+      router.push("/dashboard");
+    }
+  }, [isAuthenticated, isLoading, router]);
+
+  const handleGoogleSignIn = async () => {
+    try {
+      await loginWithGoogle();
+      // Navigation is handled by the useEffect above or onAuthStateChanged in AuthContext
+    } catch (error) {
+      console.error("Login failed", error);
+      // Optionally show a toast error to the user
+    }
   };
+
+  if (isLoading || (!isLoading && isAuthenticated)) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-background">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-background p-4">
@@ -44,13 +58,13 @@ export default function LoginPage() {
           <CardDescription>Sign in to continue to GymFlow.</CardDescription>
         </CardHeader>
         <CardContent>
-          <Button onClick={handleMockLogin} className="w-full bg-primary hover:bg-primary/90 text-primary-foreground" aria-label="Sign in with Google">
-            <GoogleIcon />
+          <Button onClick={handleGoogleSignIn} className="w-full bg-primary hover:bg-primary/90 text-primary-foreground" aria-label="Sign in with Google" disabled={isLoading}>
+            {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <GoogleIcon />}
             Sign in with Google
           </Button>
-          <p className="mt-4 text-center text-xs text-muted-foreground">
-            This is a mock sign-in for demonstration purposes.
-          </p>
+          {/* <p className="mt-4 text-center text-xs text-muted-foreground">
+            Sign in using your Google account.
+          </p> */}
         </CardContent>
       </Card>
     </div>

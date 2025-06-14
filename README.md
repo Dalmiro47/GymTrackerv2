@@ -1,6 +1,6 @@
-# GymFlow - Your AI-Powered Fitness Tracker
+# GymFlow - Your Fitness Tracker MVP
 
-GymFlow is a Next.js application designed to help you manage exercises, build workout routines, log your training sessions, and track your fitness journey, enhanced with AI capabilities powered by Genkit and Gemini.
+GymFlow is a Next.js application designed to help you manage exercises, build workout routines, log your training sessions, and track your fitness journey. This version focuses on core MVP features using Firebase for backend services.
 
 This project is a starter for Firebase Studio. You can find the repository at [https://github.com/Dalmiro47/GymTrackerv2](https://github.com/Dalmiro47/GymTrackerv2).
 
@@ -12,11 +12,12 @@ Follow these instructions to get the project set up and running on your local ma
 
 *   Node.js (LTS version recommended)
 *   npm or yarn
+*   A Firebase project (create one at [https://console.firebase.google.com/](https://console.firebase.google.com/))
 
 ### Installation
 
 1.  **Set up the project**:
-    If you're working in an environment like Firebase Studio, the project files should already be available. If you're setting this up locally from an existing GitHub repository, you would typically clone it.
+    If you're working in an environment like Firebase Studio, the project files should already be available. If you're setting this up locally from your GitHub repository, ensure you have the latest code.
 
 2.  **Install dependencies**:
     Open your terminal in the project root and run:
@@ -38,52 +39,35 @@ Sensitive information like API keys is managed using environment variables.
     cp .env.local.example .env.local
     ```
 
-2.  **Set up Gemini API Key (Required for AI features)**:
-    *   Open the `.env.local` file.
-    *   You need a Gemini API key to use the AI-powered features. Obtain one from Google AI Studio: [https://aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey)
-    *   Add your API key to the `.env.local` file:
-        ```env
-        GOOGLE_API_KEY=YOUR_GEMINI_API_KEY_HERE
+2.  **Set up Firebase Configuration**:
+    *   Open your Firebase project in the [Firebase Console](https://console.firebase.google.com/).
+    *   Go to Project Settings (click the gear icon).
+    *   Under "Your apps", if you haven't already, add a Web app (`</>`).
+    *   Firebase will provide you with a `firebaseConfig` object. It looks like this:
+        ```javascript
+        const firebaseConfig = {
+          apiKey: "AIza...",
+          authDomain: "your-project-id.firebaseapp.com",
+          projectId: "your-project-id",
+          storageBucket: "your-project-id.appspot.com",
+          messagingSenderId: "...",
+          appId: "1:...",
+          measurementId: "G-..." // Optional
+        };
         ```
-
-3.  **Firebase Setup (Mocked by Default)**:
-    *   **Current State**: This application currently uses a **mock authentication system**. This means you can run and test the app without connecting to a live Firebase backend. User data is stored in the browser's `localStorage`.
-    *   **Integrating a Real Firebase Backend**: If you want to connect to a real Firebase project for features like persistent data storage, real user authentication, etc.:
-        1.  Create a Firebase project at [https://console.firebase.google.com/](https://console.firebase.google.com/).
-        2.  In your Firebase project settings, add a new Web App.
-        3.  Firebase will provide you with a `firebaseConfig` object. It looks like this:
-            ```javascript
-            const firebaseConfig = {
-              apiKey: "AIza...",
-              authDomain: "your-project-id.firebaseapp.com",
-              projectId: "your-project-id",
-              storageBucket: "your-project-id.appspot.com",
-              messagingSenderId: "...",
-              appId: "1:...",
-              measurementId: "G-..." // Optional
-            };
-            ```
-        4.  You would typically create a file, for example, `src/lib/firebaseConfig.ts`, and initialize Firebase there:
-            ```typescript
-            // src/lib/firebaseConfig.ts
-            import { initializeApp } from "firebase/app";
-
-            const firebaseConfig = {
-              apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-              authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-              // ... other config values
-            };
-
-            const app = initializeApp(firebaseConfig);
-            export default app;
-            // export const auth = getAuth(app); // etc.
-            ```
-        5.  Add your Firebase project's configuration values to your `.env.local` file. The keys should start with `NEXT_PUBLIC_` to be accessible on the client-side. See `.env.local.example` for the variable names.
-        6.  Update the `src/contexts/AuthContext.tsx` to use the real Firebase Authentication instead of the mock system.
+    *   Open your `.env.local` file and populate it with these values. Ensure the keys start with `NEXT_PUBLIC_` as shown in `.env.local.example`.
+        ```env
+        NEXT_PUBLIC_FIREBASE_API_KEY=YOUR_FIREBASE_API_KEY
+        NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=YOUR_FIREBASE_AUTH_DOMAIN
+        NEXT_PUBLIC_FIREBASE_PROJECT_ID=YOUR_FIREBASE_PROJECT_ID
+        NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=YOUR_FIREBASE_STORAGE_BUCKET
+        NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=YOUR_FIREBASE_MESSAGING_SENDER_ID
+        NEXT_PUBLIC_FIREBASE_APP_ID=YOUR_FIREBASE_APP_ID
+        # NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID= (Optional)
+        ```
+    *   **Enable Google Sign-In**: In the Firebase Console, go to "Authentication" (under Build). On the "Sign-in method" tab, enable the "Google" provider. Make sure to add your project's support email.
 
 ## Running the Application
-
-You'll need to run two separate development servers: one for the Next.js frontend and one for the Genkit AI flows.
 
 1.  **Start the Next.js Development Server**:
     Open a terminal and run:
@@ -92,16 +76,14 @@ You'll need to run two separate development servers: one for the Next.js fronten
     ```
     This will typically start the application on [http://localhost:9002](http://localhost:9002).
 
-2.  **Start the Genkit Development Server**:
-    Open a *new, separate* terminal and run:
-    ```bash
-    npm run genkit:dev
-    ```
-    This will start the Genkit development flow server, usually on port 3400, and the Genkit developer UI on port 4000. This server handles the AI logic.
+## Deployment
+
+*   **Frontend**: The Next.js frontend is intended to be deployed to **Vercel**. Connect your GitHub repository to Vercel for continuous deployment.
+*   **Backend & Configuration**: Firebase services (Authentication, Firestore database) are managed and configured via the **Firebase Console**. If you add Firebase Functions later, they will also be deployed using Firebase tools.
 
 ## Exploring the App
 
-Once both servers are running, you can open your browser to [http://localhost:9002](http://localhost:9002) (or the port your Next.js app is running on) to see the application.
+Once the server is running, you can open your browser to [http://localhost:9002](http://localhost:9002) (or the port your Next.js app is running on) to see the application.
 
 ### Key Project Structure:
 
@@ -112,20 +94,19 @@ Once both servers are running, you can open your browser to [http://localhost:90
     *   `src/components/ui/`: UI components from ShadCN.
     *   `src/components/layout/`: Layout components like sidebar and header.
     *   `src/components/exercises/`: Components specific to the exercises feature.
-*   `src/ai/`: Contains Genkit AI flows and configuration.
-    *   `src/ai/genkit.ts`: Genkit global instance initialization.
-    *   `src/ai/flows/`: Directory for individual Genkit flows.
 *   `src/contexts/`: React context providers (e.g., `AuthContext`).
 *   `src/hooks/`: Custom React hooks.
-*   `src/lib/`: Utility functions, constants, and configuration files.
+*   `src/lib/`: Utility functions, constants, and Firebase configuration (`firebaseConfig.ts`).
 *   `public/`: Static assets.
 
-### Next Steps:
+### Next Steps (MVP Focus):
 
-*   Navigate through the app: explore the dashboard, exercises, routines, log, and calendar pages.
-*   Try adding new exercises (currently using mock data, but the UI flow is present).
-*   If you've set up your `GOOGLE_API_KEY`, explore any AI features as they are implemented.
-*   Look at the code in `src/app/page.tsx` as a starting point, then dive into other pages and components.
-*   If you plan to use a real Firebase backend, start by setting up your Firebase project and configuring `src/lib/firebaseConfig.ts` and `src/contexts/AuthContext.tsx`.
+*   **Implement Firestore for Data Persistence**:
+    *   Update `src/components/exercises/ExerciseClientPage.tsx` to fetch and save exercises from/to Firebase Firestore instead of using mock data.
+    *   Define Firestore data structures for routines, training logs, etc.
+    *   Implement CRUD (Create, Read, Update, Delete) operations for all core features (Exercises, Routines, Training Log).
+*   **Build out Core Features**:
+    *   Complete the UI and logic for Routine Building, Training Log, and Calendar views using data from Firestore.
+*   **Refine UI/UX**: Ensure a smooth and intuitive user experience.
 
 Happy coding!
