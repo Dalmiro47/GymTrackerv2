@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect } from 'react';
@@ -22,15 +23,67 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from '@/hooks/use-toast';
 
-// Mock Data - replace with API calls in a real app
 const initialExercises: Exercise[] = [
-  { id: '1', name: 'Barbell Bench Press', muscleGroup: 'Chest', description: 'Compound chest exercise using a barbell.', image: 'https://placehold.co/300x200.png?text=BP' , instructions: "Lie on a flat bench..." },
-  { id: '2', name: 'Squats', muscleGroup: 'Legs', description: 'Compound lower body exercise.', image: 'https://placehold.co/300x200.png?text=SQ', instructions: "Stand with feet shoulder-width apart..." },
-  { id: '3', name: 'Deadlifts', muscleGroup: 'Back', description: 'Full body compound exercise, primarily targets back and legs.', image: 'https://placehold.co/300x200.png?text=DL' , instructions: "Approach the bar so that it is centered over your feet..."},
-  { id: '4', name: 'Overhead Press', muscleGroup: 'Shoulders', description: 'Compound shoulder exercise.', image: 'https://placehold.co/300x200.png?text=OHP' },
-  { id: '5', name: 'Bicep Curls', muscleGroup: 'Biceps', description: 'Isolation exercise for biceps.', image: 'https://placehold.co/300x200.png?text=BC' },
-  { id: '6', name: 'Tricep Pushdowns', muscleGroup: 'Triceps', description: 'Isolation exercise for triceps.', image: 'https://placehold.co/300x200.png?text=TP' },
+  // Chest
+  { id: 'chest-001', name: 'Incline Dumbbell Press', muscleGroup: 'Chest', description: 'Targets the upper chest using dumbbells.', image: 'https://placehold.co/300x200.png?text=IDP', dataAiHint: "dumbbell press" },
+  { id: 'chest-002', name: 'Incline Smith Machine Press', muscleGroup: 'Chest', description: 'Targets the upper chest using a Smith machine.', image: 'https://placehold.co/300x200.png?text=ISMP', dataAiHint: "smith machine" },
+  { id: 'chest-003', name: 'Machine Chest Press', muscleGroup: 'Chest', description: 'Targets the middle chest using a machine.', image: 'https://placehold.co/300x200.png?text=MCP', dataAiHint: "chest machine" },
+  { id: 'chest-004', name: 'Bench Press', muscleGroup: 'Chest', description: 'Compound exercise targeting the middle chest.', image: 'https://placehold.co/300x200.png?text=BP', dataAiHint: "bench press" },
+  { id: 'chest-005', name: 'Seated Cable Pec Flye', muscleGroup: 'Chest', description: 'Targets the lower chest using cables.', image: 'https://placehold.co/300x200.png?text=SCPF', dataAiHint: "cable machine" },
+  { id: 'chest-006', name: 'Dips (Chest Focus)', muscleGroup: 'Chest', description: 'Targets the lower chest. Lean forward to emphasize chest.', image: 'https://placehold.co/300x200.png?text=DIPS', dataAiHint: "dip station" },
+  
+  // Back
+  { id: 'back-001', name: 'Wide-Grip Pull-ups', muscleGroup: 'Back', description: 'Targets lats and middle back using a wide grip.', image: 'https://placehold.co/300x200.png?text=WGPU', dataAiHint: "pull up" },
+  { id: 'back-002', name: 'Chest-Supported Row', muscleGroup: 'Back', description: 'Targets upper back and middle back with chest support.', image: 'https://placehold.co/300x200.png?text=CSR', dataAiHint: "row machine" },
+  { id: 'back-003', name: 'Wide-Grip Lat Pulldown', muscleGroup: 'Back', description: 'Targets lats and middle back using a wide grip on a pulldown machine.', image: 'https://placehold.co/300x200.png?text=WGLP', dataAiHint: "lat pulldown" },
+  { id: 'back-004', name: 'Neutral-Grip Lat Pulldown', muscleGroup: 'Back', description: 'Targets lats and teres major using a neutral grip on a pulldown machine.', image: 'https://placehold.co/300x200.png?text=NGLP', dataAiHint: "lat pulldown" },
+  { id: 'back-005', name: 'Half-Kneeling 1-Arm Lat Pulldown', muscleGroup: 'Back', description: 'Unilateral exercise targeting lats and teres major.', image: 'https://placehold.co/300x200.png?text=HKLP', dataAiHint: "cable machine" },
+  { id: 'back-006', name: 'Barbell Rows', muscleGroup: 'Back', description: 'Compound exercise targeting the upper and middle back.', image: 'https://placehold.co/300x200.png?text=BBR', dataAiHint: "barbell row" },
+
+  // Shoulders
+  { id: 'shoulders-001', name: 'Standing Overhead Press', muscleGroup: 'Shoulders', description: 'Targets the anterior deltoid with a barbell while standing.', image: 'https://placehold.co/300x200.png?text=SOHP', dataAiHint: "overhead press" },
+  { id: 'shoulders-002', name: 'Dumbbell Overhead Press', muscleGroup: 'Shoulders', description: 'Targets the anterior deltoid with dumbbells.', image: 'https://placehold.co/300x200.png?text=DOHP', dataAiHint: "dumbbell press" },
+  { id: 'shoulders-003', name: 'Machine Shoulder Press', muscleGroup: 'Shoulders', description: 'Targets the anterior deltoid using a shoulder press machine.', image: 'https://placehold.co/300x200.png?text=MSP', dataAiHint: "shoulder machine" },
+  { id: 'shoulders-004', name: 'Lateral Raise Machine', muscleGroup: 'Shoulders', description: 'Targets the lateral deltoid using a machine.', image: 'https://placehold.co/300x200.png?text=LRM', dataAiHint: "shoulder machine" },
+  { id: 'shoulders-005', name: 'Dumbbell Lateral Raise', muscleGroup: 'Shoulders', description: 'Targets the lateral deltoid with dumbbells.', image: 'https://placehold.co/300x200.png?text=DLR', dataAiHint: "dumbbell raise" },
+  { id: 'shoulders-006', name: 'Cable Lateral Raise', muscleGroup: 'Shoulders', description: 'Targets the lateral deltoid using cables.', image: 'https://placehold.co/300x200.png?text=CLR', dataAiHint: "cable machine" },
+  { id: 'shoulders-007', name: 'Reverse Peck Deck', muscleGroup: 'Shoulders', description: 'Targets the posterior deltoid using a peck deck machine in reverse.', image: 'https://placehold.co/300x200.png?text=RPD', dataAiHint: "pec deck" },
+  { id: 'shoulders-008', name: 'Seated Reverse Dumbbell Flye', muscleGroup: 'Shoulders', description: 'Targets the posterior deltoid with dumbbells while seated.', image: 'https://placehold.co/300x200.png?text=SRDF', dataAiHint: "dumbbell flye" },
+
+  // Legs
+  { id: 'legs-001', name: 'Barbell Back Squat', muscleGroup: 'Legs', description: 'Compound exercise targeting quadriceps, glutes, and hamstrings.', image: 'https://placehold.co/300x200.png?text=SQ', dataAiHint: "barbell squat" },
+  { id: 'legs-002', name: 'Hack Squat', muscleGroup: 'Legs', description: 'Targets quadriceps using a hack squat machine.', image: 'https://placehold.co/300x200.png?text=HS', dataAiHint: "hack squat" },
+  { id: 'legs-003', name: 'Leg Extension', muscleGroup: 'Legs', description: 'Isolation exercise for quadriceps.', image: 'https://placehold.co/300x200.png?text=LE', dataAiHint: "leg extension" },
+  { id: 'legs-004', name: 'Leg Press', muscleGroup: 'Legs', description: 'Targets quadriceps and glutes using a leg press machine.', image: 'https://placehold.co/300x200.png?text=LP', dataAiHint: "leg press" },
+  { id: 'legs-005', name: 'Leg Curl Machine', muscleGroup: 'Legs', description: 'Isolation exercise for hamstrings (seated or lying).', image: 'https://placehold.co/300x200.png?text=LC', dataAiHint: "leg curl" },
+  { id: 'legs-006', name: 'Romanian Deadlift (RDL)', muscleGroup: 'Legs', description: 'Targets hamstrings and glutes, emphasizing hip hinge.', image: 'https://placehold.co/300x200.png?text=RDL', dataAiHint: "romanian deadlift" },
+  { id: 'legs-007', name: 'Hip Thrust', muscleGroup: 'Legs', description: 'Primarily targets the glutes.', image: 'https://placehold.co/300x200.png?text=HT', dataAiHint: "hip thrust" },
+  { id: 'legs-008', name: 'Abductor Machine', muscleGroup: 'Legs', description: 'Targets hip abductors (outer glutes).', image: 'https://placehold.co/300x200.png?text=ABM', dataAiHint: "abductor machine" },
+  { id: 'legs-009', name: 'Standing Calf Raise', muscleGroup: 'Legs', description: 'Targets the gastrocnemius muscle in the calves.', image: 'https://placehold.co/300x200.png?text=SCR', dataAiHint: "calf raise" },
+
+  // Triceps
+  { id: 'triceps-001', name: 'Dips (Tricep Focus)', muscleGroup: 'Triceps', description: 'Targets the lateral head of the triceps. Keep body upright.', image: 'https://placehold.co/300x200.png?text=DIPST', dataAiHint: "dip station" },
+  { id: 'triceps-002', name: 'Cable Tricep Kickback', muscleGroup: 'Triceps', description: 'Targets the lateral head of the triceps using a cable.', image: 'https://placehold.co/300x200.png?text=CTK', dataAiHint: "cable machine" },
+  { id: 'triceps-003', name: 'Overhead Cable Tricep Extension', muscleGroup: 'Triceps', description: 'Targets the long head of the triceps using an overhead cable setup.', image: 'https://placehold.co/300x200.png?text=OCTE', dataAiHint: "cable machine" },
+  { id: 'triceps-004', name: 'Skullcrusher (Lying Tricep Extension)', muscleGroup: 'Triceps', description: 'Targets the long head of the triceps, typically with an EZ bar or dumbbells.', image: 'https://placehold.co/300x200.png?text=SKC', dataAiHint: "ez bar" },
+
+  // Biceps
+  { id: 'biceps-001', name: 'EZ Bar Curl', muscleGroup: 'Biceps', description: 'Targets the short head (inner) of the biceps with an EZ bar.', image: 'https://placehold.co/300x200.png?text=EZBC', dataAiHint: "ez bar" },
+  { id: 'biceps-002', name: 'Chin-up (Underhand Grip)', muscleGroup: 'Biceps', description: 'Compound exercise targeting biceps (short and long heads) and back.', image: 'https://placehold.co/300x200.png?text=CHIN', dataAiHint: "pull up" },
+  { id: 'biceps-003', name: 'Incline Dumbbell Curl', muscleGroup: 'Biceps', description: 'Targets the long head (outer) of the biceps with dumbbells on an incline bench.', image: 'https://placehold.co/300x200.png?text=IDC', dataAiHint: "dumbbell curl" },
+  { id: 'biceps-004', name: 'Face Away Cable Curl (Bayesian Curl)', muscleGroup: 'Biceps', description: 'Targets the long head (outer) of the biceps, emphasizing stretch with cables.', image: 'https://placehold.co/300x200.png?text=FACC', dataAiHint: "cable machine" },
+  { id: 'biceps-005', name: 'Hammer Curl', muscleGroup: 'Biceps', description: 'Targets the brachialis and brachioradialis, contributing to arm thickness.', image: 'https://placehold.co/300x200.png?text=HC', dataAiHint: "dumbbell curl" },
+
+  // Abs
+  { id: 'abs-001', name: 'Cable Crunch', muscleGroup: 'Abs', description: 'Targets upper abdominals using a cable machine.', image: 'https://placehold.co/300x200.png?text=CACR', dataAiHint: "cable machine" },
+  { id: 'abs-002', name: 'Crunch Machine', muscleGroup: 'Abs', description: 'Targets upper abdominals using a crunch machine.', image: 'https://placehold.co/300x200.png?text=CRM', dataAiHint: "abs machine" },
+  { id: 'abs-003', name: 'Candlestick', muscleGroup: 'Abs', description: 'Targets upper and lower abdominals, bodyweight exercise.', image: 'https://placehold.co/300x200.png?text=CNDL', dataAiHint: "floor exercise" },
+  { id: 'abs-004', name: 'Hanging Leg Raise', muscleGroup: 'Abs', description: 'Targets lower abdominals and hip flexors, performed while hanging.', image: 'https://placehold.co/300x200.png?text=HLR', dataAiHint: "pull up bar" },
+  { id: 'abs-005', name: 'Captain\'s Chair Leg Raise', muscleGroup: 'Abs', description: 'Targets lower abdominals with back support on a captain\'s chair.', image: 'https://placehold.co/300x200.png?text=CCLR', dataAiHint: "leg raise" },
+  { id: 'abs-006', name: 'Decline Crunch (Super Range Motion)', muscleGroup: 'Abs', description: 'Targets upper and lower abdominals with an extended range of motion on a decline bench.', image: 'https://placehold.co/300x200.png?text=DCSM', dataAiHint: "decline bench" },
+  { id: 'abs-007', name: 'Ab Wheel Rollout', muscleGroup: 'Abs', description: 'Targets the entire core for stability using an ab wheel.', image: 'https://placehold.co/300x200.png?text=AWR', dataAiHint: "ab wheel" },
 ];
+
 
 export function ExerciseClientPage() {
   const [exercises, setExercises] = useState<Exercise[]>([]);
@@ -71,20 +124,16 @@ export function ExerciseClientPage() {
       // Add new
       setExercises(prev => [...prev, exercise]);
     }
-    setExerciseToEdit(null); // Clear editing state
+    setExerciseToEdit(null); 
   };
 
   const handleEditExercise = (exercise: Exercise) => {
     setExerciseToEdit(exercise);
-    // The dialog will open via its own trigger logic if AddExerciseDialog is structured to receive exerciseToEdit
-    // Or, we need a way to programmatically open the dialog here.
-    // For simplicity, AddExerciseDialog's internal state handles opening when exerciseToEdit is set.
-    // This assumes AddExerciseDialog is rendered with a key or useEffect to react to exerciseToEdit prop changes.
-    // Or, better, pass an `isOpen` prop to AddExerciseDialog and control it from here.
-    // The current AddExerciseDialog structure uses its own trigger, so we'll need a separate trigger for edit if it's not the main "Add" button.
-    // Let's assume for now clicking edit on a card opens the dialog configured for editing.
-    // We can achieve this by having one AddExerciseDialog instance and passing `exerciseToEdit` to it.
-    // The trigger for this dialog is inside `ExerciseCard`, so that works.
+    // This assumes the AddExerciseDialog is controlled by a state that is set here
+    // or that the dialog's trigger is part of the ExerciseCard which handles opening.
+    // For the current setup, the `AddExerciseDialog` in PageHeader is used.
+    // Ideally, `AddExerciseDialog` would take an `isOpen` prop controlled here.
+    // For now, the user clicks the "Edit Exercise" (formerly "Add") button after `exerciseToEdit` is set.
   };
 
   const openDeleteConfirmation = (exerciseId: string) => {
@@ -105,9 +154,19 @@ export function ExerciseClientPage() {
   
   const addExerciseDialogTrigger = (
     <Button variant="default" className="bg-accent hover:bg-accent/90 text-accent-foreground">
-      <PlusCircle className="mr-2 h-4 w-4" /> Add Exercise
+      <PlusCircle className="mr-2 h-4 w-4" /> 
+      {exerciseToEdit ? "Edit Current Exercise" : "Add Exercise"}
     </Button>
   );
+
+  // This function is intended to be called to open the dialog for editing
+  // It requires AddExerciseDialog to be controllable (e.g., via isOpen prop)
+  // For now, it just sets the exercise to edit.
+  const triggerEditDialog = (exercise: Exercise) => {
+    setExerciseToEdit(exercise);
+    // Here you would also set an `isEditDialogOpen` state to true if AddExerciseDialog was controlled
+  };
+
 
   if (isLoading) {
     return (
@@ -120,10 +179,27 @@ export function ExerciseClientPage() {
   return (
     <>
       <PageHeader title="Exercise Library" description="Browse, add, and manage your exercises.">
+        {/* The single dialog instance for both adding and editing */}
         <AddExerciseDialog 
           exerciseToEdit={exerciseToEdit} 
           onSave={handleSaveExercise} 
-          triggerButton={addExerciseDialogTrigger}
+          // The trigger for adding new. Editing is handled by buttons on cards.
+          // To make card edit buttons open *this* dialog, AddExerciseDialog needs to be controllable.
+          // A simple workaround for now: text changes, user clicks.
+          triggerButton={
+             <Button variant="default" className="bg-accent hover:bg-accent/90 text-accent-foreground" onClick={() => {
+                if (exerciseToEdit) {
+                  // This button is now effectively "Save Edit" if exerciseToEdit is set
+                  // But the dialog itself has the save button. This trigger just opens it.
+                } else {
+                  setExerciseToEdit(null); // Ensure it's for adding new
+                }
+                // The dialog's own open state mechanism will handle showing it.
+             }}>
+              <PlusCircle className="mr-2 h-4 w-4" /> 
+              {exerciseToEdit ? "Edit Selected Exercise" : "Add New Exercise"}
+            </Button>
+          }
         />
       </PageHeader>
 
@@ -162,66 +238,9 @@ export function ExerciseClientPage() {
               key={exercise.id} 
               exercise={exercise} 
               onEdit={() => {
-                setExerciseToEdit(exercise);
-                // Programmatically open the dialog if needed, or rely on card's edit button triggering a shared dialog instance
-                // For simplicity, let's assume AddExerciseDialog can be triggered to open for edit from here
-                // We'd need to lift the isOpen state of AddExerciseDialog or have a ref to it.
-                // A simpler way: The edit button on ExerciseCard itself can be the trigger for an AddExerciseDialog instance specifically for editing.
-                // The current AddExerciseDialog is generic, if its trigger is separate, it's okay. If it's the "Add New" button, then Card's edit needs its own.
-                // For now, the `onEdit` in `ExerciseCard` will trigger the dialog. This means the `AddExerciseDialog` should be made visible when `exerciseToEdit` is set.
-                // The provided `AddExerciseDialog` already has a `triggerButton` prop. We can make the Edit button on `ExerciseCard` be that trigger.
-                // OR ensure `AddExerciseDialog` is always rendered but hidden, and `exerciseToEdit` makes it visible and pre-fills.
-                // The current structure `AddExerciseDialog` has its own trigger. For edit, it would need to be opened programmatically or be a separate instance.
-                // For this implementation, the `onEdit` in `ExerciseCard` effectively is the trigger for the dialog when in edit mode.
-                // We will use one AddExerciseDialog, and it will pick up `exerciseToEdit` when its trigger (likely an edit button on the card) is clicked.
-                // To clarify: The main "Add Exercise" button triggers the dialog for adding. The "Edit" button on each card will trigger the SAME dialog component, but pre-filled.
-                // This is achieved by passing `exerciseToEdit` to the `AddExerciseDialog` when the card's edit button is clicked, which then opens the Dialog.
-                // Let's refine `ExerciseCard` to pass `exerciseToEdit` to its `AddExerciseDialog` instance.
-                // No, ExerciseCard gets an onEdit function. That function will set `exerciseToEdit` and likely open a modal.
-                // The *single* `AddExerciseDialog` component declared in `PageHeader` is used for both add and edit.
-                // Its `exerciseToEdit` prop is updated by the `ExerciseClientPage`.
-                // The key is to make sure the dialog re-renders and re-initializes its form when `exerciseToEdit` changes.
-                // The `useEffect` in `AddExerciseDialog` handles this.
-                // Thus, the card's edit button will call `handleEditExercise(exercise)` which sets `exerciseToEdit`.
-                // The `AddExerciseDialog` then needs its `isOpen` state to be true.
-                // The existing `AddExerciseDialog` has its own `isOpen` state.
-                // Simplest: Edit button on card IS the trigger for the single shared dialog.
-                // Let's adjust `ExerciseCard` to use `AddExerciseDialog` as its edit button.
-                // This becomes complex. Standard way: `onEdit` sets state, dialog opens because its `open` prop is true.
-                // For now, `onEdit` on the card will set `exerciseToEdit`. The `AddExerciseDialog` above will use it.
-                // The issue is triggering the dialog to open.
-                // Let's assume there is a hidden trigger for the dialog that can be "clicked" programmatically, or `AddExerciseDialog` takes an `isOpen` prop.
-                // The existing `AddExerciseDialog` manages its own `isOpen`.
-                // Solution: The `AddExerciseDialog` in `PageHeader` is *the* dialog. Its `triggerButton` is the "Add Exercise" button.
-                // For editing, we need another way to open this *same* dialog instance.
-                // We can pass `exerciseToEdit` to it. And `onEdit` from card will set `exerciseToEdit` AND manually set the dialog's `isOpen` state to true.
-                // This requires lifting `isOpen` for `AddExerciseDialog` up to `ExerciseClientPage`.
-                // Or, `AddExerciseDialog` becomes a controlled component regarding its open state.
-                // Let's modify `AddExerciseDialog` to accept `isOpen` and `onOpenChange`.
-                // This is a bigger change to `AddExerciseDialog`. For now, I'll keep `AddExerciseDialog` as is and assume clicking Edit on card
-                // uses a separate `DialogTrigger` that passes `exercise` to `AddExerciseDialog`.
-                // Let's make `ExerciseCard` onEdit prop set `exerciseToEdit` and then the existing single `AddExerciseDialog` will handle it.
-                // The `AddExerciseDialog` will use its `triggerButton` as "Add New Exercise".
-                // Edit buttons on cards should also trigger this dialog.
-                // This means `AddExerciseDialog` should be controlled by `ExerciseClientPage` for its `open` state.
-                // I will adjust `AddExerciseDialog` to be controlled.
-                
-                // For now, `handleEditExercise` sets `exerciseToEdit`. The user would then click the "Add New Exercise" (which becomes "Edit Exercise" due to text change) button to open the dialog. This is not ideal UX.
-                // A better UX: when `onEdit` is called, the dialog should open programmatically.
-                // This requires making `AddExerciseDialog` a controlled component.
-                // Let's stick to the current plan: `onEdit` on card will set `exerciseToEdit`.
-                // The `AddExerciseDialog` has its own trigger.
-                // For editing from the card, the `AddExerciseDialog` component would need to be rendered again *with* the `exerciseToEdit` prop and its trigger clicked.
-                // I will update `ExerciseCard`'s edit button to be a trigger for `AddExerciseDialog`.
-
-                // Updated plan: `ExerciseClientPage` has one `AddExerciseDialog`.
-                // The `PageHeader` contains its "Add New" trigger.
-                // Each `ExerciseCard` will have an "Edit" button that will:
-                // 1. Set `exerciseToEdit` state in `ExerciseClientPage`.
-                // 2. Programmatically open the *same* `AddExerciseDialog`. This needs the dialog's `isOpen` state to be managed by `ExerciseClientPage`.
-                // I will modify `AddExerciseDialog` to take `isOpen` and `onOpenChange` props.
-
-                // Simpler for now: `handleEditExercise` will set `exerciseToEdit`. The AddExerciseDialog's text will change. User clicks it.
+                triggerEditDialog(exercise);
+                // The user now needs to click the main "Edit Selected Exercise" button in PageHeader
+                // to open the dialog. This is because AddExerciseDialog isn't fully controlled yet.
               }}
               onDelete={openDeleteConfirmation} 
             />
