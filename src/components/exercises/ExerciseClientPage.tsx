@@ -18,6 +18,12 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { PlusCircle, Search, Filter, Loader2 } from 'lucide-react';
 import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -174,15 +180,13 @@ export function ExerciseClientPage() {
       return;
     }
 
-    console.log(`Attempting to save exercise for user ID: ${user.id}. Path: users/${user.id}/exercises`);
-
     setIsDialogSaving(true);
     try {
       const exercisePayload: ExerciseData = {
         name: formData.name,
         muscleGroup: formData.muscleGroup,
         targetNotes: formData.targetNotes || '',
-        exerciseSetup: formData.exerciseSetup || '', // New field
+        exerciseSetup: formData.exerciseSetup || '',
         dataAiHint: formData.name.toLowerCase().split(" ").slice(0,2).join(" ") || 'exercise',
       };
 
@@ -346,28 +350,29 @@ export function ExerciseClientPage() {
           </div>
         )
       ) : !isLoading && exercisesGroupedByMuscle.length > 0 ? (
-        <div className="space-y-8">
+        <Accordion type="multiple" className="w-full space-y-2">
           {exercisesGroupedByMuscle.map(group => (
-            <section key={group.muscleGroup} aria-labelledby={`muscle-group-${group.muscleGroup}`}>
-              <h2
-                id={`muscle-group-${group.muscleGroup}`}
-                className="text-2xl font-headline font-semibold mb-4 text-primary border-b pb-2"
-              >
-                {group.muscleGroup}
-              </h2>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {group.exercises.map(exercise => (
-                  <ExerciseCard
-                    key={exercise.id}
-                    exercise={exercise}
-                    onEdit={() => handleOpenEditDialog(exercise)}
-                    onDelete={() => openDeleteConfirmation(exercise.id)}
-                  />
-                ))}
-              </div>
-            </section>
+            <AccordionItem value={group.muscleGroup} key={group.muscleGroup} className="border bg-card shadow-sm rounded-lg">
+              <AccordionTrigger className="px-6 py-4 hover:no-underline">
+                 <span className="text-xl font-headline font-semibold text-primary">
+                  {group.muscleGroup} ({group.exercises.length})
+                </span>
+              </AccordionTrigger>
+              <AccordionContent className="px-6 pb-6 pt-0">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  {group.exercises.map(exercise => (
+                    <ExerciseCard
+                      key={exercise.id}
+                      exercise={exercise}
+                      onEdit={() => handleOpenEditDialog(exercise)}
+                      onDelete={() => openDeleteConfirmation(exercise.id)}
+                    />
+                  ))}
+                </div>
+              </AccordionContent>
+            </AccordionItem>
           ))}
-        </div>
+        </Accordion>
       ) : (!isLoading && !isSeeding && exercises.length === 0 && user) ? ( 
           <div className="text-center py-12">
             <p className="text-xl text-muted-foreground font-semibold mb-2">Your exercise library is empty.</p>
@@ -397,3 +402,4 @@ export function ExerciseClientPage() {
     </>
   );
 }
+
