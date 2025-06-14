@@ -35,7 +35,7 @@ type RoutineFormData = z.infer<typeof routineFormSchema>;
 
 interface AddEditRoutineDialogProps {
   routineToEdit?: Routine | null;
-  onSave: (data: RoutineData, routineId?: string) => Promise<void>; // Passes form data and selected exercises up
+  onSave: (data: RoutineData, routineId?: string) => Promise<void>;
   isOpen: boolean;
   setIsOpen: (open: boolean) => void;
   isSaving: boolean;
@@ -63,7 +63,7 @@ export function AddEditRoutineDialog({
   const [isLoadingExercises, setIsLoadingExercises] = useState(true);
 
   const fetchExercises = useCallback(async () => {
-    if (!user?.id || !isOpen) return; // Fetch only if dialog is open and user is available
+    if (!user?.id || !isOpen) return;
     setIsLoadingExercises(true);
     try {
       const exercises = await fetchAllUserExercises(user.id);
@@ -81,22 +81,21 @@ export function AddEditRoutineDialog({
 
   useEffect(() => {
     if (isOpen) {
-      fetchExercises(); // Fetch exercises when dialog opens
+      fetchExercises();
       if (routineToEdit) {
         reset({
           name: routineToEdit.name,
           description: routineToEdit.description || '',
         });
-        setSelectedExerciseObjects(routineToEdit.exercises.map(ex => ({ ...ex }))); // Ensure they are RoutineExercise
+        setSelectedExerciseObjects(routineToEdit.exercises.map(ex => ({ ...ex })));
       } else {
         reset({ name: '', description: '' });
         setSelectedExerciseObjects([]);
       }
     } else {
-      // Clear state when dialog closes
       setAllUserExercises([]);
       setSelectedExerciseObjects([]);
-      setIsLoadingExercises(true); // Reset loading state
+      setIsLoadingExercises(true);
     }
   }, [routineToEdit, reset, isOpen, fetchExercises]);
 
@@ -107,18 +106,19 @@ export function AddEditRoutineDialog({
 
     setSelectedExerciseObjects(prevSelected => {
       if (isSelected) {
-        // Add if not already present
         if (!prevSelected.find(e => e.id === exerciseId)) {
-          // Map to RoutineExercise, though for now it's just Exercise fields
           const routineExercise: RoutineExercise = { ...exercise }; 
           return [...prevSelected, routineExercise];
         }
       } else {
-        // Remove if present
         return prevSelected.filter(e => e.id !== exerciseId);
       }
       return prevSelected;
     });
+  };
+
+  const handleReorderExercises = (reorderedExercises: RoutineExercise[]) => {
+    setSelectedExerciseObjects(reorderedExercises);
   };
   
   const onSubmit = async (data: RoutineFormData) => {
@@ -132,7 +132,7 @@ export function AddEditRoutineDialog({
     }
     const routineData: RoutineData = {
       ...data,
-      exercises: selectedExerciseObjects,
+      exercises: selectedExerciseObjects, // The order is maintained here
     };
     await onSave(routineData, routineToEdit?.id);
   };
@@ -173,6 +173,7 @@ export function AddEditRoutineDialog({
             <SelectedRoutineExercisesList
               selectedExercises={selectedExerciseObjects}
               onRemoveExercise={(exerciseId) => handleExerciseSelectionChange(exerciseId, false)}
+              onReorderExercises={handleReorderExercises}
             />
           </div>
 
