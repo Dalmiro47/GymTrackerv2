@@ -1,5 +1,4 @@
 
-'use server';
 import { db } from '@/lib/firebaseConfig';
 import type { Routine, RoutineData, RoutineExercise } from '@/types';
 import {
