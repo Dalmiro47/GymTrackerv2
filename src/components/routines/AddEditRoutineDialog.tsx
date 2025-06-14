@@ -101,19 +101,26 @@ export function AddEditRoutineDialog({
 
 
   const handleExerciseSelectionChange = (exerciseId: string, isSelected: boolean) => {
-    const exercise = allUserExercises.find(ex => ex.id === exerciseId);
-    if (!exercise) return;
-
     setSelectedExerciseObjects(prevSelected => {
       if (isSelected) {
+        // Logic for ADDING an exercise
+        const exerciseToAdd = allUserExercises.find(ex => ex.id === exerciseId);
+        if (!exerciseToAdd) {
+          // console.warn(`Exercise with ID ${exerciseId} not found in allUserExercises. Cannot add.`);
+          return prevSelected; // Exercise not found, don't change state
+        }
         if (!prevSelected.find(e => e.id === exerciseId)) {
-          const routineExercise: RoutineExercise = { ...exercise }; 
+          // Exercise is not already selected, add it
+          const routineExercise: RoutineExercise = { ...exerciseToAdd };
           return [...prevSelected, routineExercise];
         }
+        // Exercise already selected, do nothing
+        return prevSelected;
       } else {
+        // Logic for REMOVING an exercise
+        // No need to check allUserExercises, just filter from prevSelected
         return prevSelected.filter(e => e.id !== exerciseId);
       }
-      return prevSelected;
     });
   };
 
