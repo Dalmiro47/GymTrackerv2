@@ -1,38 +1,217 @@
+
 "use client";
 
+import React, { useState, useMemo } from 'react';
 import { PageHeader } from "@/components/PageHeader";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { PlusCircle } from "lucide-react";
-import Image from 'next/image';
+import { Calendar as CalendarIcon, PlusCircle, Save, RotateCcw, Trash2, GripVertical } from "lucide-react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea"; // For overall log notes
+import { useTrainingLog } from '@/hooks/useTrainingLog';
+import type { LoggedExercise, Exercise } from '@/types';
+import { LoggedExerciseCard } from '@/components/training-log/LoggedExerciseCard';
+import { AddExerciseDialog } from '@/components/training-log/AddExerciseDialog'; // To be created
+import { format, parseISO } from 'date-fns';
+import { Loader2 } from 'lucide-react';
+
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  verticalListSortingStrategy,
+  sortableKeyboardCoordinates,
+} from '@dnd-kit/sortable';
+import { useAuth } from '@/contexts/AuthContext';
+import { useRouter } from 'next/navigation';
 
 export default function TrainingLogPage() {
+  const { user, isLoading: authIsLoading } = useAuth();
+  const router = useRouter();
+  const {
+    selectedDate,
+    setSelectedDate,
+    currentLog,
+    isLoadingLog,
+    isSavingLog,
+    availableRoutines,
+    isLoadingRoutines,
+    availableExercises, // For AddExerciseDialog
+    isLoadingExercises, // For AddExerciseDialog
+    handleSelectRoutine,
+    addExerciseToLog,
+    removeExerciseFromLog,
+    reorderExercisesInLog,
+    updateExerciseInLog,
+    saveExerciseProgress,
+    saveCurrentLog,
+    updateOverallLogNotes,
+    fetchAndSetLastPerformance,
+  } = useTrainingLog(new Date());
+
+  const [isAddExerciseDialogOpen, setIsAddExerciseDialogOpen] = useState(false);
+  const [showLogNotes, setShowLogNotes] = useState(false);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (currentLog && over && active.id !== over.id) {
+      const oldIndex = currentLog.exercises.findIndex((ex) => ex.id === active.id);
+      const newIndex = currentLog.exercises.findIndex((ex) => ex.id === over.id);
+      if (oldIndex !== -1 && newIndex !== -1) {
+        reorderExercisesInLog(arrayMove(currentLog.exercises, oldIndex, newIndex));
+      }
+    }
+  }
+
+  const handleOverallNotesChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    updateOverallLogNotes(e.target.value);
+  };
+
+  const loggedExerciseIds = useMemo(() => currentLog?.exercises.map(ex => ex.id) || [], [currentLog]);
+
+  if (authIsLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!user && !authIsLoading) {
+     router.push('/login'); // Should be handled by layout, but as a safeguard
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <p>Redirecting to login...</p>
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+      </div>
+    );
+  }
+  
   return (
     <div className="space-y-6">
-      <PageHeader title="Training Log" description="Record your daily workouts and track your progress.">
-         <Button variant="default" className="bg-accent hover:bg-accent/90 text-accent-foreground">
-          <PlusCircle className="mr-2 h-4 w-4" /> Log Workout
+      <PageHeader title="Training Log" description="Record your daily workouts and track progress.">
+        <Button onClick={() => saveCurrentLog()} disabled={isSavingLog || isLoadingLog} className="bg-accent hover:bg-accent/90">
+          {isSavingLog ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+          Save Day's Log
         </Button>
       </PageHeader>
 
       <Card className="shadow-lg">
         <CardHeader>
-          <CardTitle className="font-headline text-xl">Your Workout History</CardTitle>
-          <CardDescription>Feature coming soon! Log your sets, reps, and weights for each session.</CardDescription>
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div>
+              <CardTitle className="font-headline text-xl">Log for: {format(selectedDate, 'PPP')}</CardTitle>
+              <CardDescription>Select a date, choose a routine, or add exercises manually.</CardDescription>
+            </div>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" className="w-[280px] justify-start text-left font-normal">
+                  <CalendarIcon className="mr-2 h-4 w-4" />
+                  {selectedDate ? format(selectedDate, "PPP") : <span>Pick a date</span>}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0">
+                <Calendar
+                  mode="single"
+                  selected={selectedDate}
+                  onSelect={(date) => date && setSelectedDate(date)}
+                  initialFocus
+                />
+              </PopoverContent>
+            </Popover>
+          </div>
         </CardHeader>
-        <CardContent className="text-center py-12">
-          <Image 
-            src="https://placehold.co/400x300.png?text=Log+WIP" 
-            alt="Training log placeholder" 
-            width={400} 
-            height={300}
-            className="mx-auto rounded-lg mb-4"
-            data-ai-hint="notebook pen"
-          />
-          <p className="text-lg text-muted-foreground font-semibold">Training log is under construction.</p>
-          <p className="text-muted-foreground">Soon you'll be able to track every lift!</p>
+        <CardContent className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
+            <Select onValueChange={handleSelectRoutine} disabled={isLoadingRoutines || isLoadingLog}>
+              <SelectTrigger>
+                <SelectValue placeholder={isLoadingRoutines ? "Loading routines..." : "Start from a routine (optional)"} />
+              </SelectTrigger>
+              <SelectContent>
+                {availableRoutines.map(routine => (
+                  <SelectItem key={routine.id} value={routine.id}>{routine.name}</SelectItem>
+                ))}
+                {availableRoutines.length === 0 && !isLoadingRoutines && <SelectItem value="no-routines" disabled>No routines available</SelectItem>}
+              </SelectContent>
+            </Select>
+            <Button onClick={() => setIsAddExerciseDialogOpen(true)} variant="outline" className="w-full md:w-auto">
+              <PlusCircle className="mr-2 h-4 w-4" /> Add Exercise Manually
+            </Button>
+          </div>
+          
+          {isLoadingLog ? (
+            <div className="flex justify-center items-center py-10">
+              <Loader2 className="h-10 w-10 animate-spin text-primary" />
+              <p className="ml-3 text-lg text-muted-foreground">Loading log data...</p>
+            </div>
+          ) : currentLog && currentLog.exercises.length > 0 ? (
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              <SortableContext items={loggedExerciseIds} strategy={verticalListSortingStrategy}>
+                <div className="space-y-4">
+                  {currentLog.exercises.map(loggedEx => (
+                    <LoggedExerciseCard
+                      key={loggedEx.id}
+                      loggedExercise={loggedEx}
+                      onUpdateSets={(sets) => updateExerciseInLog({ ...loggedEx, sets })}
+                      onSaveProgress={() => saveExerciseProgress(loggedEx)}
+                      onRemove={() => removeExerciseFromLog(loggedEx.id)}
+                      onRefreshLastPerformance={() => fetchAndSetLastPerformance(loggedEx.exerciseId)}
+                      isSavingParentLog={isSavingLog}
+                    />
+                  ))}
+                </div>
+              </SortableContext>
+            </DndContext>
+          ) : (
+            <div className="text-center py-10 text-muted-foreground">
+              <p className="text-lg font-semibold">No exercises logged for this day yet.</p>
+              <p>Add exercises manually or select a routine to begin.</p>
+            </div>
+          )}
+
+          <div className="space-y-2 pt-4">
+            <Button variant="link" onClick={() => setShowLogNotes(!showLogNotes)} className="px-0">
+              {showLogNotes ? "Hide" : "Show"} Overall Workout Notes
+            </Button>
+            {showLogNotes && (
+              <Textarea
+                placeholder="Add any overall notes for this workout session..."
+                value={currentLog?.notes || ''}
+                onChange={handleOverallNotesChange}
+                rows={3}
+                disabled={isLoadingLog || isSavingLog}
+              />
+            )}
+          </div>
+
         </CardContent>
       </Card>
+
+      <AddExerciseDialog
+        isOpen={isAddExerciseDialogOpen}
+        setIsOpen={setIsAddExerciseDialogOpen}
+        availableExercises={availableExercises}
+        isLoadingExercises={isLoadingExercises}
+        onAddExercise={(exercise) => {
+          addExerciseToLog(exercise);
+          setIsAddExerciseDialogOpen(false);
+        }}
+      />
     </div>
   );
 }

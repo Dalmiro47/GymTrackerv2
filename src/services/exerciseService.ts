@@ -10,9 +10,10 @@ import {
   deleteDoc, 
   query, 
   where,
-  writeBatch, // Import writeBatch
-  Timestamp // If you plan to use server timestamps
+  writeBatch, 
+  Timestamp 
 } from 'firebase/firestore';
+import { deleteAllPerformanceEntriesForExercise } from './trainingLogService'; // Import the new function
 
 // Firestore collection path for a user's exercises
 const getUserExercisesCollectionPath = (userId: string) => `users/${userId}/exercises`;
@@ -22,13 +23,10 @@ export const addExercise = async (userId: string, exerciseData: ExerciseData): P
   if (!userId) throw new Error("User ID is required to add an exercise.");
   try {
     const userExercisesColRef = collection(db, getUserExercisesCollectionPath(userId));
-    // Firestore will auto-generate an ID for the new document
     const docRef = await addDoc(userExercisesColRef, exerciseData);
     return { id: docRef.id, ...exerciseData };
-  } catch (error) {
-    console.error("Detailed error adding exercise to Firestore: ", error); // Log the full error object
-    // Check for specific Firebase error codes if needed
-    // if (error.code === 'permission-denied') { ... }
+  } catch (error: any) {
+    console.error("Detailed error adding exercise to Firestore: ", error); 
     throw new Error(`Failed to add exercise. Firestore error: ${error.message || error}`);
   }
 };
@@ -43,12 +41,12 @@ export const addDefaultExercisesBatch = async (userId: string, defaultExercises:
     const batch = writeBatch(db);
 
     defaultExercises.forEach((exerciseData) => {
-      const newExerciseRef = doc(userExercisesColRef); // Firestore generates ID
+      const newExerciseRef = doc(userExercisesColRef); 
       batch.set(newExerciseRef, exerciseData);
     });
 
     await batch.commit();
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error adding default exercises batch to Firestore: ", error);
     throw new Error("Failed to add default exercises.");
   }
@@ -66,7 +64,7 @@ export const getExercises = async (userId: string): Promise<Exercise[]> => {
       exercises.push({ id: doc.id, ...(doc.data() as ExerciseData) });
     });
     return exercises;
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error fetching exercises from Firestore: ", error);
     throw new Error("Failed to fetch exercises.");
   }
@@ -79,7 +77,7 @@ export const updateExercise = async (userId: string, exerciseId: string, exercis
   try {
     const exerciseDocRef = doc(db, getUserExercisesCollectionPath(userId), exerciseId);
     await updateDoc(exerciseDocRef, exerciseData);
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error updating exercise in Firestore: ", error);
     throw new Error("Failed to update exercise.");
   }
@@ -92,7 +90,11 @@ export const deleteExercise = async (userId: string, exerciseId: string): Promis
   try {
     const exerciseDocRef = doc(db, getUserExercisesCollectionPath(userId), exerciseId);
     await deleteDoc(exerciseDocRef);
-  } catch (error) {
+
+    // Also delete all performance entries for this exercise
+    await deleteAllPerformanceEntriesForExercise(userId, exerciseId);
+
+  } catch (error: any) {
     console.error("Error deleting exercise from Firestore: ", error);
     throw new Error("Failed to delete exercise.");
   }
