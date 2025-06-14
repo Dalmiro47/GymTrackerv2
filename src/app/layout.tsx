@@ -4,8 +4,8 @@ import { Toaster } from '@/components/ui/toaster';
 import { AuthProvider } from '@/contexts/AuthContext';
 
 export const metadata: Metadata = {
-  title: 'GymFlow - Track Your Fitness Journey',
-  description: 'Manage exercises, build routines, and log your workouts with GymFlow.',
+  title: 'DDS Gym Tracker - Track Your Fitness Journey',
+  description: 'Manage exercises, build routines, and log your workouts with DDS Gym Tracker.',
 };
 
 export default function RootLayout({

@@ -7,6 +7,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { Loader2 } from "lucide-react";
+import React from 'react';
+
 
 // Google Icon SVG
 const GoogleIcon = () => (
@@ -55,7 +57,7 @@ export default function LoginPage() {
             <Logo iconSize={32} textSize="text-3xl" />
           </div>
           <CardTitle className="font-headline text-2xl">Welcome Back</CardTitle>
-          <CardDescription>Sign in to continue to GymFlow.</CardDescription>
+          <CardDescription>Sign in to continue to DDS Gym Tracker.</CardDescription>
         </CardHeader>
         <CardContent>
           <Button onClick={handleGoogleSignIn} className="w-full bg-primary hover:bg-primary/90 text-primary-foreground" aria-label="Sign in with Google" disabled={isLoading}>

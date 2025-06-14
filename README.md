@@ -1,6 +1,7 @@
-# GymFlow - Your Fitness Tracker MVP
 
-GymFlow is a Next.js application designed to help you manage exercises, build workout routines, log your training sessions, and track your fitness journey. This version focuses on core MVP features using Firebase for backend services.
+# DDS Gym Tracker - Your Fitness Tracker MVP
+
+DDS Gym Tracker is a Next.js application designed to help you manage exercises, build workout routines, log your training sessions, and track your fitness journey. This version focuses on core MVP features using Firebase for backend services.
 
 This project is a starter for Firebase Studio. You can find the repository at [https://github.com/Dalmiro47/GymTrackerv2](https://github.com/Dalmiro47/GymTrackerv2).
 
@@ -17,7 +18,7 @@ Follow these instructions to get the project set up and running on your local ma
 ### Installation
 
 1.  **Set up the project**:
-    If you're working in an environment like Firebase Studio, the project files should already be available. If you're setting this up locally from your GitHub repository, ensure you have the latest code.
+    If you're working in an environment like Firebase Studio, the project files should already be available. If you're setting this up locally from your GitHub repository ([https://github.com/Dalmiro47/GymTrackerv2](https://github.com/Dalmiro47/GymTrackerv2)), ensure you have the latest code.
 
 2.  **Install dependencies**:
     Open your terminal in the project root and run:

@@ -2,13 +2,13 @@ import type { NavItem } from '@/types';
 import { LayoutDashboard, Dumbbell, ListChecks, ClipboardEdit, CalendarDays } from 'lucide-react';
 
 export const siteConfig = {
-  name: "GymFlow",
-  description: "Manage exercises, build routines, and log your workouts with GymFlow.",
-  url: "https://gymflow.example.com", // Replace with your actual URL
-  ogImage: "https://gymflow.example.com/og.jpg", // Replace with your actual OG image
+  name: "DDS Gym Tracker",
+  description: "Manage exercises, build routines, and log your workouts with DDS Gym Tracker.",
+  url: "https://ddsgymtracker.example.com", // Replace with your actual URL
+  ogImage: "https://ddsgymtracker.example.com/og.jpg", // Replace with your actual OG image
   links: {
-    twitter: "https://twitter.com/gymflow", // Replace
-    github: "https://github.com/your-repo/gymflow", // Replace
+    twitter: "https://twitter.com/ddsgymtracker", // Replace
+    github: "https://github.com/Dalmiro47/GymTrackerv2", // Updated
   },
 };
 
