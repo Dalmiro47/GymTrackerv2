@@ -1,3 +1,4 @@
+
 import type { Exercise } from '@/types';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -25,7 +26,7 @@ export function ExerciseCard({ exercise, onEdit, onDelete, onViewDetails }: Exer
       </CardHeader>
       <CardContent className="flex-grow pb-3">
         <CardDescription className="line-clamp-3 text-sm">
-          {exercise.description || "No description available."}
+          {exercise.targetNotes || "No target notes available."}
         </CardDescription>
       </CardContent>
       <CardFooter className="flex justify-end gap-2 border-t pt-3 pb-3">

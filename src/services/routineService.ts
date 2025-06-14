@@ -20,26 +20,22 @@ const getUserRoutinesCollectionPath = (userId: string) => `users/${userId}/routi
 export const addRoutine = async (userId: string, routineData: RoutineData): Promise<Routine> => {
   if (!userId) throw new Error("User ID is required to add a routine.");
   try {
-    // Filter out any full Exercise objects if only IDs are needed, or ensure they are plain objects
     const simplifiedExercises = routineData.exercises.map(ex => ({
-        id: ex.id, // Storing ID is crucial
+        id: ex.id, 
         name: ex.name,
         muscleGroup: ex.muscleGroup,
-        description: ex.description || '',
+        targetNotes: ex.targetNotes || '', // Changed from description
         dataAiHint: ex.dataAiHint || ''
-        // Add other essential fields from Exercise that you want to store in the routine
     }));
 
     const dataToSave = {
       ...routineData,
       exercises: simplifiedExercises,
-      // createdAt: Timestamp.now(), // Optional: add server timestamp
-      // updatedAt: Timestamp.now(), // Optional: add server timestamp
     };
 
     const userRoutinesColRef = collection(db, getUserRoutinesCollectionPath(userId));
     const docRef = await addDoc(userRoutinesColRef, dataToSave);
-    return { id: docRef.id, ...dataToSave } as Routine; // Cast needed if timestamps differ
+    return { id: docRef.id, ...dataToSave } as Routine;
   } catch (error: any) {
     console.error("Detailed error adding routine to Firestore: ", error);
     throw new Error(`Failed to add routine. Firestore error: ${error.message || 'Unknown error'}`);
@@ -51,8 +47,7 @@ export const getRoutines = async (userId: string): Promise<Routine[]> => {
   if (!userId) throw new Error("User ID is required to get routines.");
   try {
     const userRoutinesColRef = collection(db, getUserRoutinesCollectionPath(userId));
-    // const q = query(userRoutinesColRef, orderBy("createdAt", "desc")); // Optional: order by creation time
-    const querySnapshot = await getDocs(userRoutinesColRef); // Use userRoutinesColRef directly if not ordering
+    const querySnapshot = await getDocs(userRoutinesColRef); 
     const routines: Routine[] = [];
     querySnapshot.forEach((doc) => {
       routines.push({ id: doc.id, ...(doc.data() as RoutineData) });
@@ -64,7 +59,7 @@ export const getRoutines = async (userId: string): Promise<Routine[]> => {
   }
 };
 
-// Get a single routine by ID (not strictly needed for list view, but useful)
+// Get a single routine by ID
 export const getRoutineById = async (userId: string, routineId: string): Promise<Routine | null> => {
     if (!userId) throw new Error("User ID is required.");
     if (!routineId) throw new Error("Routine ID is required.");
@@ -94,11 +89,10 @@ export const updateRoutine = async (userId: string, routineId: string, routineDa
             id: ex.id,
             name: ex.name,
             muscleGroup: ex.muscleGroup,
-            description: ex.description || '',
+            targetNotes: ex.targetNotes || '', // Changed from description
             dataAiHint: ex.dataAiHint || ''
         }));
     }
-    // dataToUpdate.updatedAt = Timestamp.now(); // Optional: update timestamp
 
     await updateDoc(routineDocRef, dataToUpdate);
   } catch (error: any) {

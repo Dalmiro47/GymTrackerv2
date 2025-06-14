@@ -23,19 +23,17 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
-// Schema for form validation, does not include 'id' or 'image'
 const exerciseFormSchema = z.object({
   name: z.string().min(3, "Name must be at least 3 characters"),
   muscleGroup: z.enum(MUSCLE_GROUPS_LIST, { message: "Please select a muscle group" }),
-  description: z.string().optional(),
-  // dataAiHint could be added here if needed in the form, but typically generated
+  targetNotes: z.string().optional(),
 });
 
 export type ExerciseFormData = z.infer<typeof exerciseFormSchema>;
 
 interface AddExerciseDialogProps {
-  exerciseToEdit?: Exercise | null; // Full exercise object if editing
-  onSave: (data: ExerciseFormData) => void; // Passes form data up
+  exerciseToEdit?: Exercise | null;
+  onSave: (data: ExerciseFormData) => void;
   triggerButton?: React.ReactNode;
   isOpen: boolean;
   setIsOpen: (open: boolean) => void;
@@ -55,7 +53,7 @@ export function AddExerciseDialog({
     defaultValues: {
       name: '',
       muscleGroup: undefined,
-      description: '',
+      targetNotes: '',
     },
   });
 
@@ -65,16 +63,16 @@ export function AddExerciseDialog({
         reset({
           name: exerciseToEdit.name,
           muscleGroup: exerciseToEdit.muscleGroup,
-          description: exerciseToEdit.description || '',
+          targetNotes: exerciseToEdit.targetNotes || '',
         });
       } else {
-        reset({ name: '', muscleGroup: undefined, description: '' });
+        reset({ name: '', muscleGroup: undefined, targetNotes: '' });
       }
     }
   }, [exerciseToEdit, reset, isOpen]);
 
   const onSubmit = (data: ExerciseFormData) => {
-    onSave(data); // `ExerciseClientPage` will handle if it's an add or update
+    onSave(data);
   };
 
   return (
@@ -84,7 +82,7 @@ export function AddExerciseDialog({
         <DialogHeader>
           <DialogTitle className="font-headline">{exerciseToEdit ? 'Edit Exercise' : 'Add New Exercise'}</DialogTitle>
           <DialogDescription>
-            {exerciseToEdit ? 'Update the details of this exercise.' : 'Fill in the details for the new exercise.'}
+            {exerciseToEdit ? 'Update the details for this exercise.' : 'Fill in the details for the new exercise.'}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)} className="grid gap-4 py-4">
@@ -118,8 +116,8 @@ export function AddExerciseDialog({
           </div>
 
           <div className="grid gap-2">
-            <Label htmlFor="description">Description (Optional)</Label>
-            <Textarea id="description" {...register('description')} />
+            <Label htmlFor="targetNotes">Notes / Target Area (Optional)</Label>
+            <Textarea id="targetNotes" {...register('targetNotes')} />
           </div>
 
           <DialogFooter>

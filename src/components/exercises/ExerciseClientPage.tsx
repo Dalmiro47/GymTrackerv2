@@ -77,11 +77,11 @@ export function ExerciseClientPage() {
     try {
       const userExercises = await getExercises(currentUserId);
       return userExercises;
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to fetch exercises:", error);
       toast({
         title: "Error Fetching Exercises",
-        description: "Could not fetch your exercises. Please try again later.",
+        description: `Could not fetch your exercises. ${error.message || 'Please try again later.'}`,
         variant: "destructive",
       });
       return [];
@@ -128,15 +128,12 @@ export function ExerciseClientPage() {
         loadData();
     }
     
-    // Reset seed attempt flag if user changes
      return () => {
         if(user?.id && !authContext.isLoading) { 
-          // Check previous user id if available and different from current, then reset.
-          // This ensures if the same user logs out and logs in, it doesn't try to re-seed.
-          // A more robust way might involve storing a flag in user's profile in Firestore.
+          // Future: Consider more robust user change detection if needed.
         }
     };
-  }, [user, fetchUserExercises, toast, authContext.isLoading]);
+  }, [user, fetchUserExercises, toast, authContext.isLoading, hasAttemptedSeedForCurrentUser]);
 
 
   const isFilteringOrSearching = useMemo(() => {
@@ -177,15 +174,14 @@ export function ExerciseClientPage() {
       return;
     }
 
-    const path = `users/${user.id}/exercises`;
-    console.log(`Attempting to save exercise for user ID: ${user.id}. Path: ${path}`);
+    console.log(`Attempting to save exercise for user ID: ${user.id}. Path: users/${user.id}/exercises`);
 
     setIsDialogSaving(true);
     try {
       const exercisePayload: ExerciseData = {
         name: formData.name,
         muscleGroup: formData.muscleGroup,
-        description: formData.description || '',
+        targetNotes: formData.targetNotes || '',
         dataAiHint: formData.name.toLowerCase().split(" ").slice(0,2).join(" ") || 'exercise',
       };
 
@@ -197,8 +193,8 @@ export function ExerciseClientPage() {
         toast({ title: "Exercise Added", description: `${formData.name} has been successfully added.` });
       }
       
-      const updatedExercises = await fetchUserExercises(user.id);
-      setExercises(updatedExercises);
+      const updatedExercisesList = await fetchUserExercises(user.id);
+      setExercises(updatedExercisesList);
 
       setIsDialogOpen(false);
       setExerciseToEdit(null);
@@ -229,8 +225,8 @@ export function ExerciseClientPage() {
       await deleteExercise(user.id, exerciseToDeleteId);
       toast({ title: "Exercise Deleted", description: `${exerciseName} has been removed.` });
       
-      const updatedExercises = await fetchUserExercises(user.id);
-      setExercises(updatedExercises);
+      const updatedExercisesList = await fetchUserExercises(user.id);
+      setExercises(updatedExercisesList);
 
     } catch (error: any) {
       console.error("Failed to delete exercise:", error);
@@ -325,7 +321,7 @@ export function ExerciseClientPage() {
         </div>
       </div>
 
-      {isSeeding && !isLoading ? ( // Show seeding loader only when actually seeding and not general loading
+      {isSeeding && !isLoading ? ( 
         <div className="flex justify-center items-center h-40">
           <Loader2 className="h-10 w-10 animate-spin text-primary" />
           <p className="ml-3 text-lg text-primary font-semibold">Populating your library with default exercises...</p>
