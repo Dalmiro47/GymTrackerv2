@@ -20,8 +20,9 @@ export interface Exercise {
   id: string; // Firestore document ID
   name: string;
   muscleGroup: MuscleGroup;
-  targetNotes?: string; // Changed from description
-  instructions?: string;
+  targetNotes?: string;
+  exerciseSetup?: string; // New field for machine settings, etc.
+  instructions?: string; // Kept for potential future use
   dataAiHint?: string;
 }
 
@@ -79,4 +80,3 @@ export interface UserProfile {
   name?: string | null;
   avatarUrl?: string | null;
 }
-

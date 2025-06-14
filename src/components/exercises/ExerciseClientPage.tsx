@@ -182,6 +182,7 @@ export function ExerciseClientPage() {
         name: formData.name,
         muscleGroup: formData.muscleGroup,
         targetNotes: formData.targetNotes || '',
+        exerciseSetup: formData.exerciseSetup || '', // New field
         dataAiHint: formData.name.toLowerCase().split(" ").slice(0,2).join(" ") || 'exercise',
       };
 

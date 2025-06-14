@@ -24,7 +24,8 @@ export const addRoutine = async (userId: string, routineData: RoutineData): Prom
         id: ex.id, 
         name: ex.name,
         muscleGroup: ex.muscleGroup,
-        targetNotes: ex.targetNotes || '', // Changed from description
+        targetNotes: ex.targetNotes || '',
+        exerciseSetup: ex.exerciseSetup || '', // New field
         dataAiHint: ex.dataAiHint || ''
     }));
 
@@ -89,7 +90,8 @@ export const updateRoutine = async (userId: string, routineId: string, routineDa
             id: ex.id,
             name: ex.name,
             muscleGroup: ex.muscleGroup,
-            targetNotes: ex.targetNotes || '', // Changed from description
+            targetNotes: ex.targetNotes || '',
+            exerciseSetup: ex.exerciseSetup || '', // New field
             dataAiHint: ex.dataAiHint || ''
         }));
     }

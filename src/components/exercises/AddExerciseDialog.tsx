@@ -27,6 +27,7 @@ const exerciseFormSchema = z.object({
   name: z.string().min(3, "Name must be at least 3 characters"),
   muscleGroup: z.enum(MUSCLE_GROUPS_LIST, { message: "Please select a muscle group" }),
   targetNotes: z.string().optional(),
+  exerciseSetup: z.string().optional(), // New field
 });
 
 export type ExerciseFormData = z.infer<typeof exerciseFormSchema>;
@@ -54,6 +55,7 @@ export function AddExerciseDialog({
       name: '',
       muscleGroup: undefined,
       targetNotes: '',
+      exerciseSetup: '', // New field default
     },
   });
 
@@ -64,9 +66,10 @@ export function AddExerciseDialog({
           name: exerciseToEdit.name,
           muscleGroup: exerciseToEdit.muscleGroup,
           targetNotes: exerciseToEdit.targetNotes || '',
+          exerciseSetup: exerciseToEdit.exerciseSetup || '', // New field reset
         });
       } else {
-        reset({ name: '', muscleGroup: undefined, targetNotes: '' });
+        reset({ name: '', muscleGroup: undefined, targetNotes: '', exerciseSetup: '' });
       }
     }
   }, [exerciseToEdit, reset, isOpen]);
@@ -119,6 +122,13 @@ export function AddExerciseDialog({
             <Label htmlFor="targetNotes">Notes / Target Area (Optional)</Label>
             <Textarea id="targetNotes" {...register('targetNotes')} />
           </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor="exerciseSetup">Exercise Setup (Optional)</Label>
+            <Input id="exerciseSetup" {...register('exerciseSetup')} placeholder="e.g., Machine position 8, Bench incline 30°" />
+             {errors.exerciseSetup && <p className="text-sm text-destructive">{errors.exerciseSetup.message}</p>}
+          </div>
+
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setIsOpen(false)} disabled={isSaving}>

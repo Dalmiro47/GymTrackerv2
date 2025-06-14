@@ -3,7 +3,7 @@ import type { Exercise } from '@/types';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { MuscleGroupIcon } from './MuscleGroupIcon';
-import { Edit3, Trash2, Info } from 'lucide-react';
+import { Edit3, Trash2, Info, Settings2 } from 'lucide-react'; // Added Settings2 for setup
 
 interface ExerciseCardProps {
   exercise: Exercise;
@@ -24,10 +24,24 @@ export function ExerciseCard({ exercise, onEdit, onDelete, onViewDetails }: Exer
           {exercise.muscleGroup}
         </div>
       </CardHeader>
-      <CardContent className="flex-grow pb-3">
-        <CardDescription className="line-clamp-3 text-sm">
-          {exercise.targetNotes || "No target notes available."}
-        </CardDescription>
+      <CardContent className="flex-grow pb-3 space-y-1.5">
+        <div>
+          <p className="text-xs font-semibold text-muted-foreground">Target/Notes:</p>
+          <CardDescription className="line-clamp-3 text-sm">
+            {exercise.targetNotes || "No specific target notes."}
+          </CardDescription>
+        </div>
+        {exercise.exerciseSetup && (
+          <div>
+            <p className="text-xs font-semibold text-muted-foreground flex items-center">
+              <Settings2 className="h-3 w-3 mr-1" />
+              Setup:
+            </p>
+            <CardDescription className="line-clamp-2 text-sm">
+              {exercise.exerciseSetup}
+            </CardDescription>
+          </div>
+        )}
       </CardContent>
       <CardFooter className="flex justify-end gap-2 border-t pt-3 pb-3">
         {onViewDetails && (
