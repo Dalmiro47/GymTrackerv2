@@ -70,19 +70,20 @@ export function ExerciseClientPage() {
   const fetchUserExercises = useCallback(async (isInitialFetch = false) => {
     if (!user?.id) {
       setIsLoading(false); 
+      setExercises([]); // Clear exercises if no user
       return;
     }
-    if (!isSeeding) setIsLoading(true); // Don't show main loader if only seeding in background
+    // Avoid setting main loader if we are already in a seeding process initiated by this function
+    if (!isSeeding) setIsLoading(true);
 
     try {
       const userExercises = await getExercises(user.id);
       
-      if (isInitialFetch && userExercises.length === 0) {
+      if (isInitialFetch && userExercises.length === 0 && user.id) { // Added user.id check for safety during seeding
         setIsSeeding(true);
         toast({ title: "Setting up your library...", description: "Adding default exercises."});
         try {
           await addDefaultExercisesBatch(user.id, defaultExercises);
-          // After seeding, fetch again to get the newly added exercises
           const seededExercises = await getExercises(user.id);
           setExercises(seededExercises);
           toast({ title: "Library Ready!", description: "Default exercises added."});
@@ -93,7 +94,7 @@ export function ExerciseClientPage() {
             description: "Could not add default exercises. You can add them manually.",
             variant: "destructive",
           });
-          setExercises([]); // Still set to empty if seeding failed
+          setExercises([]); 
         } finally {
           setIsSeeding(false);
         }
@@ -107,15 +108,25 @@ export function ExerciseClientPage() {
         description: "Could not fetch your exercises. Please try again later.",
         variant: "destructive",
       });
+      setExercises([]); // Clear exercises on error
     } finally {
       setIsLoading(false);
-      if (isSeeding) setIsSeeding(false); // Ensure seeding flag is reset
+      // If isSeeding was true and this fetch was not the one that initiated it,
+      // it might have been set by another process. However, this function
+      // controls its own seeding cycle with setIsSeeding(true/false).
     }
-  }, [user?.id, toast, isSeeding]); // Added isSeeding to dependencies
+  }, [user?.id, toast, isSeeding, setIsSeeding]); // Added isSeeding & setIsSeeding for correct re-render and logic flow
 
   useEffect(() => {
-    fetchUserExercises(true); // Pass true for initial fetch
-  }, [fetchUserExercises]);
+    if (user?.id) {
+      fetchUserExercises(true); // Pass true for initial fetch
+    } else {
+      // No user, clear exercises and reset loading states
+      setExercises([]);
+      setIsLoading(false);
+      setIsSeeding(false); // Also reset seeding if user logs out
+    }
+  }, [user?.id, fetchUserExercises]); // user?.id ensures this runs on login/logout
 
 
   const isFilteringOrSearching = useMemo(() => {
@@ -155,6 +166,9 @@ export function ExerciseClientPage() {
       toast({ title: "Authentication Error", description: "You must be logged in to save exercises.", variant: "destructive" });
       return;
     }
+    // Diagnostic log
+    console.log(`Attempting to save exercise for user ID: ${user.id}. Path: users/${user.id}/exercises`);
+    
     setIsDialogSaving(true);
     try {
       const exercisePayload: ExerciseData = {
@@ -162,7 +176,7 @@ export function ExerciseClientPage() {
         muscleGroup: formData.muscleGroup,
         description: formData.description || '',
         image: formData.image || '',
-        dataAiHint: formData.image ? formData.name.toLowerCase().split(" ").slice(0,2).join(" ") : '', // Basic hint
+        dataAiHint: formData.image ? formData.name.toLowerCase().split(" ").slice(0,2).join(" ") : '',
       };
 
       if (exerciseToEdit) { 
@@ -219,7 +233,7 @@ export function ExerciseClientPage() {
       </div>
     );
   }
-   if (!user) {
+   if (!user && !isLoading) { // Show login prompt if not loading and no user
     return (
       <div className="flex flex-col justify-center items-center h-64">
         <p className="text-xl text-primary font-semibold mb-4">Please log in to manage your exercises.</p>
@@ -235,7 +249,7 @@ export function ExerciseClientPage() {
             variant="default" 
             className="bg-accent hover:bg-accent/90 text-accent-foreground" 
             onClick={handleOpenAddDialog}
-            disabled={isSeeding || isLoading}
+            disabled={isSeeding || (isLoading && exercises.length === 0 && !user)} // Disable if seeding, or loading initial and no user yet
           >
           <PlusCircle className="mr-2 h-4 w-4" /> 
           Add New Exercise
@@ -260,7 +274,7 @@ export function ExerciseClientPage() {
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full rounded-lg bg-card py-2 pl-10 pr-4 shadow-sm focus:ring-primary"
             aria-label="Search exercises"
-            disabled={isSeeding || isLoading && exercises.length === 0}
+            disabled={isSeeding || (isLoading && exercises.length === 0)}
           />
         </div>
         <div className="relative">
@@ -268,7 +282,7 @@ export function ExerciseClientPage() {
            <Select 
               value={selectedMuscleGroup} 
               onValueChange={(value) => setSelectedMuscleGroup(value as MuscleGroup | 'All')}
-              disabled={isSeeding || isLoading && exercises.length === 0}
+              disabled={isSeeding || (isLoading && exercises.length === 0)}
             >
             <SelectTrigger className="w-full rounded-lg bg-card py-2 pl-10 pr-4 shadow-sm focus:ring-primary" aria-label="Filter by muscle group">
               <SelectValue placeholder="Filter by muscle group" />
@@ -283,7 +297,7 @@ export function ExerciseClientPage() {
         </div>
       </div>
       
-      {(isLoading && exercises.length > 0 && !isSeeding) && ( 
+      {(isLoading && exercises.length > 0 && !isSeeding && user) && ( 
         <div className="my-4 flex items-center justify-center text-muted-foreground">
           <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Refreshing...
         </div>
@@ -302,10 +316,12 @@ export function ExerciseClientPage() {
             ))}
           </div>
         ) : (
+         (!isLoading && !isSeeding) && ( // Only show "no exercises found" if not loading/seeding
           <div className="text-center py-12">
             <p className="text-xl text-muted-foreground font-semibold mb-2">No exercises found for your current filter/search.</p>
             <p className="text-muted-foreground">Try adjusting your search or filters, or add a new exercise!</p>
           </div>
+         )
         )
       ) : (
         exercisesGroupedByMuscle.length > 0 ? (
@@ -332,10 +348,10 @@ export function ExerciseClientPage() {
             ))}
           </div>
         ) : (
-         (!isLoading && !isSeeding && exercises.length === 0) && ( 
+         (!isLoading && !isSeeding && exercises.length === 0 && user) && ( 
             <div className="text-center py-12">
               <p className="text-xl text-muted-foreground font-semibold mb-2">Your exercise library is empty.</p>
-              <p className="text-muted-foreground">Add some exercises to get started or they might be loading!</p>
+              <p className="text-muted-foreground">Add some exercises to get started!</p>
             </div>
           )
         )
