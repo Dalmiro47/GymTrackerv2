@@ -3,19 +3,28 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Rules for the 'exercises' subcollection within each user's document
-    // This rule allows a user to read and write documents in their own 'exercises' subcollection.
-    match /users/{userId}/exercises/{exerciseId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
-    }
+    // Match any document in the 'users' collection
+    match /users/{userId} {
+      // Allow a user to read and write their own document
+      // allow read, write: if request.auth != null && request.auth.uid == userId;
 
-    // Add rules for other user-specific collections (e.g., routines, workoutLogs) here as they are implemented.
-    // Example:
-    // match /users/{userId}/routines/{routineId} {
-    //   allow read, write: if request.auth != null && request.auth.uid == userId;
-    // }
-    // match /users/{userId}/workoutLogs/{logId} {
-    //   allow read, write: if request.auth != null && request.auth.uid == userId;
-    // }
+      // Rules for exercises subcollection
+      match /exercises/{exerciseId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+
+      // Rules for routines subcollection
+      match /routines/{routineId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+
+      // Placeholder for future collections like 'trainingLogs' or 'userProfile'
+      // match /trainingLogs/{logId} {
+      //   allow read, write: if request.auth != null && request.auth.uid == userId;
+      // }
+      // match /userProfile/{docId} { // if you store user profile details separately
+      //  allow read, write: if request.auth != null && request.auth.uid == userId;
+      // }
+    }
   }
 }
