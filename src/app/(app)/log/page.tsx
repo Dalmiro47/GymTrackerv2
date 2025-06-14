@@ -4,18 +4,37 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
-import { Calendar as CalendarIcon, PlusCircle, Save, RotateCcw, Trash2, GripVertical } from "lucide-react";
+import { 
+  Calendar as CalendarIcon, 
+  PlusCircle, 
+  Save, 
+  RotateCcw, 
+  Trash2, 
+  GripVertical,
+  AlertTriangle // For delete confirmation
+} from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
+import { Calendar } from "@/components/ui/calendar"; // ShadCN Calendar
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea"; // For overall log notes
+import { Textarea } from "@/components/ui/textarea"; 
 import { useTrainingLog } from '@/hooks/useTrainingLog';
 import type { LoggedExercise, Exercise } from '@/types';
 import { LoggedExerciseCard } from '@/components/training-log/LoggedExerciseCard';
 import { AddExerciseDialog } from '@/components/training-log/AddExerciseDialog';
 import { format, parseISO } from 'date-fns';
 import { Loader2 } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 import {
   DndContext,
@@ -38,10 +57,6 @@ import { useRouter } from 'next/navigation';
 export default function TrainingLogPage() {
   const { user, isLoading: authIsLoading } = useAuth();
   const router = useRouter();
-
-  useEffect(() => {
-    console.log('[TrainingLogPage] Auth state:', { user, authIsLoading });
-  }, [user, authIsLoading]);
   
   const {
     selectedDate,
@@ -49,10 +64,11 @@ export default function TrainingLogPage() {
     currentLog,
     isLoadingLog,
     isSavingLog,
+    isDeletingLog, // New state
     availableRoutines,
     isLoadingRoutines,
-    availableExercises, // For AddExerciseDialog
-    isLoadingExercises, // For AddExerciseDialog
+    availableExercises, 
+    isLoadingExercises, 
     handleSelectRoutine,
     addExerciseToLog,
     removeExerciseFromLog,
@@ -62,10 +78,13 @@ export default function TrainingLogPage() {
     saveCurrentLog,
     updateOverallLogNotes,
     fetchAndSetLastPerformance,
+    deleteCurrentLog, // New function
   } = useTrainingLog(new Date());
 
   const [isAddExerciseDialogOpen, setIsAddExerciseDialogOpen] = useState(false);
   const [showLogNotes, setShowLogNotes] = useState(false);
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -89,6 +108,16 @@ export default function TrainingLogPage() {
 
   const loggedExerciseIds = useMemo(() => currentLog?.exercises.map(ex => ex.id) || [], [currentLog]);
 
+  const handleDeleteConfirmed = async () => {
+    await deleteCurrentLog();
+    setIsDeleteConfirmOpen(false);
+  };
+
+  // Determine if there is anything to delete
+  const canDeleteLog = useMemo(() => {
+    return currentLog && (currentLog.exercises.length > 0 || (currentLog.notes && currentLog.notes.trim() !== ''));
+  }, [currentLog]);
+
   if (authIsLoading) {
     return (
       <div className="flex h-screen items-center justify-center">
@@ -98,7 +127,7 @@ export default function TrainingLogPage() {
   }
 
   if (!user && !authIsLoading) {
-     router.push('/login'); // Should be handled by layout, but as a safeguard
+     router.push('/login'); 
     return (
       <div className="flex h-screen items-center justify-center">
         <p>Redirecting to login...</p>
@@ -110,10 +139,46 @@ export default function TrainingLogPage() {
   return (
     <div className="space-y-6">
       <PageHeader title="Training Log" description="Record your daily workouts and track progress.">
-        <Button onClick={() => saveCurrentLog()} disabled={isSavingLog || isLoadingLog} className="bg-accent hover:bg-accent/90">
-          {isSavingLog ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-          Save Day's Log
-        </Button>
+        <div className="flex gap-2">
+            <AlertDialog open={isDeleteConfirmOpen} onOpenChange={setIsDeleteConfirmOpen}>
+              <AlertDialogTrigger asChild>
+                <Button 
+                    variant="outline" 
+                    className="border-destructive text-destructive hover:bg-destructive/10"
+                    disabled={isDeletingLog || isLoadingLog || !canDeleteLog}
+                >
+                  {isDeletingLog ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
+                  Delete Day's Log
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle className="flex items-center">
+                    <AlertTriangle className="mr-2 h-5 w-5 text-destructive" />
+                    Confirm Deletion
+                  </AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Are you sure you want to delete the entire log for {format(selectedDate, 'PPP')}? This action cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction 
+                    onClick={handleDeleteConfirmed} 
+                    className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+                    disabled={isDeletingLog}
+                  >
+                    {isDeletingLog ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Delete Log"}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+
+            <Button onClick={() => saveCurrentLog()} disabled={isSavingLog || isLoadingLog} className="bg-accent hover:bg-accent/90">
+                {isSavingLog ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                Save Day's Log
+            </Button>
+        </div>
       </PageHeader>
 
       <Card className="shadow-lg">
