@@ -1,5 +1,4 @@
 
-'use server';
 /**
  * @fileOverview Service functions for interacting with Firestore for training logs.
  * - saveWorkoutLog: Saves or updates the workout log for a specific date.
