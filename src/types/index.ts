@@ -79,6 +79,7 @@ export interface PersonalRecord {
   reps: number;
   weight: number;
   date: number; // Timestamp (milliseconds) of when PR was achieved
+  logId: string; // ID of the WorkoutLog (YYYY-MM-DD) from which this PR was achieved
 }
 
 export interface ExercisePerformanceEntry {

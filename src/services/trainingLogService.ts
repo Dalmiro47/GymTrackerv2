@@ -8,6 +8,7 @@
  * - getLastLoggedPerformance: Retrieves the performance snapshot for an exercise.
  * - deleteAllPerformanceEntriesForExercise: Deletes the performance entry for a specific exercise.
  * - getLoggedDateStrings: Fetches all dates ("yyyy-MM-dd") that have workout logs.
+ * - clearPersonalRecordIfSourcedFromLog: Clears an exercise's PR if it came from a specified deleted log.
  */
 import { db } from '@/lib/firebaseConfig';
 import type { WorkoutLog, LoggedSet, ExercisePerformanceEntry, PersonalRecord } from '@/types';
@@ -131,12 +132,18 @@ const findBestSet = (sets: LoggedSet[]): { reps: number; weight: number } | null
   return bestSet;
 };
 
-export const saveExercisePerformanceEntry = async (userId: string, exerciseId: string, currentSessionSets: LoggedSet[]): Promise<void> => {
-  console.log(`[SERVICE] saveExercisePerformanceEntry: Initiated for userId=${userId}, exerciseId=${exerciseId}`);
+export const saveExercisePerformanceEntry = async (
+  userId: string,
+  exerciseId: string,
+  currentSessionSets: LoggedSet[],
+  logDate: string // YYYY-MM-DD of the current log being saved
+): Promise<void> => {
+  console.log(`[SERVICE] saveExercisePerformanceEntry: Initiated for userId=${userId}, exerciseId=${exerciseId}, logDate=${logDate}`);
   console.log(`[SERVICE] saveExercisePerformanceEntry: Received currentSessionSets:`, JSON.stringify(currentSessionSets, null, 2));
 
   if (!userId) throw new Error("User ID is required.");
   if (!exerciseId) throw new Error("Exercise ID is required.");
+  if (!logDate) throw new Error("Log date (logId) is required for PR tracking.");
 
   const validCurrentSessionSets = currentSessionSets
     .map(s => ({
@@ -147,34 +154,6 @@ export const saveExercisePerformanceEntry = async (userId: string, exerciseId: s
     .filter(s => s.reps > 0 || s.weight > 0);
   
   console.log(`[SERVICE] saveExercisePerformanceEntry: Processed validCurrentSessionSets:`, JSON.stringify(validCurrentSessionSets, null, 2));
-
-  if (validCurrentSessionSets.length === 0) {
-    console.log(`[SERVICE] saveExercisePerformanceEntry: No valid sets in current session for exerciseId=${exerciseId}.`);
-    // Check if an entry exists. If not, don't create one. If it does, we might only update lastPerformedDate if we wanted to signify an attempt without PR change.
-    // For now, if no valid work, we don't update the performance entry unless it already exists and we want to clear lastPerformedSets or similar.
-    // The current logic implies that if there are no valid sets, nothing is written to performanceEntries, which might be okay.
-    // However, if an entry ALREADY exists, we might want to update its lastPerformedDate at least.
-    // Let's refine this: if valid sets are empty, we still update lastPerformedDate IF the document exists.
-    // But we will NOT create a new document if there are no valid sets and no existing document.
-    
-    const performanceEntriesColPath = getUserPerformanceEntriesCollectionPath(userId);
-    const performanceEntryDocRef = doc(db, performanceEntriesColPath, exerciseId);
-    const existingDocSnap = await getDoc(performanceEntryDocRef);
-
-    if (existingDocSnap.exists()) {
-      // Entry exists, but current session has no valid sets.
-      // We could update lastPerformedDate and keep existing PR, clear lastPerformedSets.
-      // For simplicity now, let's say if no new valid work, we don't aggressively update PR or last sets.
-      // This means if user logs all 0s, the old PR and lastPerformedSets stick. This might be fine.
-      console.log(`[SERVICE] saveExercisePerformanceEntry: No valid sets, existing entry found. Not modifying PR or lastPerformedSets based on this session.`);
-      // Optionally, update only lastPerformedDate if needed:
-      // await setDoc(performanceEntryDocRef, { lastPerformedDate: Timestamp.now().toMillis() }, { merge: true });
-      return; 
-    } else {
-      console.log(`[SERVICE] saveExercisePerformanceEntry: No valid sets and no existing entry. No action taken for performance entry.`);
-      return; // Do not create a new performance entry if there's no valid work done.
-    }
-  }
 
   const performanceEntriesColPath = getUserPerformanceEntriesCollectionPath(userId);
   const performanceEntryDocRef = doc(db, performanceEntriesColPath, exerciseId);
@@ -190,34 +169,40 @@ export const saveExercisePerformanceEntry = async (userId: string, exerciseId: s
     newPersonalRecord = existingEntryData?.personalRecord || null;
     console.log(`[SERVICE] saveExercisePerformanceEntry: Initial newPersonalRecord (from existing or null):`, newPersonalRecord ? JSON.stringify(newPersonalRecord, null, 2) : "null");
 
-    const bestSetThisSession = findBestSet(validCurrentSessionSets);
-    console.log(`[SERVICE] saveExercisePerformanceEntry: Best set this session for ${exerciseId}:`, bestSetThisSession ? JSON.stringify(bestSetThisSession, null, 2) : "null");
+    if (validCurrentSessionSets.length > 0) {
+        const bestSetThisSession = findBestSet(validCurrentSessionSets);
+        console.log(`[SERVICE] saveExercisePerformanceEntry: Best set this session for ${exerciseId}:`, bestSetThisSession ? JSON.stringify(bestSetThisSession, null, 2) : "null");
 
-    if (bestSetThisSession) {
-      if (!newPersonalRecord || 
-          bestSetThisSession.weight > newPersonalRecord.weight ||
-          (bestSetThisSession.weight === newPersonalRecord.weight && bestSetThisSession.reps > newPersonalRecord.reps)) {
-        newPersonalRecord = {
-          reps: bestSetThisSession.reps,
-          weight: bestSetThisSession.weight,
-          date: Timestamp.now().toMillis(), 
-        };
-        console.log(`[SERVICE] saveExercisePerformanceEntry: New PR identified for ${exerciseId}:`, JSON.stringify(newPersonalRecord, null, 2));
-      } else {
-        console.log(`[SERVICE] saveExercisePerformanceEntry: Existing PR for ${exerciseId} (${JSON.stringify(newPersonalRecord, null, 2)}) is better/equal. PR value itself not updated. Saving object.`);
-      }
+        if (bestSetThisSession) {
+          if (!newPersonalRecord || 
+              bestSetThisSession.weight > newPersonalRecord.weight ||
+              (bestSetThisSession.weight === newPersonalRecord.weight && bestSetThisSession.reps > newPersonalRecord.reps)) {
+            newPersonalRecord = {
+              reps: bestSetThisSession.reps,
+              weight: bestSetThisSession.weight,
+              date: Timestamp.now().toMillis(), 
+              logId: logDate, // Store the ID of the log where this PR was achieved
+            };
+            console.log(`[SERVICE] saveExercisePerformanceEntry: New PR identified for ${exerciseId}:`, JSON.stringify(newPersonalRecord, null, 2));
+          } else {
+            console.log(`[SERVICE] saveExercisePerformanceEntry: Existing PR for ${exerciseId} (${JSON.stringify(newPersonalRecord, null, 2)}) is better/equal. PR value itself not updated. Saving object.`);
+          }
+        } else {
+            console.log(`[SERVICE] saveExercisePerformanceEntry: No valid best set found this session for ${exerciseId}. PR object remains as:`, newPersonalRecord ? JSON.stringify(newPersonalRecord, null, 2) : "null");
+        }
     } else {
-        console.log(`[SERVICE] saveExercisePerformanceEntry: No valid best set found this session for ${exerciseId}. PR object remains as:`, newPersonalRecord ? JSON.stringify(newPersonalRecord, null, 2) : "null");
+        console.log(`[SERVICE] saveExercisePerformanceEntry: No valid sets in current session for ${exerciseId}. PR will not be updated from this session.`);
     }
 
+
     const entryDataToSave: ExercisePerformanceEntry = {
-      lastPerformedDate: Timestamp.now().toMillis(),
-      lastPerformedSets: validCurrentSessionSets, 
-      personalRecord: newPersonalRecord, // This should save the new or existing PR object, or null
+      lastPerformedDate: validCurrentSessionSets.length > 0 ? Timestamp.now().toMillis() : (existingEntryData?.lastPerformedDate || Timestamp.now().toMillis()),
+      lastPerformedSets: validCurrentSessionSets.length > 0 ? validCurrentSessionSets : (existingEntryData?.lastPerformedSets || []), 
+      personalRecord: newPersonalRecord,
     };
 
     console.log(`[SERVICE] saveExercisePerformanceEntry: Final entryDataToSave for ${exerciseId}:`, JSON.stringify(entryDataToSave, null, 2));
-    await setDoc(performanceEntryDocRef, entryDataToSave); 
+    await setDoc(performanceEntryDocRef, entryDataToSave, { merge: true }); 
     console.log(`[SERVICE] saveExercisePerformanceEntry: Successfully saved/updated performance entry for exerciseId=${exerciseId}.`);
 
   } catch (error: any) {
@@ -263,4 +248,32 @@ export const deleteAllPerformanceEntriesForExercise = async (userId: string, exe
     } catch (error: any) {
         console.error(`Error deleting performance entry for exercise ${exerciseId}:`, error);
     }
+};
+
+export const clearPersonalRecordIfSourcedFromLog = async (userId: string, exerciseId: string, deletedLogId: string): Promise<void> => {
+  if (!userId) throw new Error("User ID is required.");
+  if (!exerciseId) throw new Error("Exercise ID is required.");
+  if (!deletedLogId) throw new Error("Deleted Log ID is required.");
+
+  console.log(`[SERVICE] clearPersonalRecordIfSourcedFromLog: Initiated for userId=${userId}, exerciseId=${exerciseId}, deletedLogId=${deletedLogId}`);
+  const performanceEntryDocRef = doc(db, getUserPerformanceEntriesCollectionPath(userId), exerciseId);
+
+  try {
+    const docSnap = await getDoc(performanceEntryDocRef);
+    if (docSnap.exists()) {
+      const entryData = docSnap.data() as ExercisePerformanceEntry;
+      if (entryData.personalRecord && entryData.personalRecord.logId === deletedLogId) {
+        console.log(`[SERVICE] clearPersonalRecordIfSourcedFromLog: PR for exercise ${exerciseId} was sourced from deleted log ${deletedLogId}. Clearing PR.`);
+        await setDoc(performanceEntryDocRef, { personalRecord: null }, { merge: true });
+        console.log(`[SERVICE] clearPersonalRecordIfSourcedFromLog: Successfully cleared PR for exercise ${exerciseId}.`);
+      } else {
+        console.log(`[SERVICE] clearPersonalRecordIfSourcedFromLog: PR for exercise ${exerciseId} was not sourced from deleted log ${deletedLogId} or no PR exists. No action taken.`);
+      }
+    } else {
+      console.log(`[SERVICE] clearPersonalRecordIfSourcedFromLog: No performance entry found for exercise ${exerciseId}. No action taken.`);
+    }
+  } catch (error: any) {
+    console.error(`[SERVICE] clearPersonalRecordIfSourcedFromLog: Error processing PR for exerciseId=${exerciseId}:`, error);
+    throw new Error(`Failed to clear personal record for ${exerciseId}. ${error.message}`);
+  }
 };
