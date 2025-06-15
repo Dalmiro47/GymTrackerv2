@@ -72,10 +72,12 @@ export interface WorkoutLog {
   // userId: string; // Implicitly known by collection path
 }
 
-// For storing individual performance entries per exercise to easily get "last performance"
+// For storing the single, latest performance entry per exercise.
+// The document ID in Firestore (users/{userId}/performanceEntries/{exerciseId}) *is* the exerciseId.
+// The document data itself is this structure:
 export interface ExercisePerformanceEntry {
-  date: number; // Firestore Timestamp converted to number (milliseconds since epoch) for ordering
-  sets: LoggedSet[];
+  date: number; // Firestore Timestamp converted to number (milliseconds since epoch) of when this performance was logged
+  sets: LoggedSet[]; // The sets recorded for this performance
 }
 
 
