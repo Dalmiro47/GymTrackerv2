@@ -88,25 +88,25 @@ export default function TrainingLogPage() {
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
 
   useEffect(() => {
-    console.log("[PAGE] isLoadingLoggedDayStrings state:", isLoadingLoggedDayStrings);
+    // console.log("[PAGE] isLoadingLoggedDayStrings state:", isLoadingLoggedDayStrings);
   }, [isLoadingLoggedDayStrings]);
 
   const daysWithLogs = useMemo(() => {
-    console.log("[PAGE] Preparing daysWithLogs. Raw loggedDayStrings:", loggedDayStrings);
+    // console.log("[PAGE] Preparing daysWithLogs. Raw loggedDayStrings:", loggedDayStrings);
     if (!loggedDayStrings || loggedDayStrings.length === 0) {
-      console.log("[PAGE] No loggedDayStrings to process for calendar indicators.");
+      // console.log("[PAGE] No loggedDayStrings to process for calendar indicators.");
       return [];
     }
     const parsedDates = loggedDayStrings.map(dateStr => {
       const parsed = parseISO(dateStr);
       if (isNaN(parsed.getTime())) { 
-        console.warn(`[PAGE] Failed to parse date string: '${dateStr}' into a valid Date object.`);
+        // console.warn(`[PAGE] Failed to parse date string: '${dateStr}' into a valid Date object.`);
         return null; 
       }
       return parsed;
     }).filter(date => date !== null) as Date[]; 
     
-    console.log("[PAGE] Parsed dates for calendar modifiers (daysWithLogs):", parsedDates);
+    // console.log("[PAGE] Parsed dates for calendar modifiers (daysWithLogs):", parsedDates);
     return parsedDates;
   }, [loggedDayStrings]);
 
@@ -141,13 +141,7 @@ export default function TrainingLogPage() {
     return currentLog && (currentLog.exercises.length > 0 || (currentLog.notes && currentLog.notes.trim() !== ''));
   }, [currentLog]);
   
-  const routineSelectValue = useMemo(() => {
-    if (isLoadingLog || !currentLog || !currentLog.routineId) {
-      return ""; 
-    }
-    const routineExists = availableRoutines.some(r => r.id === currentLog.routineId);
-    return routineExists ? currentLog.routineId : "";
-  }, [currentLog, isLoadingLog, availableRoutines]);
+  const routineSelectValue = currentLog?.routineId || "";
 
 
   if (authIsLoading) {
@@ -255,6 +249,7 @@ export default function TrainingLogPage() {
                 <SelectValue placeholder={isLoadingRoutines || (isLoadingLog && !currentLog?.routineId) ? "Loading routines..." : "Start from a routine (optional)"} />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="none">-- Clear Routine / Start Fresh --</SelectItem>
                 {availableRoutines.map(routine => (
                   <SelectItem key={routine.id} value={routine.id}>{routine.name}</SelectItem>
                 ))}
