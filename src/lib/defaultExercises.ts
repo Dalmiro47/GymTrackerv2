@@ -1,11 +1,11 @@
 
-import type { Exercise } from '@/types'; // Changed from ExerciseData to Exercise
+import type { Exercise } from '@/types'; 
 import { slugify } from '@/lib/utils';
 
 // Helper to add ID to exercise data
 const createDefaultExercise = (name: Exercise['name'], muscleGroup: Exercise['muscleGroup'], targetNotes: Exercise['targetNotes'], dataAiHint: Exercise['dataAiHint'], exerciseSetup?: Exercise['exerciseSetup']): Exercise => {
   return {
-    id: slugify(name, muscleGroup), // Generate deterministic ID
+    id: slugify(name, muscleGroup), // Generate deterministic ID based on name and muscle group
     name,
     muscleGroup,
     targetNotes,
@@ -22,7 +22,7 @@ export const defaultExercises: Exercise[] = [
   createDefaultExercise("Machine Chest Press", "Chest", "Middle Chest", "chest machine"),
   createDefaultExercise("Bench Press", "Chest", "Middle Chest", "bench press"),
   createDefaultExercise("Seated Cable Pec Flye", "Chest", "Lower Chest", "cable fly"),
-  createDefaultExercise("Dips", "Chest", "Lower Chest", "dips fitness", "Chest Focus"), // Context for Dips
+  createDefaultExercise("Dips", "Chest", "Lower Chest", "dips fitness", "Chest Focus"), 
 
   // Back
   createDefaultExercise("Wide-Grip Pull ups", "Back", "Lats and Middle Back", "pull up"),
@@ -54,7 +54,7 @@ export const defaultExercises: Exercise[] = [
   createDefaultExercise("Standing Calves", "Legs", "Gastrocnemius", "calf raise"),
 
   // Triceps
-  createDefaultExercise("Dips", "Triceps", "Lateral head", "tricep dips", "Triceps Focus"), // Context for Dips
+  createDefaultExercise("Dips", "Triceps", "Lateral head", "tricep dips", "Triceps Focus"), 
   createDefaultExercise("Cable Triceps Kickback", "Triceps", "Lateral head", "tricep kickback"),
   createDefaultExercise("Overhead Cable Triceps Extension", "Triceps", "Long head", "tricep extension cable"),
   createDefaultExercise("Skullcrusher", "Triceps", "Long head", "skullcrusher exercise"),
