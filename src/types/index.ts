@@ -67,6 +67,7 @@ export interface WorkoutLog {
   routineId?: string; 
   routineName?: string;
   exercises: LoggedExercise[]; // The actual exercises logged for this day
+  exerciseIds: string[]; // NEW: Denormalized array of exercise IDs in this log
   duration?: number; 
   notes?: string; // Overall notes for the workout session
   // userId: string; // Implicitly known by collection path
@@ -83,7 +84,7 @@ export interface PersonalRecord {
 }
 
 export interface ExercisePerformanceEntry {
-  lastPerformedDate: number; // Timestamp (milliseconds) of when sets were last performed
+  lastPerformedDate: number | null; // Timestamp (milliseconds) of when sets were last performed, or null
   lastPerformedSets: LoggedSet[]; // The sets recorded for the last performance for pre-filling
   personalRecord: PersonalRecord | null; // The best single set ever
 }
