@@ -1,6 +1,6 @@
 
 import type { NavItem } from '@/types';
-import { LayoutDashboard, Dumbbell, ListChecks, ClipboardEdit, CalendarDays } from 'lucide-react';
+import { LayoutDashboard, Dumbbell, ListChecks, ClipboardEdit } from 'lucide-react'; // Removed CalendarDays
 
 export const siteConfig = {
   name: "DDS Gym Tracker",
@@ -9,7 +9,7 @@ export const siteConfig = {
   ogImage: "https://ddsgymtracker.example.com/og.jpg", // Replace with your actual OG image
   links: {
     twitter: "https://twitter.com/ddsgymtracker", // Replace
-    github: "https://github.com/Dalmiro47/GymTrackerv2", // Updated
+    github: "https://github.com/Dalmiro47/GymTrackerv2",
   },
 };
 
@@ -26,12 +26,12 @@ export const navItems: NavItem[] = [
     icon: ClipboardEdit,
     label: 'Training Log',
   },
-  {
-    title: 'Calendar',
-    href: '/calendar',
-    icon: CalendarDays,
-    label: 'Training Calendar',
-  },
+  // { // Calendar page removed
+  //   title: 'Calendar',
+  //   href: '/calendar',
+  //   icon: CalendarDays,
+  //   label: 'Training Calendar',
+  // },
   {
     title: 'Exercises',
     href: '/exercises',
@@ -45,4 +45,3 @@ export const navItems: NavItem[] = [
     label: 'Routines',
   },
 ];
-
