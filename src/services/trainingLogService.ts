@@ -43,25 +43,44 @@ export const saveWorkoutLog = async (userId: string, date: string, workoutLogPay
                   "Expected date based on doc ID:", date,
                   "Payload ID:", workoutLogPayload.id,
                   "Payload date:", workoutLogPayload.date);
-    // Ensure the payload's id and date match the document ID being used.
     workoutLogPayload.id = date;
     workoutLogPayload.date = date;
   }
   
-  // Populate the denormalized exerciseIds array
   const exerciseIds = workoutLogPayload.exercises.map(ex => ex.exerciseId);
-  const payloadToSave: WorkoutLog = {
+  
+  // Create a mutable copy to modify for Firestore
+  const payloadForFirestore: Partial<WorkoutLog> = { // Use Partial to allow deletion of optional keys
     ...workoutLogPayload,
-    exerciseIds: exerciseIds, // Ensure this is always included
+    exerciseIds: exerciseIds,
   };
+
+  // Remove undefined fields that Firestore doesn't support
+  if (payloadForFirestore.routineId === undefined) {
+    delete payloadForFirestore.routineId;
+  }
+  if (payloadForFirestore.routineName === undefined) {
+    delete payloadForFirestore.routineName;
+  }
+  // Also check for other optional fields if they could be undefined
+  if (payloadForFirestore.duration === undefined) {
+    delete payloadForFirestore.duration;
+  }
+  // Notes are typically an empty string '' if not set, which is fine for Firestore.
+  // If notes could become strictly undefined (and not just an empty string):
+  // if (payloadForFirestore.notes === undefined) {
+  //   delete payloadForFirestore.notes;
+  // }
+
 
   const logDocRef = doc(db, getUserWorkoutLogsCollectionPath(userId), date);
   console.log(`[SERVICE] saveWorkoutLog: Document reference path: ${logDocRef.path}`);
-  console.log(`[SERVICE] saveWorkoutLog: Payload being saved:`, JSON.stringify(payloadToSave, null, 2));
+  console.log(`[SERVICE] saveWorkoutLog: Payload being saved to Firestore:`, JSON.stringify(payloadForFirestore, null, 2));
 
 
   try {
-    await setDoc(logDocRef, payloadToSave, { merge: true }); // Using merge:true might be safer if only partial updates are intended, but for full log save, it's fine.
+    // Pass the cleaned payload to setDoc
+    await setDoc(logDocRef, payloadForFirestore, { merge: true }); 
     console.log(`[SERVICE] Workout log for ${date} saved successfully for user ${userId}.`);
   } catch (error: any) {
     console.error(`[SERVICE] Error saving workout log for ${date}, user ${userId}:`, error);
@@ -292,47 +311,42 @@ export const updatePerformanceEntryOnLogDelete = async (
 
   const entryData = perfSnap.data() as ExercisePerformanceEntry;
   let needsFallbackRecalculation = false;
-  let updatedFields: Partial<ExercisePerformanceEntry> = {};
+  const updatedFields: Partial<ExercisePerformanceEntry> = {};
 
   console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: Existing entryData for exercise ${exerciseId}:`, JSON.stringify(entryData, null, 2));
 
-  // Check if Personal Record was sourced from the deleted log
-  if (entryData.personalRecord && entryData.personalRecord.logId === deletedLogId) {
-    console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: PR for exercise ${exerciseId} was sourced from deleted log ${deletedLogId}. Marking PR for clearing.`);
+  if (entryData.personalRecord?.logId === deletedLogId) {
+    console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: PR for exercise ${exerciseId} was sourced from deleted log ${deletedLogId}. Marking for clearing.`);
     updatedFields.personalRecord = null;
     needsFallbackRecalculation = true;
   } else {
-    console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: PR source log ID (${entryData.personalRecord?.logId}) does not match deleted log ID (${deletedLogId}). PR remains.`);
-    updatedFields.personalRecord = entryData.personalRecord; // Preserve existing PR
+    updatedFields.personalRecord = entryData.personalRecord;
   }
 
-  // Check if Last Performed Sets/Date were sourced from the deleted log
   if (entryData.lastPerformedDate) {
     const lastPerformedDateString = format(new Date(entryData.lastPerformedDate), "yyyy-MM-dd");
-    console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: Checking lastPerformedDate. DB timestamp: ${entryData.lastPerformedDate}, JS Date from ts: ${new Date(entryData.lastPerformedDate).toISOString()}, Formatted DB date: '${lastPerformedDateString}', Deleted Log ID: '${deletedLogId}'`);
+    console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: Checking lastPerformedDate. DB ts: ${entryData.lastPerformedDate}, Formatted: '${lastPerformedDateString}', Deleted Log ID: '${deletedLogId}'`);
     if (lastPerformedDateString === deletedLogId) {
-      console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: Match! LastPerformedSets & Date for exercise ${exerciseId} were sourced from deleted log ${deletedLogId}. Marking them for clearing.`);
+      console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: Match! lastPerformedDate for ${exerciseId} matches deleted log. Marking for clearing.`);
       updatedFields.lastPerformedDate = null;
       updatedFields.lastPerformedSets = [];
-      needsFallbackRecalculation = true; // Also trigger fallback for last sets
+      needsFallbackRecalculation = true;
     } else {
-      console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: No match for lastPerformedDate. Formatted DB date: '${lastPerformedDateString}', Deleted Log ID: '${deletedLogId}'. Last performed sets remain.`);
       updatedFields.lastPerformedDate = entryData.lastPerformedDate;
       updatedFields.lastPerformedSets = entryData.lastPerformedSets;
     }
   } else {
-    console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: No valid lastPerformedDate (number) found in entry for exercise ${exerciseId}. Current value:`, entryData.lastPerformedDate);
-    // If no lastPerformedDate, ensure fields are null/empty if not already set by PR logic
-    updatedFields.lastPerformedDate = updatedFields.lastPerformedDate !== undefined ? updatedFields.lastPerformedDate : null;
-    updatedFields.lastPerformedSets = updatedFields.lastPerformedSets !== undefined ? updatedFields.lastPerformedSets : [];
+    updatedFields.lastPerformedDate = null;
+    updatedFields.lastPerformedSets = [];
   }
 
   if (!needsFallbackRecalculation) {
-    console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: No invalidation needed for performance entry of ${exerciseId} based on deleted log ${deletedLogId}. Existing data in Firestore will be preserved or only PR was cleared if it matched.`);
-    // If only PR was cleared but last performed sets are from a different day, we still save the cleared PR.
-    if (entryData.personalRecord?.logId === deletedLogId && !(updatedFields.lastPerformedDate === null && updatedFields.lastPerformedSets?.length === 0)) {
+    // If only PR was cleared but last performed sets are from a different day
+    if (entryData.personalRecord?.logId === deletedLogId && updatedFields.lastPerformedDate !== null) {
          await updateDoc(perfRef, { personalRecord: null });
-         console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: Only PR was from deleted log. PR explicitly cleared. lastPerformedSets remain.`);
+         console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: Only PR was from deleted log and last sets are different. PR explicitly cleared.`);
+    } else {
+        console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: No invalidation needed for performance entry of ${exerciseId} based on deleted log ${deletedLogId}.`);
     }
     return;
   }
@@ -340,12 +354,11 @@ export const updatePerformanceEntryOnLogDelete = async (
   console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: Fallback recalculation needed for ${exerciseId}. Querying for newest remaining log (optimized).`);
   
   const logsCol = collection(db, getUserWorkoutLogsCollectionPath(userId));
-  // Optimized query using the denormalized 'exerciseIds' field
   let logsQuery = query(
     logsCol,
     where("exerciseIds", "array-contains", exerciseId),
     orderBy("date", "desc"),
-    limit(1)
+    limit(1) // Limit to 1, as we only need the single most recent.
   );
   
   let logsSnap = await getDocs(logsQuery);
@@ -356,14 +369,14 @@ export const updatePerformanceEntryOnLogDelete = async (
     const fullLogsQuery = query(logsCol, orderBy("date", "desc"));
     const fullLogsSnap = await getDocs(fullLogsQuery);
     
-    // Client-side filter for logs containing the exercise, excluding the deleted one
     fallbackLogDoc = fullLogsSnap.docs.find(doc => {
         const logData = doc.data() as WorkoutLog;
-        if (doc.id === deletedLogId) return false; // Exclude the log being deleted
-        // Check if exerciseIds field exists and use it, otherwise check exercises array
-        if (logData.exerciseIds) {
-            return logData.exerciseIds.includes(exerciseId);
+        if (doc.id === deletedLogId) return false;
+        // Check exerciseIds field first (for newer logs)
+        if (logData.exerciseIds && logData.exerciseIds.includes(exerciseId)) {
+            return true;
         }
+        // Fallback to checking the exercises array (for older logs)
         return logData.exercises.some(e => e.exerciseId === exerciseId);
     });
 
@@ -374,7 +387,7 @@ export const updatePerformanceEntryOnLogDelete = async (
 
 
   if (!fallbackLogDoc) {
-    console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: No remaining logs found for exercise ${exerciseId} (after optimized query and potential full scan). Performance entry will be fully cleared.`);
+    console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: No remaining logs found for exercise ${exerciseId}. Performance entry will be fully cleared.`);
     await updateDoc(perfRef, {
       personalRecord: null,
       lastPerformedDate: null,
@@ -387,7 +400,6 @@ export const updatePerformanceEntryOnLogDelete = async (
   const exerciseInFallbackLog = fallbackLogData.exercises.find(e => e.exerciseId === exerciseId);
 
   if (!exerciseInFallbackLog) {
-    // This should ideally not happen if fallbackLogDoc was found based on exercise presence
     console.error(`[SERVICE] updatePerformanceEntryOnLogDelete: Exercise ${exerciseId} not found in fallback log ${fallbackLogDoc.id}, though it was expected. Clearing performance entry.`);
     await updateDoc(perfRef, {
       personalRecord: null,
@@ -404,7 +416,7 @@ export const updatePerformanceEntryOnLogDelete = async (
   const newEntryData: Partial<ExercisePerformanceEntry> = {
     lastPerformedDate: Timestamp.fromDate(parseISO(fallbackLogData.id)).toMillis(),
     lastPerformedSets: exerciseInFallbackLog.sets.map(s => ({
-      id: s.id, // Ensure IDs are carried over or regenerated if necessary
+      id: s.id, 
       reps: Number(s.reps ?? 0),
       weight: Number(s.weight ?? 0),
     })),
@@ -412,18 +424,17 @@ export const updatePerformanceEntryOnLogDelete = async (
       ? {
           reps: bestSetInFallback.reps,
           weight: bestSetInFallback.weight,
-          date: Timestamp.fromDate(parseISO(fallbackLogData.id)).toMillis(), // Date PR was achieved in fallback log
-          logId: fallbackLogData.id, // Reference to the fallback log
+          date: Timestamp.fromDate(parseISO(fallbackLogData.id)).toMillis(),
+          logId: fallbackLogData.id,
         }
-      : null, // If no valid sets in fallback, no PR from it
+      : null,
   };
 
   await updateDoc(perfRef, newEntryData);
   console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: Fallback rebuild complete for ${exerciseId}. New entry:`, JSON.stringify(newEntryData, null, 2));
 };
 
-// Original console logs from user for reference:
-// console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: Initiated for userId=${userId}, exerciseId=${exerciseId}, deletedLogId=${deletedLogId}`);
+// Original console logs for reference in case of further debugging.
 // console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: Existing entryData for exercise ${exerciseId}:`, JSON.stringify(entryData));
 // console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: Checking PR. PR Log ID: '${entryData.personalRecord.logId}', Deleted Log ID: '${deletedLogId}'`);
 // console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: PR for exercise ${exerciseId} was sourced from deleted log ${deletedLogId}. Clearing PR.`);
@@ -440,7 +451,7 @@ export const updatePerformanceEntryOnLogDelete = async (
 // console.error(`[SERVICE] updatePerformanceEntryOnLogDelete: Error processing performance entry for exerciseId=${exerciseId}:`, error);
 // throw new Error(`Failed to update performance entry for ${exerciseId}. ${error.message}`);
 // Helper function to find best set within an array of sets (used internally)
-// const findBestSetInSetsArray = (sets: LoggedSet[]): { reps: number; weight: number } | null => { ... }; // Defined above
+// const findBestSetInSetsArray = (sets: LoggedSet[]): { ... }; // Defined above
 
 // Note on query for step 5:
 // The user's original proposal for the query was:
@@ -468,4 +479,8 @@ export const updatePerformanceEntryOnLogDelete = async (
 // Updated logic for handling `needsFallbackRecalculation` and preservation of non-affected fields.
 // Introduced a full scan fallback in `updatePerformanceEntryOnLogDelete` if the optimized query using `exerciseIds` yields no results.
 // This full scan iterates through all logs (ordered by date) and checks either the `exerciseIds` field (if present) or the `exercises` array to find a suitable fallback.
-
+// This should address the issue where older logs without the `exerciseIds` field were not being considered in the fallback.
+// Changed the logic for deleting undefined fields to operate on a copy (`payloadForFirestore`) to avoid mutating the input `workoutLogPayload`.
+// Ensured `payloadForFirestore` is typed as `Partial<WorkoutLog>` to satisfy TypeScript when deleting optional keys.
+// The `setDoc` call now uses `payloadForFirestore`.
+// Explicitly handling `duration` as well if it's undefined.
