@@ -11,7 +11,7 @@ import {
   getLastLoggedPerformance as fetchPerformanceEntryService, 
   saveExercisePerformanceEntry as savePerformanceEntryService,
   getLoggedDateStrings as fetchLoggedDateStringsService,
-  updatePerformanceEntryOnLogDelete, // Changed from clearPersonalRecordIfSourcedFromLog
+  updatePerformanceEntryOnLogDelete,
 } from '@/services/trainingLogService';
 import { getExercises as fetchAllUserExercises } from '@/services/exerciseService';
 import { getRoutines as fetchUserRoutines } from '@/services/routineService';
@@ -53,17 +53,17 @@ export const useTrainingLog = (initialDate: Date) => {
       return;
     }
     setIsLoadingLoggedDayStrings(true);
-    console.log("[HOOK] fetchLoggedDates: Fetching for user:", user.id);
+    // console.log("[HOOK] fetchLoggedDates: Fetching for user:", user.id);
     try {
       const dates = await fetchLoggedDateStringsService(user.id);
-      console.log("[HOOK] fetchLoggedDates: Received dates:", dates);
+      // console.log("[HOOK] fetchLoggedDates: Received dates:", dates);
       setLoggedDayStrings(dates);
     } catch (error: any) {
       toast({ title: "Error", description: `Failed to load logged dates: ${error.message}`, variant: "destructive" });
       setLoggedDayStrings([]);
     } finally {
       setIsLoadingLoggedDayStrings(false);
-      console.log("[HOOK] fetchLoggedDates: Finished. isLoadingLoggedDayStrings:", false);
+      // console.log("[HOOK] fetchLoggedDates: Finished. isLoadingLoggedDayStrings:", false);
     }
   }, [user?.id, toast]);
 
@@ -142,14 +142,17 @@ export const useTrainingLog = (initialDate: Date) => {
     }
   }, [user?.id, toast, fetchLoggedDates]);
 
-  useEffect(() => {
+ useEffect(() => {
     const effectDateId = format(selectedDate, 'yyyy-MM-dd');
     if (user?.id && !authIsLoading && !isLoadingRoutines && !isLoadingExercises) {
+      // All prerequisites met, proceed to load log for the date
       loadLogForDate(selectedDate);
     } else if (!user?.id && !authIsLoading) {
+      // User is definitively logged out, not loading auth anymore
       setCurrentLog({ id: effectDateId, date: effectDateId, exercises: [], notes: '' });
-      setIsLoadingLog(false);
+      setIsLoadingLog(false); // Stop loading, show empty log state
     } else {
+      // Prerequisites (auth, routines, exercises) are still loading
       setIsLoadingLog(true); 
     }
   }, [selectedDate, user?.id, authIsLoading, isLoadingRoutines, isLoadingExercises, loadLogForDate]);
@@ -364,7 +367,7 @@ export const useTrainingLog = (initialDate: Date) => {
       for (const deletedEx of exercisesInDeletedLog) {
         try {
           await updatePerformanceEntryOnLogDelete(user.id, deletedEx.exerciseId, logIdToDelete);
-          await refreshPersonalRecordDisplayForExercise(deletedEx.exerciseId);
+          await refreshPersonalRecordDisplayForExercise(deletedEx.exerciseId); 
         } catch (prClearError: any) {
           console.error(`[HOOK] deleteCurrentLog: Failed to clear/update PR for ${deletedEx.name}: ${prClearError.message}`);
         }
@@ -386,6 +389,8 @@ export const useTrainingLog = (initialDate: Date) => {
     } finally {
       setIsDeletingLog(false);
       if (user?.id) {
+         // After deletion and potential PR/last set updates, reload the log for the current selectedDate
+         // This ensures the UI reflects the potentially cleared last sets or PR for exercises on a new day.
         await loadLogForDate(selectedDate);
       }
     }
@@ -417,4 +422,3 @@ export const useTrainingLog = (initialDate: Date) => {
     deleteCurrentLog,
   };
 };
-

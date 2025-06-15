@@ -24,7 +24,7 @@ import {
   where,
   updateDoc,
 } from 'firebase/firestore';
-import { format as formatDateFns, fromUnixTime } from 'date-fns'; // Added fromUnixTime for timestamp conversion
+import { format as formatDateFns, fromUnixTime } from 'date-fns';
 
 const getUserWorkoutLogsCollectionPath = (userId: string) => `users/${userId}/workoutLogs`;
 const getUserPerformanceEntriesCollectionPath = (userId: string) => `users/${userId}/performanceEntries`;
@@ -267,39 +267,55 @@ export const updatePerformanceEntryOnLogDelete = async (userId: string, exercise
       const fieldsToUpdate: Partial<ExercisePerformanceEntry> = {};
       let needsUpdate = false;
 
+      console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: Existing entryData for exercise ${exerciseId}:`, JSON.stringify(entryData));
+
       // Check Personal Record
-      if (entryData.personalRecord && entryData.personalRecord.logId === deletedLogId) {
-        console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: PR for exercise ${exerciseId} was sourced from deleted log ${deletedLogId}. Clearing PR.`);
-        fieldsToUpdate.personalRecord = null;
-        needsUpdate = true;
+      if (entryData.personalRecord && entryData.personalRecord.logId) {
+        console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: Checking PR. PR Log ID: '${entryData.personalRecord.logId}', Deleted Log ID: '${deletedLogId}'`);
+        if (entryData.personalRecord.logId === deletedLogId) {
+          console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: PR for exercise ${exerciseId} was sourced from deleted log ${deletedLogId}. Clearing PR.`);
+          fieldsToUpdate.personalRecord = null;
+          needsUpdate = true;
+        } else {
+          console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: PR source log ID does not match deleted log ID.`);
+        }
+      } else {
+        console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: No PR or PR logId found for exercise ${exerciseId}.`);
       }
 
       // Check Last Performed Sets and Date
-      if (entryData.lastPerformedDate) {
-        // Convert Firestore timestamp (milliseconds) to Date object, then format
-        const lastPerformedDateString = formatDateFns(fromUnixTime(entryData.lastPerformedDate / 1000), 'yyyy-MM-dd');
+      if (typeof entryData.lastPerformedDate === 'number') {
+        const lastPerformedDateInSeconds = entryData.lastPerformedDate / 1000;
+        const jsDate = fromUnixTime(lastPerformedDateInSeconds);
+        const lastPerformedDateString = formatDateFns(jsDate, 'yyyy-MM-dd');
+
+        console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: Checking lastPerformedDate. DB timestamp: ${entryData.lastPerformedDate}, JS Date: ${jsDate.toISOString()}, Formatted: '${lastPerformedDateString}', Deleted Log ID: '${deletedLogId}'`);
+
         if (lastPerformedDateString === deletedLogId) {
-          console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: LastPerformedSets for exercise ${exerciseId} were sourced from deleted log ${deletedLogId}. Clearing them.`);
+          console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: Match! LastPerformedSets & Date for exercise ${exerciseId} were sourced from deleted log ${deletedLogId}. Clearing them.`);
           fieldsToUpdate.lastPerformedSets = [];
-          fieldsToUpdate.lastPerformedDate = null; // Or keep existing and rely on empty sets? Clearing seems cleaner.
+          fieldsToUpdate.lastPerformedDate = null;
           needsUpdate = true;
+        } else {
+          console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: No match for lastPerformedDate. Formatted DB date: '${lastPerformedDateString}', Deleted Log ID: '${deletedLogId}'`);
         }
+      } else {
+        console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: No valid lastPerformedDate (number) found in entry for exercise ${exerciseId}. Current value:`, entryData.lastPerformedDate);
       }
       
       if (needsUpdate) {
-        console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: Updating performance entry for ${exerciseId} with:`, fieldsToUpdate);
-        await updateDoc(performanceEntryDocRef, fieldsToUpdate); // updateDoc merges by default with non-nested fields
+        console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: Updating performance entry for ${exerciseId} with:`, JSON.stringify(fieldsToUpdate));
+        await updateDoc(performanceEntryDocRef, fieldsToUpdate);
         console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: Successfully updated performance entry for exercise ${exerciseId}.`);
       } else {
-        console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: No updates needed for performance entry of exercise ${exerciseId} based on deleted log ${deletedLogId}.`);
+        console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: No updates deemed necessary for performance entry of exercise ${exerciseId} based on deleted log ${deletedLogId}.`);
       }
 
     } else {
       console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: No performance entry found for exercise ${exerciseId}. No action taken.`);
     }
   } catch (error: any) {
-    console.error(`[SERVICE] updatePerformanceEntryOnLogDelete: Error processing PR/last sets for exerciseId=${exerciseId}:`, error);
+    console.error(`[SERVICE] updatePerformanceEntryOnLogDelete: Error processing performance entry for exerciseId=${exerciseId}:`, error);
     throw new Error(`Failed to update performance entry for ${exerciseId}. ${error.message}`);
   }
 };
-
