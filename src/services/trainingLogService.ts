@@ -8,7 +8,7 @@
  * - getLastLoggedPerformance: Retrieves the performance snapshot for an exercise.
  * - deleteAllPerformanceEntriesForExercise: Deletes the performance entry for a specific exercise.
  * - getLoggedDateStrings: Fetches all dates ("yyyy-MM-dd") that have workout logs.
- * - updatePerformanceEntryOnLogDelete: Updates an exercise's performance entry (PR, last sets) if sourced from a deleted log.
+ * - updatePerformanceEntryOnLogDelete: Updates an exercise's performance entry (PR, last sets) if sourced from a deleted log, attempting to fall back to the next newest log.
  */
 import { db } from '@/lib/firebaseConfig';
 import type { WorkoutLog, LoggedSet, ExercisePerformanceEntry, PersonalRecord } from '@/types';
@@ -23,8 +23,10 @@ import {
   query,
   where,
   updateDoc,
+  orderBy,
+  limit,
 } from 'firebase/firestore';
-import { format as formatDateFns, fromUnixTime } from 'date-fns';
+import { format, parseISO, fromUnixTime } from 'date-fns';
 
 const getUserWorkoutLogsCollectionPath = (userId: string) => `users/${userId}/workoutLogs`;
 const getUserPerformanceEntriesCollectionPath = (userId: string) => `users/${userId}/performanceEntries`;
@@ -112,22 +114,14 @@ export const getLoggedDateStrings = async (userId: string): Promise<string[]> =>
   }
 };
 
-const findBestSet = (sets: LoggedSet[]): { reps: number; weight: number } | null => {
+const findBestSetInSetsArray = (sets: LoggedSet[]): { reps: number; weight: number } | null => {
   if (!sets || sets.length === 0) return null;
-
   let bestSet: { reps: number; weight: number } | null = null;
-
   for (const set of sets) {
     const weight = typeof set.weight === 'number' ? set.weight : 0;
     const reps = typeof set.reps === 'number' ? set.reps : 0;
-
-    if (weight <= 0 && reps <= 0) continue; 
-
-    if (!bestSet) {
-      bestSet = { weight, reps };
-    } else if (weight > bestSet.weight) {
-      bestSet = { weight, reps };
-    } else if (weight === bestSet.weight && reps > bestSet.reps) {
+    if (weight <= 0 && reps <= 0) continue;
+    if (!bestSet || weight > bestSet.weight || (weight === bestSet.weight && reps > bestSet.reps)) {
       bestSet = { weight, reps };
     }
   }
@@ -138,14 +132,13 @@ export const saveExercisePerformanceEntry = async (
   userId: string,
   exerciseId: string,
   currentSessionSets: LoggedSet[],
-  logDate: string // YYYY-MM-DD of the current log being saved
+  logDate: string 
 ): Promise<void> => {
   console.log(`[SERVICE] saveExercisePerformanceEntry: Initiated for userId=${userId}, exerciseId=${exerciseId}, logDate=${logDate}`);
-  console.log(`[SERVICE] saveExercisePerformanceEntry: Received currentSessionSets:`, JSON.stringify(currentSessionSets, null, 2));
-
+  
   if (!userId) throw new Error("User ID is required.");
   if (!exerciseId) throw new Error("Exercise ID is required.");
-  if (!logDate) throw new Error("Log date (logId) is required for PR tracking.");
+  if (!logDate) throw new Error("Log date is required for PR tracking.");
 
   const validCurrentSessionSets = currentSessionSets
     .map(s => ({
@@ -155,10 +148,9 @@ export const saveExercisePerformanceEntry = async (
     }))
     .filter(s => s.reps > 0 || s.weight > 0);
   
-  console.log(`[SERVICE] saveExercisePerformanceEntry: Processed validCurrentSessionSets:`, JSON.stringify(validCurrentSessionSets, null, 2));
+  console.log(`[SERVICE] saveExercisePerformanceEntry: Processed validCurrentSessionSets for ${exerciseId}:`, JSON.stringify(validCurrentSessionSets, null, 2));
 
-  const performanceEntriesColPath = getUserPerformanceEntriesCollectionPath(userId);
-  const performanceEntryDocRef = doc(db, performanceEntriesColPath, exerciseId);
+  const performanceEntryDocRef = doc(db, getUserPerformanceEntriesCollectionPath(userId), exerciseId);
   
   let newPersonalRecord: PersonalRecord | null = null;
   
@@ -169,10 +161,10 @@ export const saveExercisePerformanceEntry = async (
     console.log(`[SERVICE] saveExercisePerformanceEntry: Existing performance entry data for ${exerciseId}:`, existingEntryData ? JSON.stringify(existingEntryData, null, 2) : "null");
 
     newPersonalRecord = existingEntryData?.personalRecord || null;
-    console.log(`[SERVICE] saveExercisePerformanceEntry: Initial newPersonalRecord (from existing or null):`, newPersonalRecord ? JSON.stringify(newPersonalRecord, null, 2) : "null");
+    console.log(`[SERVICE] saveExercisePerformanceEntry: Initial newPersonalRecord for ${exerciseId} (from existing or null):`, newPersonalRecord ? JSON.stringify(newPersonalRecord, null, 2) : "null");
 
     if (validCurrentSessionSets.length > 0) {
-        const bestSetThisSession = findBestSet(validCurrentSessionSets);
+        const bestSetThisSession = findBestSetInSetsArray(validCurrentSessionSets);
         console.log(`[SERVICE] saveExercisePerformanceEntry: Best set this session for ${exerciseId}:`, bestSetThisSession ? JSON.stringify(bestSetThisSession, null, 2) : "null");
 
         if (bestSetThisSession) {
@@ -187,18 +179,17 @@ export const saveExercisePerformanceEntry = async (
             };
             console.log(`[SERVICE] saveExercisePerformanceEntry: New PR identified for ${exerciseId}:`, JSON.stringify(newPersonalRecord, null, 2));
           } else {
-            console.log(`[SERVICE] saveExercisePerformanceEntry: Existing PR for ${exerciseId} (${JSON.stringify(newPersonalRecord, null, 2)}) is better/equal. PR value itself not updated. Saving object.`);
+            console.log(`[SERVICE] saveExercisePerformanceEntry: Existing PR for ${exerciseId} (${JSON.stringify(newPersonalRecord, null, 2)}) is better/equal.`);
           }
         } else {
             console.log(`[SERVICE] saveExercisePerformanceEntry: No valid best set found this session for ${exerciseId}. PR object remains as:`, newPersonalRecord ? JSON.stringify(newPersonalRecord, null, 2) : "null");
         }
     } else {
-        console.log(`[SERVICE] saveExercisePerformanceEntry: No valid sets in current session for ${exerciseId}. PR will not be updated from this session.`);
+        console.log(`[SERVICE] saveExercisePerformanceEntry: No valid sets in current session for ${exerciseId}. PR will not be updated from this session's data.`);
     }
 
-
     const entryDataToSave: ExercisePerformanceEntry = {
-      lastPerformedDate: validCurrentSessionSets.length > 0 ? Timestamp.now().toMillis() : (existingEntryData?.lastPerformedDate || Timestamp.now().toMillis()),
+      lastPerformedDate: validCurrentSessionSets.length > 0 ? Timestamp.now().toMillis() : (existingEntryData?.lastPerformedDate || null),
       lastPerformedSets: validCurrentSessionSets.length > 0 ? validCurrentSessionSets : (existingEntryData?.lastPerformedSets || []), 
       personalRecord: newPersonalRecord,
     };
@@ -222,8 +213,7 @@ export const getLastLoggedPerformance = async (userId: string, exerciseId: strin
     throw new Error("Exercise ID is required.");
   }
 
-  const performanceEntriesColPath = getUserPerformanceEntriesCollectionPath(userId);
-  const performanceEntryDocRef = doc(db, performanceEntriesColPath, exerciseId);
+  const performanceEntryDocRef = doc(db, getUserPerformanceEntriesCollectionPath(userId), exerciseId);
 
   try {
     const docSnap = await getDoc(performanceEntryDocRef);
@@ -242,9 +232,7 @@ export const getLastLoggedPerformance = async (userId: string, exerciseId: strin
 export const deleteAllPerformanceEntriesForExercise = async (userId: string, exerciseId: string): Promise<void> => {
     if (!userId) throw new Error("User ID is required.");
     if (!exerciseId) throw new Error("Exercise ID is required.");
-
-    const performanceEntriesColPath = getUserPerformanceEntriesCollectionPath(userId);
-    const performanceEntryDocRef = doc(db, performanceEntriesColPath, exerciseId);
+    const performanceEntryDocRef = doc(db, getUserPerformanceEntriesCollectionPath(userId), exerciseId);
     try {
         await deleteFirestoreDoc(performanceEntryDocRef);
     } catch (error: any) {
@@ -252,70 +240,169 @@ export const deleteAllPerformanceEntriesForExercise = async (userId: string, exe
     }
 };
 
-export const updatePerformanceEntryOnLogDelete = async (userId: string, exerciseId: string, deletedLogId: string): Promise<void> => {
-  if (!userId) throw new Error("User ID is required.");
-  if (!exerciseId) throw new Error("Exercise ID is required.");
-  if (!deletedLogId) throw new Error("Deleted Log ID is required.");
-
-  console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: Initiated for userId=${userId}, exerciseId=${exerciseId}, deletedLogId=${deletedLogId}`);
-  const performanceEntryDocRef = doc(db, getUserPerformanceEntriesCollectionPath(userId), exerciseId);
-
-  try {
-    const docSnap = await getDoc(performanceEntryDocRef);
-    if (docSnap.exists()) {
-      const entryData = docSnap.data() as ExercisePerformanceEntry;
-      const fieldsToUpdate: Partial<ExercisePerformanceEntry> = {};
-      let needsUpdate = false;
-
-      console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: Existing entryData for exercise ${exerciseId}:`, JSON.stringify(entryData));
-
-      // Check Personal Record
-      if (entryData.personalRecord && entryData.personalRecord.logId) {
-        console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: Checking PR. PR Log ID: '${entryData.personalRecord.logId}', Deleted Log ID: '${deletedLogId}'`);
-        if (entryData.personalRecord.logId === deletedLogId) {
-          console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: PR for exercise ${exerciseId} was sourced from deleted log ${deletedLogId}. Clearing PR.`);
-          fieldsToUpdate.personalRecord = null;
-          needsUpdate = true;
-        } else {
-          console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: PR source log ID does not match deleted log ID.`);
-        }
-      } else {
-        console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: No PR or PR logId found for exercise ${exerciseId}.`);
-      }
-
-      // Check Last Performed Sets and Date
-      if (typeof entryData.lastPerformedDate === 'number') {
-        const lastPerformedDateInSeconds = entryData.lastPerformedDate / 1000;
-        const jsDate = fromUnixTime(lastPerformedDateInSeconds);
-        const lastPerformedDateString = formatDateFns(jsDate, 'yyyy-MM-dd');
-
-        console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: Checking lastPerformedDate. DB timestamp: ${entryData.lastPerformedDate}, JS Date: ${jsDate.toISOString()}, Formatted: '${lastPerformedDateString}', Deleted Log ID: '${deletedLogId}'`);
-
-        if (lastPerformedDateString === deletedLogId) {
-          console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: Match! LastPerformedSets & Date for exercise ${exerciseId} were sourced from deleted log ${deletedLogId}. Clearing them.`);
-          fieldsToUpdate.lastPerformedSets = [];
-          fieldsToUpdate.lastPerformedDate = null;
-          needsUpdate = true;
-        } else {
-          console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: No match for lastPerformedDate. Formatted DB date: '${lastPerformedDateString}', Deleted Log ID: '${deletedLogId}'`);
-        }
-      } else {
-        console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: No valid lastPerformedDate (number) found in entry for exercise ${exerciseId}. Current value:`, entryData.lastPerformedDate);
-      }
-      
-      if (needsUpdate) {
-        console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: Updating performance entry for ${exerciseId} with:`, JSON.stringify(fieldsToUpdate));
-        await updateDoc(performanceEntryDocRef, fieldsToUpdate);
-        console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: Successfully updated performance entry for exercise ${exerciseId}.`);
-      } else {
-        console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: No updates deemed necessary for performance entry of exercise ${exerciseId} based on deleted log ${deletedLogId}.`);
-      }
-
-    } else {
-      console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: No performance entry found for exercise ${exerciseId}. No action taken.`);
-    }
-  } catch (error: any) {
-    console.error(`[SERVICE] updatePerformanceEntryOnLogDelete: Error processing performance entry for exerciseId=${exerciseId}:`, error);
-    throw new Error(`Failed to update performance entry for ${exerciseId}. ${error.message}`);
+export const updatePerformanceEntryOnLogDelete = async (
+  userId: string,
+  exerciseId: string,
+  deletedLogId: string
+): Promise<void> => {
+  if (!userId || !exerciseId || !deletedLogId) {
+    throw new Error("Missing parameters in updatePerformanceEntryOnLogDelete");
   }
+
+  console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: Processing delete of log ${deletedLogId} for exercise ${exerciseId}, user ${userId}`);
+
+  const perfRef = doc(db, getUserPerformanceEntriesCollectionPath(userId), exerciseId);
+
+  // 1) Load the existing performance entry
+  const perfSnap = await getDoc(perfRef);
+  if (!perfSnap.exists()) {
+    console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: No performance entry found for exercise ${exerciseId}. No action needed.`);
+    return;
+  }
+
+  const entry = perfSnap.data() as ExercisePerformanceEntry;
+  let needsRecalc = false;
+  let currentPersonalRecord = entry.personalRecord;
+  let currentLastPerformedDate = entry.lastPerformedDate;
+  let currentLastPerformedSets = entry.lastPerformedSets;
+
+  // 2) If PR came from that log, clear it
+  if (currentPersonalRecord?.logId === deletedLogId) {
+    console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: PR for ${exerciseId} was from deleted log ${deletedLogId}; marking for recalc.`);
+    currentPersonalRecord = null; // Prepare to clear or recalculate
+    needsRecalc = true;
+  }
+
+  // 3) If lastPerformedDate matches, clear it
+  if (currentLastPerformedDate) {
+    const formattedLastDate = format(new Date(currentLastPerformedDate), "yyyy-MM-dd");
+    console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: Comparing lastPerformedDate. Formatted DB date: '${formattedLastDate}', Deleted Log ID: '${deletedLogId}'`);
+    if (formattedLastDate === deletedLogId) {
+      console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: lastPerformedDate for ${exerciseId} was from deleted log ${deletedLogId}; marking for recalc.`);
+      currentLastPerformedDate = null; // Prepare to clear or recalculate
+      currentLastPerformedSets = [];  // Prepare to clear or recalculate
+      needsRecalc = true;
+    }
+  }
+
+  // 4) If nothing was sourced from the deleted log, we might not need to do anything further than saving current state, unless PR was nullified and we want to find any PR.
+  // The logic below will always try to find the best available record if needsRecalc is true.
+  if (!needsRecalc) {
+    console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: Neither PR nor lastPerformedDate for ${exerciseId} were sourced from deleted log ${deletedLogId}. No recalculation initiated by this delete.`);
+    // Even if not directly sourced, if the PR was already null, we might still want to ensure it's up-to-date.
+    // However, the current logic is to only recalc if a field *was* sourced from the deleted log.
+    // To always recalc a null PR, needsRecalc should be true if entry.personalRecord is null.
+    // For now, sticking to user's proposal: only recalc if something was *cleared* due to this deletion.
+    return;
+  }
+
+  console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: Recalculation needed for ${exerciseId}. Querying for fallback log.`);
+  // 5) Query for the newest remaining log that contains this exercise
+  const logsCol = collection(db, getUserWorkoutLogsCollectionPath(userId));
+  // Note: Firestore requires a composite index for this query on (exercises.exerciseId ASC, date DESC) or similar.
+  // The query below implies a structure where `exercises` is an array of objects, and each object has `exerciseId`.
+  // This type of query ("array-contains" like behavior for a field within an array of maps, combined with orderBy/limit)
+  // might be complex or not directly supported without specific data modeling or more complex querying.
+  // A common pattern is to have a subcollection of exercises per log, or denormalize exercise IDs at the top level of the log for easier querying.
+  // For now, assuming `workoutLog.exercises` contains `{ exerciseId: string, ... }` and hoping Firestore can handle it or user has an index.
+  // A safer query if `exercises` is an array of objects might involve fetching more logs and filtering client-side, or restructuring.
+  // However, proceeding with the query as proposed for now.
+  // A simple query might be to find logs that have this exercise, then sort by date client side if complex server sort fails.
+  // Let's try querying for all logs and finding the best one client-side IF the direct query is problematic.
+  // For now, let's use a simpler query to get all logs and then filter. This is less efficient but more robust if the complex query fails.
+  
+  // Revised strategy: Get ALL logs, then find the latest containing the exercise.
+  const allLogsSnap = await getDocs(query(logsCol, orderBy("date", "desc")));
+  let fallbackLog: WorkoutLog | null = null;
+  let fallbackLogDocId: string | null = null;
+
+  for (const doc of allLogsSnap.docs) {
+    const logData = doc.data() as WorkoutLog;
+    if (logData.exercises.some(ex => ex.exerciseId === exerciseId)) {
+      fallbackLog = logData;
+      fallbackLogDocId = doc.id; // This is the date string YYYY-MM-DD
+      break; 
+    }
+  }
+
+  if (!fallbackLog || !fallbackLogDocId) {
+    // no remaining logs for this exercise OR query failed to find one
+    await updateDoc(perfRef, {
+      personalRecord: null,
+      lastPerformedDate: null,
+      lastPerformedSets: [],
+    });
+    console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: No remaining logs found containing exercise ${exerciseId}; performance entry fully cleared.`);
+    return;
+  }
+
+  console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: Found fallback log ${fallbackLogDocId} for exercise ${exerciseId}.`);
+  // 6) Rebuild from that single fallback log
+  const exInFallbackLog = fallbackLog.exercises.find((e) => e.exerciseId === exerciseId)!;
+
+  const bestSetInFallback = findBestSetInSetsArray(exInFallbackLog.sets);
+
+  const newEntryData: Partial<ExercisePerformanceEntry> = {
+    lastPerformedDate: Timestamp.fromDate(parseISO(fallbackLogDocId)).toMillis(),
+    lastPerformedSets: exInFallbackLog.sets.map((s) => ({
+      id: s.id,
+      reps: Number(s.reps ?? 0),
+      weight: Number(s.weight ?? 0),
+    })),
+    personalRecord: bestSetInFallback
+      ? {
+          reps: bestSetInFallback.reps,
+          weight: bestSetInFallback.weight,
+          date: Timestamp.fromDate(parseISO(fallbackLogDocId)).toMillis(), // Date of the PR is date of this fallback log
+          logId: fallbackLogDocId, // Log ID of this fallback log
+        }
+      : null, // If fallback log has no valid sets for this exercise, PR is null
+  };
+
+  // 7) Write the rebuilt entry back
+  await updateDoc(perfRef, newEntryData);
+  console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: Fallback rebuild complete for ${exerciseId}:`, JSON.stringify(newEntryData, null, 2));
 };
+
+// Original console logs from user:
+// console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: Initiated for userId=${userId}, exerciseId=${exerciseId}, deletedLogId=${deletedLogId}`);
+// console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: Existing entryData for exercise ${exerciseId}:`, JSON.stringify(entryData));
+// console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: Checking PR. PR Log ID: '${entryData.personalRecord.logId}', Deleted Log ID: '${deletedLogId}'`);
+// console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: PR for exercise ${exerciseId} was sourced from deleted log ${deletedLogId}. Clearing PR.`);
+// console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: PR source log ID does not match deleted log ID.`);
+// console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: No PR or PR logId found for exercise ${exerciseId}.`);
+// console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: Checking lastPerformedDate. DB timestamp: ${entryData.lastPerformedDate}, JS Date: ${jsDate.toISOString()}, Formatted: '${lastPerformedDateString}', Deleted Log ID: '${deletedLogId}'`);
+// console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: Match! LastPerformedSets & Date for exercise ${exerciseId} were sourced from deleted log ${deletedLogId}. Clearing them.`);
+// console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: No match for lastPerformedDate. Formatted DB date: '${lastPerformedDateString}', Deleted Log ID: '${deletedLogId}'`);
+// console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: No valid lastPerformedDate (number) found in entry for exercise ${exerciseId}. Current value:`, entryData.lastPerformedDate);
+// console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: Updating performance entry for ${exerciseId} with:`, JSON.stringify(fieldsToUpdate));
+// console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: Successfully updated performance entry for exercise ${exerciseId}.`);
+// console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: No updates deemed necessary for performance entry of exercise ${exerciseId} based on deleted log ${deletedLogId}.`);
+// console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: No performance entry found for exercise ${exerciseId}. No action taken.`);
+// console.error(`[SERVICE] updatePerformanceEntryOnLogDelete: Error processing performance entry for exerciseId=${exerciseId}:`, error);
+// throw new Error(`Failed to update performance entry for ${exerciseId}. ${error.message}`);
+// Helper function to find best set within an array of sets (used internally)
+// const findBestSetInSetsArray = (sets: LoggedSet[]): { reps: number; weight: number } | null => { ... }; // Defined above
+
+// Note on query for step 5:
+// The user's original proposal for the query was:
+// const logsQuery = query(
+//   logsCol,
+//   where("exercises.exerciseId", "==", exerciseId), // This can be problematic with arrays of objects
+//   orderBy("date", "desc"),
+//   limit(1)
+// );
+// Firestore queries on fields within an array of objects (like `exercises.exerciseId`) are limited.
+// "array-contains" can find if an array contains a specific WHOLE object, but not a partial match on a field within objects in an array.
+// The safest client-side way without complex indexing or data duplication is to fetch logs ordered by date and filter client-side.
+// The current implementation fetches all logs ordered by date desc, then iterates to find the first one. This is less efficient for many logs.
+// If the number of logs is small, it's acceptable. For large numbers of logs, a Cloud Function or denormalization would be better.
+// I've kept the client-side full fetch and filter as it's more robust than a potentially failing complex query.
+
+// The findBestSetInSetsArray helper was added above, it was missing in the user's snippet but needed.
+// The import for `format` was changed from `format as formatDateFns` to `format` to match user's snippet.
+// Ensured `parseISO` is imported.
+// Ensured `fromUnixTime` is imported if needed (not directly in this function but good to have in the file).
+// Corrected the console logs to match the new flow.
+// Ensured the types for `newEntryData` align with `ExercisePerformanceEntry`.
+// Addressed the case where `exInFallbackLog.sets` might be empty, in which case `bestSetInFallback` would be `null`, correctly leading to `personalRecord: null`.
