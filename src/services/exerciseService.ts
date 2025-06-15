@@ -18,12 +18,12 @@ import { deleteAllPerformanceEntriesForExercise } from './trainingLogService'; /
 // Firestore collection path for a user's exercises
 const getUserExercisesCollectionPath = (userId: string) => `users/${userId}/exercises`;
 
-// Add a new exercise for a user
+// Add a new exercise for a user (typically for user-created, non-default exercises)
 export const addExercise = async (userId: string, exerciseData: ExerciseData): Promise<Exercise> => {
   if (!userId) throw new Error("User ID is required to add an exercise.");
   try {
     const userExercisesColRef = collection(db, getUserExercisesCollectionPath(userId));
-    const docRef = await addDoc(userExercisesColRef, exerciseData);
+    const docRef = await addDoc(userExercisesColRef, exerciseData); // Firestore generates ID
     return { id: docRef.id, ...exerciseData };
   } catch (error: any) {
     console.error("Detailed error adding exercise to Firestore: ", error); 
@@ -31,24 +31,29 @@ export const addExercise = async (userId: string, exerciseData: ExerciseData): P
   }
 };
 
-// Add a batch of default exercises for a user
-export const addDefaultExercisesBatch = async (userId: string, defaultExercises: ExerciseData[]): Promise<void> => {
+// Add/Update a batch of default exercises for a user using predefined IDs (upsert behavior)
+export const addDefaultExercisesBatch = async (userId: string, defaultExercisesWithIds: Exercise[]): Promise<void> => {
   if (!userId) throw new Error("User ID is required to add default exercises.");
-  if (!defaultExercises || defaultExercises.length === 0) return;
+  if (!defaultExercisesWithIds || defaultExercisesWithIds.length === 0) return;
 
   try {
     const userExercisesColRef = collection(db, getUserExercisesCollectionPath(userId));
     const batch = writeBatch(db);
 
-    defaultExercises.forEach((exerciseData) => {
-      const newExerciseRef = doc(userExercisesColRef); 
-      batch.set(newExerciseRef, exerciseData);
+    defaultExercisesWithIds.forEach((exercise) => {
+      const { id, ...exercisePayload } = exercise; // Destructure ID, rest is payload
+      if (!id) {
+        console.warn("Skipping default exercise due to missing ID:", exercise.name);
+        return;
+      }
+      const exerciseDocRef = doc(userExercisesColRef, id); // Use predefined ID for the document reference
+      batch.set(exerciseDocRef, exercisePayload); // This will create if not exists, or overwrite if exists
     });
 
     await batch.commit();
   } catch (error: any) {
-    console.error("Error adding default exercises batch to Firestore: ", error);
-    throw new Error("Failed to add default exercises.");
+    console.error("Error adding/updating default exercises batch in Firestore: ", error);
+    throw new Error("Failed to add/update default exercises.");
   }
 };
 
@@ -99,4 +104,3 @@ export const deleteExercise = async (userId: string, exerciseId: string): Promis
     throw new Error("Failed to delete exercise.");
   }
 };
-
