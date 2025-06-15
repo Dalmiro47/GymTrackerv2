@@ -122,7 +122,6 @@ export default function TrainingLogPage() {
     if (isLoadingLog || !currentLog || !currentLog.routineId) {
       return ""; 
     }
-    // Check if the currentLog's routineId is actually among the available routines
     const routineExists = availableRoutines.some(r => r.id === currentLog.routineId);
     return routineExists ? currentLog.routineId : "";
   }, [currentLog, isLoadingLog, availableRoutines]);
@@ -212,9 +211,9 @@ export default function TrainingLogPage() {
                     if (date) {
                       setSelectedDate(date);
                     }
-                    setIsCalendarOpen(false); // Close popover on date select
+                    setIsCalendarOpen(false); // This ensures the popover closes on date selection
                   }}
-                  initialFocus
+                  // initialFocus // Removed initialFocus as a troubleshooting step
                 />
               </PopoverContent>
             </Popover>
@@ -303,4 +302,3 @@ export default function TrainingLogPage() {
     </div>
   );
 }
-
