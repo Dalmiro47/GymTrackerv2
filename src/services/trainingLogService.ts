@@ -8,7 +8,7 @@
  * - getLastLoggedPerformance: Retrieves the performance snapshot for an exercise.
  * - deleteAllPerformanceEntriesForExercise: Deletes the performance entry for a specific exercise.
  * - getLoggedDateStrings: Fetches all dates ("yyyy-MM-dd") that have workout logs.
- * - clearPersonalRecordIfSourcedFromLog: Clears an exercise's PR if it came from a specified deleted log.
+ * - updatePerformanceEntryOnLogDelete: Updates an exercise's performance entry (PR, last sets) if sourced from a deleted log.
  */
 import { db } from '@/lib/firebaseConfig';
 import type { WorkoutLog, LoggedSet, ExercisePerformanceEntry, PersonalRecord } from '@/types';
@@ -22,7 +22,9 @@ import {
   getDocs,
   query,
   where,
+  updateDoc,
 } from 'firebase/firestore';
+import { format as formatDateFns, fromUnixTime } from 'date-fns'; // Added fromUnixTime for timestamp conversion
 
 const getUserWorkoutLogsCollectionPath = (userId: string) => `users/${userId}/workoutLogs`;
 const getUserPerformanceEntriesCollectionPath = (userId: string) => `users/${userId}/performanceEntries`;
@@ -181,7 +183,7 @@ export const saveExercisePerformanceEntry = async (
               reps: bestSetThisSession.reps,
               weight: bestSetThisSession.weight,
               date: Timestamp.now().toMillis(), 
-              logId: logDate, // Store the ID of the log where this PR was achieved
+              logId: logDate, 
             };
             console.log(`[SERVICE] saveExercisePerformanceEntry: New PR identified for ${exerciseId}:`, JSON.stringify(newPersonalRecord, null, 2));
           } else {
@@ -250,30 +252,54 @@ export const deleteAllPerformanceEntriesForExercise = async (userId: string, exe
     }
 };
 
-export const clearPersonalRecordIfSourcedFromLog = async (userId: string, exerciseId: string, deletedLogId: string): Promise<void> => {
+export const updatePerformanceEntryOnLogDelete = async (userId: string, exerciseId: string, deletedLogId: string): Promise<void> => {
   if (!userId) throw new Error("User ID is required.");
   if (!exerciseId) throw new Error("Exercise ID is required.");
   if (!deletedLogId) throw new Error("Deleted Log ID is required.");
 
-  console.log(`[SERVICE] clearPersonalRecordIfSourcedFromLog: Initiated for userId=${userId}, exerciseId=${exerciseId}, deletedLogId=${deletedLogId}`);
+  console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: Initiated for userId=${userId}, exerciseId=${exerciseId}, deletedLogId=${deletedLogId}`);
   const performanceEntryDocRef = doc(db, getUserPerformanceEntriesCollectionPath(userId), exerciseId);
 
   try {
     const docSnap = await getDoc(performanceEntryDocRef);
     if (docSnap.exists()) {
       const entryData = docSnap.data() as ExercisePerformanceEntry;
+      const fieldsToUpdate: Partial<ExercisePerformanceEntry> = {};
+      let needsUpdate = false;
+
+      // Check Personal Record
       if (entryData.personalRecord && entryData.personalRecord.logId === deletedLogId) {
-        console.log(`[SERVICE] clearPersonalRecordIfSourcedFromLog: PR for exercise ${exerciseId} was sourced from deleted log ${deletedLogId}. Clearing PR.`);
-        await setDoc(performanceEntryDocRef, { personalRecord: null }, { merge: true });
-        console.log(`[SERVICE] clearPersonalRecordIfSourcedFromLog: Successfully cleared PR for exercise ${exerciseId}.`);
-      } else {
-        console.log(`[SERVICE] clearPersonalRecordIfSourcedFromLog: PR for exercise ${exerciseId} was not sourced from deleted log ${deletedLogId} or no PR exists. No action taken.`);
+        console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: PR for exercise ${exerciseId} was sourced from deleted log ${deletedLogId}. Clearing PR.`);
+        fieldsToUpdate.personalRecord = null;
+        needsUpdate = true;
       }
+
+      // Check Last Performed Sets and Date
+      if (entryData.lastPerformedDate) {
+        // Convert Firestore timestamp (milliseconds) to Date object, then format
+        const lastPerformedDateString = formatDateFns(fromUnixTime(entryData.lastPerformedDate / 1000), 'yyyy-MM-dd');
+        if (lastPerformedDateString === deletedLogId) {
+          console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: LastPerformedSets for exercise ${exerciseId} were sourced from deleted log ${deletedLogId}. Clearing them.`);
+          fieldsToUpdate.lastPerformedSets = [];
+          fieldsToUpdate.lastPerformedDate = null; // Or keep existing and rely on empty sets? Clearing seems cleaner.
+          needsUpdate = true;
+        }
+      }
+      
+      if (needsUpdate) {
+        console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: Updating performance entry for ${exerciseId} with:`, fieldsToUpdate);
+        await updateDoc(performanceEntryDocRef, fieldsToUpdate); // updateDoc merges by default with non-nested fields
+        console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: Successfully updated performance entry for exercise ${exerciseId}.`);
+      } else {
+        console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: No updates needed for performance entry of exercise ${exerciseId} based on deleted log ${deletedLogId}.`);
+      }
+
     } else {
-      console.log(`[SERVICE] clearPersonalRecordIfSourcedFromLog: No performance entry found for exercise ${exerciseId}. No action taken.`);
+      console.log(`[SERVICE] updatePerformanceEntryOnLogDelete: No performance entry found for exercise ${exerciseId}. No action taken.`);
     }
   } catch (error: any) {
-    console.error(`[SERVICE] clearPersonalRecordIfSourcedFromLog: Error processing PR for exerciseId=${exerciseId}:`, error);
-    throw new Error(`Failed to clear personal record for ${exerciseId}. ${error.message}`);
+    console.error(`[SERVICE] updatePerformanceEntryOnLogDelete: Error processing PR/last sets for exerciseId=${exerciseId}:`, error);
+    throw new Error(`Failed to update performance entry for ${exerciseId}. ${error.message}`);
   }
 };
+
