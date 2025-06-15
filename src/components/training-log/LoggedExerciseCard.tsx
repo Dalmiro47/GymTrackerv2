@@ -17,7 +17,7 @@ interface LoggedExerciseCardProps {
   onUpdateSets: (sets: LoggedSet[]) => void;
   onSaveProgress: () => Promise<void>; 
   onRemove: () => void;
-  onRefreshStats: () => void; // Renamed from onRefreshLastPerformance
+  onRefreshStats: () => void; 
   isSavingParentLog: boolean; 
 }
 
@@ -26,7 +26,7 @@ export function LoggedExerciseCard({
   onUpdateSets,
   onSaveProgress,
   onRemove,
-  onRefreshStats, // Renamed
+  onRefreshStats, 
   isSavingParentLog
 }: LoggedExerciseCardProps) {
   const {
@@ -50,7 +50,9 @@ export function LoggedExerciseCard({
   const [justSaved, setJustSaved] = useState(false);
 
   useEffect(() => {
-    setLocalSets(loggedExercise.sets);
+    // Sync localSets when the sets from parent (currentLog) change
+    // This is important if parent log reloads or an exercise is added from routine
+    setLocalSets(loggedExercise.sets.map(s => ({...s}))); // Create new array to ensure re-render
   }, [loggedExercise.sets]);
 
   const handleSetChange = (index: number, field: keyof Omit<LoggedSet, 'id'>, value: string) => {
@@ -58,12 +60,13 @@ export function LoggedExerciseCard({
     const numericValue = value === '' ? null : parseFloat(value); 
     if (newSets[index]) {
        newSets[index] = { ...newSets[index], [field]: numericValue };
-       setLocalSets(newSets);
-       onUpdateSets(newSets); 
+       setLocalSets(newSets); // Update local state for immediate UI feedback
+       onUpdateSets(newSets); // Propagate change to parent (useTrainingLog)
     }
   };
 
   const addSet = () => {
+    // Generate a more unique ID if possible, though Date.now might suffice for client-side temp IDs
     const newSet: LoggedSet = { id: `set-${Date.now()}-${localSets.length + 1}`, reps: null, weight: null };
     const newSets = [...localSets, newSet];
     setLocalSets(newSets);
@@ -80,11 +83,13 @@ export function LoggedExerciseCard({
     setIsSavingThisExercise(true);
     setJustSaved(false); 
     try {
+      // onSaveProgress should handle saving to Firestore and then updating the PR display
       await onSaveProgress(); 
       setJustSaved(true);
       setTimeout(() => setJustSaved(false), 2000); 
     } catch (error) {
       console.error("Error saving exercise progress from card:", error);
+      // Toast message for error might be handled in useTrainingLog or here
     } finally {
       setIsSavingThisExercise(false);
     }
@@ -112,9 +117,10 @@ export function LoggedExerciseCard({
         </div>
         <div className="pl-8 space-y-1">
             <div className="flex items-center justify-between text-xs text-muted-foreground mt-1">
+                {/* Display Personal Record */}
                 <span>{loggedExercise.personalRecordDisplay || 'PR: N/A'}</span>
                 <Button variant="link" size="sm" onClick={onRefreshStats} className="p-0 h-auto text-xs">
-                    <RotateCcw className="mr-1 h-3 w-3"/> Refresh
+                    <RotateCcw className="mr-1 h-3 w-3"/> Refresh PR
                 </Button>
             </div>
             {loggedExercise.exerciseSetup && (
@@ -128,7 +134,7 @@ export function LoggedExerciseCard({
       <CardContent className="p-4 space-y-3">
         {localSets.map((set, index) => (
           <SetInputRow
-            key={set.id}
+            key={set.id} // Ensure key is stable, especially if IDs are temporary client-side
             set={set}
             index={index}
             onSetChange={handleSetChange}
@@ -148,11 +154,11 @@ export function LoggedExerciseCard({
             onClick={handleSaveThisExercise} 
             disabled={isSavingThisExercise || isSavingParentLog}
             size="sm"
-            className="bg-primary/90 hover:bg-primary min-w-[120px]"
+            className="bg-primary/90 hover:bg-primary min-w-[140px]" // Adjusted min-width
             >
             {isSavingThisExercise ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : 
              justSaved ? <Check className="mr-2 h-4 w-4" /> : <Save className="mr-2 h-4 w-4" />}
-            {isSavingThisExercise ? "Saving..." : justSaved ? "Saved!" : "Save Exercise"}
+            {isSavingThisExercise ? "Saving..." : justSaved ? "Progress Saved!" : "Save Progress"}
           </Button>
         </div>
       </CardContent>
