@@ -5,7 +5,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { 
-  Calendar as CalendarIcon, 
+  Calendar as CalendarIconLucide, // Renamed to avoid conflict
   PlusCircle, 
   Save, 
   RotateCcw, 
@@ -64,7 +64,7 @@ export default function TrainingLogPage() {
     currentLog,
     isLoadingLog,
     isSavingLog,
-    isDeletingLog, // New state
+    isDeletingLog, 
     availableRoutines,
     isLoadingRoutines,
     availableExercises, 
@@ -78,7 +78,7 @@ export default function TrainingLogPage() {
     saveCurrentLog,
     updateOverallLogNotes,
     fetchAndSetLastPerformance,
-    deleteCurrentLog, // New function
+    deleteCurrentLog,
   } = useTrainingLog(new Date());
 
   const [isAddExerciseDialogOpen, setIsAddExerciseDialogOpen] = useState(false);
@@ -113,10 +113,16 @@ export default function TrainingLogPage() {
     setIsDeleteConfirmOpen(false);
   };
 
-  // Determine if there is anything to delete
   const canDeleteLog = useMemo(() => {
     return currentLog && (currentLog.exercises.length > 0 || (currentLog.notes && currentLog.notes.trim() !== ''));
   }, [currentLog]);
+
+  const routineSelectValue = useMemo(() => {
+    if (isLoadingLog || !currentLog) {
+      return ""; 
+    }
+    return currentLog.routineId || "";
+  }, [currentLog, isLoadingLog]);
 
   if (authIsLoading) {
     return (
@@ -190,8 +196,8 @@ export default function TrainingLogPage() {
             </div>
             <Popover>
               <PopoverTrigger asChild>
-                <Button variant="outline" className="w-[280px] justify-start text-left font-normal">
-                  <CalendarIcon className="mr-2 h-4 w-4" />
+                <Button variant="outline" className="w-full sm:w-[280px] justify-start text-left font-normal">
+                  <CalendarIconLucide className="mr-2 h-4 w-4" />
                   {selectedDate ? format(selectedDate, "PPP") : <span>Pick a date</span>}
                 </Button>
               </PopoverTrigger>
@@ -208,9 +214,13 @@ export default function TrainingLogPage() {
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
-            <Select onValueChange={handleSelectRoutine} disabled={isLoadingRoutines || isLoadingLog}>
+            <Select 
+              value={routineSelectValue}
+              onValueChange={handleSelectRoutine} 
+              disabled={isLoadingRoutines || isLoadingLog}
+            >
               <SelectTrigger>
-                <SelectValue placeholder={isLoadingRoutines ? "Loading routines..." : "Start from a routine (optional)"} />
+                <SelectValue placeholder={isLoadingRoutines || isLoadingLog ? "Loading routines..." : "Start from a routine (optional)"} />
               </SelectTrigger>
               <SelectContent>
                 {availableRoutines.map(routine => (
