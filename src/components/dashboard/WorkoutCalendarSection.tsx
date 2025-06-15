@@ -196,7 +196,7 @@ export function WorkoutCalendarSection() {
                         <p className="text-sm text-muted-foreground">No exercises were recorded for this day.</p>
                       )}
                     </div>
-                     <Link href={`/log?date=${selectedDate ? format(selectedDate, 'yyyy-MM-dd') : ''}`} passHref legacyBehavior>
+                     <Link href={`/log?date=${selectedDate ? format(selectedDate, 'yyyy-MM-dd') : ''}`}>
                         <Button variant="outline" size="sm" className="mt-4 w-full" disabled={!selectedDate}>
                             <ExternalLink className="mr-2 h-4 w-4" />
                             View/Edit Full Log for this Day
@@ -209,7 +209,7 @@ export function WorkoutCalendarSection() {
                   <CalendarIcon className="mx-auto h-12 w-12 text-muted-foreground opacity-50 mb-3" />
                   <p className="text-md text-muted-foreground font-semibold">No workout logged for this day.</p>
                   <p className="text-sm text-muted-foreground">Select another day or log a workout!</p>
-                   <Link href={`/log?date=${format(selectedDate, 'yyyy-MM-dd')}`} passHref legacyBehavior>
+                   <Link href={`/log?date=${format(selectedDate, 'yyyy-MM-dd')}`}>
                         <Button variant="default" size="sm" className="mt-4 bg-accent hover:bg-accent/90">
                             <PlusCircle className="mr-2 h-4 w-4" />
                             Log Workout for this Day
