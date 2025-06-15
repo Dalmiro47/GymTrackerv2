@@ -14,7 +14,7 @@ import {
 } from '@/services/trainingLogService';
 import { getExercises as fetchAllUserExercises } from '@/services/exerciseService';
 import { getRoutines as fetchUserRoutines } from '@/services/routineService';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { useToast } from './use-toast';
 
 export const useTrainingLog = (initialDate: Date) => {
@@ -38,11 +38,12 @@ export const useTrainingLog = (initialDate: Date) => {
 
   const formattedDateId = format(selectedDate, 'yyyy-MM-dd');
 
-  // Helper to format PR display
-  const formatPersonalRecordDisplay = (pr: PersonalRecord | null): string => {
+  const formatPersonalRecordDisplay = useCallback((pr: PersonalRecord | null): string => {
     if (!pr || (pr.reps === 0 && pr.weight === 0)) return "PR: N/A";
-    return `PR: ${pr.reps}x${pr.weight}kg`;
-  };
+    const repsDisplay = pr.reps ?? 'N/A';
+    const weightDisplay = pr.weight ?? 'N/A';
+    return `PR: ${repsDisplay}x${weightDisplay}kg`;
+  }, []);
   
   const fetchLoggedDates = useCallback(async () => {
     if (!user?.id) {
@@ -51,18 +52,20 @@ export const useTrainingLog = (initialDate: Date) => {
       return;
     }
     setIsLoadingLoggedDayStrings(true);
+    console.log("[HOOK] fetchLoggedDates: Fetching for user:", user.id);
     try {
       const dates = await fetchLoggedDateStringsService(user.id);
+      console.log("[HOOK] fetchLoggedDates: Received dates:", dates);
       setLoggedDayStrings(dates);
     } catch (error: any) {
       toast({ title: "Error", description: `Failed to load logged dates: ${error.message}`, variant: "destructive" });
       setLoggedDayStrings([]);
     } finally {
       setIsLoadingLoggedDayStrings(false);
+      console.log("[HOOK] fetchLoggedDates: Finished. isLoadingLoggedDayStrings:", false);
     }
   }, [user?.id, toast]);
 
-  // Fetches full performance entry (last sets + PR)
   const fetchExercisePerformanceData = useCallback(async (exerciseId: string): Promise<ExercisePerformanceEntry | null> => {
     if (!user?.id || !exerciseId) return null;
     return await fetchPerformanceEntryService(user.id, exerciseId);
@@ -71,12 +74,16 @@ export const useTrainingLog = (initialDate: Date) => {
 
   const loadLogForDate = useCallback(async (dateToLoad: Date) => {
     const dateId = format(dateToLoad, 'yyyy-MM-dd');
+    // console.log(`[HOOK] loadLogForDate: Called for ${dateId}, User ID: ${user?.id}`);
+
     if (!user?.id) {
-        setIsLoadingLog(false);
+        // console.log(`[HOOK] loadLogForDate: No user ID, setting empty log for ${dateId} and isLoadingLog to false.`);
         setCurrentLog({ id: dateId, date: dateId, exercises: [], notes: '' });
+        setIsLoadingLog(false);
         return;
     }
 
+    // console.log(`[HOOK] loadLogForDate: Setting isLoadingLog to true for ${dateId}.`);
     setIsLoadingLog(true);
     try {
         const fetchedLog = await fetchLogService(user.id, dateId);
@@ -89,7 +96,7 @@ export const useTrainingLog = (initialDate: Date) => {
                     const performanceEntry = await fetchExercisePerformanceData(exFromStoredLog.exerciseId);
                     return {
                         ...exFromStoredLog, 
-                        sets: exFromStoredLog.sets.map((s, idx) => ({...s, id: s.id || `set-${dateId}-${exFromStoredLog.exerciseId}-${idx}-${Date.now()}`})), // Use sets from the day it was logged
+                        sets: exFromStoredLog.sets.map((s, idx) => ({...s, id: s.id || `set-${dateId}-${exFromStoredLog.exerciseId}-${idx}-${Date.now()}`})),
                         personalRecordDisplay: formatPersonalRecordDisplay(performanceEntry?.personalRecord || null),
                     };
                 })
@@ -105,15 +112,19 @@ export const useTrainingLog = (initialDate: Date) => {
                 date: dateId,
                 exercises: [],
                 notes: '',
+                routineId: undefined, // Explicitly undefined for new logs
+                routineName: undefined,
             };
         }
         setCurrentLog(newCurrentLogData);
+        // console.log(`[HOOK] loadLogForDate: setCurrentLog complete for ${dateId}. New routineId:`, newCurrentLogData.routineId);
 
     } catch (error: any) {
         toast({ title: "Error Loading Log", description: `Could not load log for ${dateId}. ${error.message}`, variant: "destructive" });
         // console.error(`[HOOK] Error in loadLogForDate for ${dateId}:`, error);
         setCurrentLog({ id: dateId, date: dateId, exercises: [], notes: '' });
     } finally {
+        // console.log(`[HOOK] loadLogForDate: Finally block for ${dateId}, setting isLoadingLog to false.`);
         setIsLoadingLog(false);
     }
   }, [user?.id, toast, fetchExercisePerformanceData, formatPersonalRecordDisplay]);
@@ -144,19 +155,29 @@ export const useTrainingLog = (initialDate: Date) => {
   }, [user?.id, toast, fetchLoggedDates]);
 
   useEffect(() => {
-    // Only load log once user is confirmed and basic data (routines/exercises) might be ready
-    // This prevents trying to load a log before user ID is available or if auth is still processing
-    if (user?.id && !authIsLoading && !isLoadingRoutines && !isLoadingExercises) {
-        loadLogForDate(selectedDate);
-    } else if (!user?.id && !authIsLoading) {
-        // If no user and auth is done, reset to an empty log for the selected date
-        const dateIdForEmpty = format(selectedDate, 'yyyy-MM-dd');
-        setCurrentLog({ id: dateIdForEmpty, date: dateIdForEmpty, exercises: [], notes: '' });
-        setIsLoadingLog(false);
-    }
-  }, [selectedDate, user, authIsLoading, isLoadingRoutines, isLoadingExercises, loadLogForDate]);
+    const effectDateId = format(selectedDate, 'yyyy-MM-dd');
+    // console.log(`[HOOK] Main useEffect triggered for date: ${effectDateId}. UserID: ${user?.id}, AuthLoading: ${authIsLoading}, RoutinesLoading: ${isLoadingRoutines}, ExercisesLoading: ${isLoadingExercises}`);
 
-  // Refreshes only the PR display string for a given exercise in the current log
+    if (user?.id && !authIsLoading && !isLoadingRoutines && !isLoadingExercises) {
+      // console.log(`[HOOK] Main useEffect: Conditions met for ${effectDateId}. Calling loadLogForDate.`);
+      loadLogForDate(selectedDate); // This will set isLoadingLog true/false internally
+    } else {
+      // Conditions for loading the actual log are not met.
+      if (!user?.id && !authIsLoading) {
+        // User is definitively logged out (or auth check is complete and no user)
+        // console.log(`[HOOK] Main useEffect: No user, auth done. Setting empty log for ${effectDateId}, isLoadingLog: false.`);
+        setCurrentLog({ id: effectDateId, date: effectDateId, exercises: [], notes: '' });
+        setIsLoadingLog(false);
+      } else {
+        // Otherwise, we are effectively in a loading state for the log because prerequisite data is loading
+        // or user is not yet confirmed.
+        // console.log(`[HOOK] Main useEffect: Waiting for user/auth/routines/exercises. Setting isLoadingLog: true for ${effectDateId}.`);
+        setIsLoadingLog(true);
+      }
+    }
+  }, [selectedDate, user?.id, authIsLoading, isLoadingRoutines, isLoadingExercises, loadLogForDate]);
+
+
   const refreshPersonalRecordDisplayForExercise = useCallback(async (exerciseId: string) => {
     if (!user?.id || !currentLog) return;
     const performanceEntry = await fetchExercisePerformanceData(exerciseId);
@@ -177,7 +198,16 @@ export const useTrainingLog = (initialDate: Date) => {
   const handleSelectRoutine = async (routineId: string) => {
     if (!user?.id) return;
     const selectedRoutine = availableRoutines.find(r => r.id === routineId);
-    if (!selectedRoutine) return;
+    if (!selectedRoutine) {
+        // If routineId is empty (e.g., user de-selected or it's a new log), clear routine specific fields
+        setCurrentLog(prev => prev ? { 
+            ...prev, 
+            routineId: undefined, 
+            routineName: undefined, 
+            exercises: [] // Optionally clear exercises or keep existing manually added ones
+        } : null);
+        return;
+    }
 
     const currentNotes = currentLog?.notes || '';
     const dateOfLog = format(selectedDate, 'yyyy-MM-dd');
@@ -276,20 +306,17 @@ export const useTrainingLog = (initialDate: Date) => {
     }
     setIsSavingLog(true);
     try {
-      // This is the payload for the daily workout log document
       const logToSave: WorkoutLog = {
-        ...currentLog, // Includes id (dateId), date, notes, routineId, routineName
-        exercises: currentLog.exercises // These are LoggedExercise[] from the UI
+        ...currentLog,
+        exercises: currentLog.exercises
           .map(ex => ({
-              // Transform to a simplified structure for the daily log, if needed, or keep full
-              id: ex.id, // ID of this exercise instance in this log
-              exerciseId: ex.exerciseId, // Reference to the base Exercise
+              id: ex.id,
+              exerciseId: ex.exerciseId,
               name: ex.name,
               muscleGroup: ex.muscleGroup,
               exerciseSetup: ex.exerciseSetup || '',
-              // personalRecordDisplay is UI only, not stored in the daily log document.
-              notes: ex.notes || '', // Notes specific to this exercise on this day
-              sets: ex.sets.map(s => ({ // Sets as performed on this day
+              notes: ex.notes || '',
+              sets: ex.sets.map(s => ({
                   id: s.id, 
                   reps: s.reps === null || isNaN(Number(s.reps)) ? 0 : Number(s.reps),
                   weight: s.weight === null || isNaN(Number(s.weight)) ? 0 : Number(s.weight),
@@ -298,21 +325,18 @@ export const useTrainingLog = (initialDate: Date) => {
       };
       // console.log('[HOOK] saveCurrentLog: logToSave prepared:', JSON.stringify(logToSave, null, 2));
 
-      // Save performance entry (last sets + PR) for each exercise in the log
       for (const loggedEx of logToSave.exercises) {
-        const setsForPerformanceEntry = loggedEx.sets; // These are already numeric from the map above
-        if (setsForPerformanceEntry.length > 0) { // Only save if there are sets
+        const setsForPerformanceEntry = loggedEx.sets; 
+        if (setsForPerformanceEntry.length > 0) {
           try {
             await savePerformanceEntryService(user.id, loggedEx.exerciseId, setsForPerformanceEntry);
             // console.log(`[HOOK] saveCurrentLog: Performance entry for ${loggedEx.name} potentially updated.`);
           } catch (perfError: any) {
             console.error(`[HOOK] saveCurrentLog: Failed to save performance entry for ${loggedEx.name}: ${perfError.message}`);
-            // Decide if this should prevent the main log save or just be a warning
           }
         }
       }
       
-      // Determine if the main log document itself should be saved (e.g., if it has exercises or notes)
       const shouldSaveMainLog = logToSave.exercises.length > 0 || (logToSave.notes != null && logToSave.notes.trim() !== '');
       // console.log(`[HOOK] saveCurrentLog: Condition to save main log is ${shouldSaveMainLog}. Exercises count: ${logToSave.exercises.length}, Notes: "${logToSave.notes}"`);
 
@@ -321,9 +345,8 @@ export const useTrainingLog = (initialDate: Date) => {
         await saveLogService(user.id, formattedDateId, logToSave);
         toast({ title: "Log Saved", description: `Workout for ${formattedDateId} saved.` });
         // console.log('[HOOK] saveCurrentLog: Main workout log saved successfully.');
-        await fetchLoggedDates(); // Update calendar indicators
+        await fetchLoggedDates(); 
       } else {
-        // If the log was empty and there was an existing log for this day, delete it.
         const existingLog = await fetchLogService(user.id, formattedDateId);
         if (existingLog) {
             await deleteLogService(user.id, formattedDateId);
@@ -341,19 +364,17 @@ export const useTrainingLog = (initialDate: Date) => {
       // console.error('[HOOK] saveCurrentLog: General error during save process:', error);
     } finally {
       setIsSavingLog(false);
-      // After saving (or attempting to), reload the log for the current date.
-      // This ensures the UI reflects the saved state and PRs are up-to-date.
       if (user?.id) {
+        // After saving, reload the log to ensure PR displays are current with potentially new PRs
+        // and sets are correctly shown as historical or pre-filled.
         await loadLogForDate(selectedDate); 
       }
     }
   };
 
-  // Saves progress for a single exercise card (updates performance entry and PR display)
   const saveExerciseProgress = async (loggedExercise: LoggedExercise) => {
     if (!user?.id || !currentLog) return;
     
-    // Update local state immediately for responsiveness
     updateExerciseInLog(loggedExercise); 
 
     const numericSets = loggedExercise.sets.map(s => ({
@@ -365,7 +386,7 @@ export const useTrainingLog = (initialDate: Date) => {
     try {
       await savePerformanceEntryService(user.id, loggedExercise.exerciseId, numericSets);
       // console.log(`[HOOK] saveExerciseProgress: Successfully saved performance entry for ${loggedExercise.name}`);
-      await refreshPersonalRecordDisplayForExercise(loggedExercise.exerciseId); // Update PR display
+      await refreshPersonalRecordDisplayForExercise(loggedExercise.exerciseId);
     } catch (error: any) {
       // console.error(`[HOOK] saveExerciseProgress: Error saving performance entry for ${loggedExercise.name}: ${error.message}`);
       toast({title: "Save Error", description: `Could not save progress for ${loggedExercise.name}. ${error.message}`, variant: "destructive"});
@@ -385,7 +406,6 @@ export const useTrainingLog = (initialDate: Date) => {
     setIsDeletingLog(true);
     try {
       await deleteLogService(user.id, formattedDateId);
-      // Reset currentLog to an empty state for this date
       setCurrentLog({
         id: formattedDateId,
         date: formattedDateId,
@@ -395,7 +415,7 @@ export const useTrainingLog = (initialDate: Date) => {
         routineName: undefined,
       });
       toast({ title: "Log Deleted", description: `Workout for ${formattedDateId} has been deleted.` });
-      await fetchLoggedDates(); // Update calendar indicators
+      await fetchLoggedDates();
     } catch (error: any) {
       toast({ title: "Error Deleting Log", description: `Could not delete log. ${error.message}`, variant: "destructive" });
     } finally {
@@ -430,3 +450,4 @@ export const useTrainingLog = (initialDate: Date) => {
   };
 };
 
+    
