@@ -17,7 +17,7 @@ interface LoggedExerciseCardProps {
   onUpdateSets: (sets: LoggedSet[]) => void;
   onSaveProgress: () => Promise<void>; 
   onRemove: () => void;
-  onRefreshStats: () => void; 
+  onRefreshPersonalRecord: () => void; 
   isSavingParentLog: boolean; 
 }
 
@@ -26,7 +26,7 @@ export function LoggedExerciseCard({
   onUpdateSets,
   onSaveProgress,
   onRemove,
-  onRefreshStats, 
+  onRefreshPersonalRecord, 
   isSavingParentLog
 }: LoggedExerciseCardProps) {
   const {
@@ -119,7 +119,7 @@ export function LoggedExerciseCard({
             <div className="flex items-center justify-between text-xs text-muted-foreground mt-1">
                 {/* Display Personal Record */}
                 <span>{loggedExercise.personalRecordDisplay || 'PR: N/A'}</span>
-                <Button variant="link" size="sm" onClick={onRefreshStats} className="p-0 h-auto text-xs">
+                <Button variant="link" size="sm" onClick={onRefreshPersonalRecord} className="p-0 h-auto text-xs">
                     <RotateCcw className="mr-1 h-3 w-3"/> Refresh PR
                 </Button>
             </div>
@@ -165,4 +165,3 @@ export function LoggedExerciseCard({
     </Card>
   );
 }
-

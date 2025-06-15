@@ -78,7 +78,7 @@ export default function TrainingLogPage() {
     saveExerciseProgress,
     saveCurrentLog,
     updateOverallLogNotes,
-    refreshExerciseStatsInLog, // Updated function name
+    refreshPersonalRecordDisplayForExercise,
     deleteCurrentLog,
   } = useTrainingLog(new Date());
 
@@ -282,7 +282,7 @@ export default function TrainingLogPage() {
                       onUpdateSets={(sets) => updateExerciseInLog({ ...loggedEx, sets })}
                       onSaveProgress={() => saveExerciseProgress(loggedEx)}
                       onRemove={() => removeExerciseFromLog(loggedEx.id)}
-                      onRefreshStats={() => refreshExerciseStatsInLog(loggedEx.exerciseId)} // Renamed prop
+                      onRefreshPersonalRecord={() => refreshPersonalRecordDisplayForExercise(loggedEx.exerciseId)}
                       isSavingParentLog={isSavingLog}
                     />
                   ))}
