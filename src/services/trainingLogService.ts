@@ -41,7 +41,10 @@ export const saveWorkoutLog = async (userId: string, date: string, workoutLogPay
                   "Expected date based on doc ID:", date, 
                   "Payload ID:", workoutLogPayload.id, 
                   "Payload date:", workoutLogPayload.date);
-    throw new Error("Log data integrity issue: ID and date fields in payload must match the target document's date ID.");
+    // It's critical that the payload's ID and date match the document ID being written to.
+    // Forcing consistency:
+    workoutLogPayload.id = date;
+    workoutLogPayload.date = date;
   }
   
   const logDocRef = doc(db, getUserWorkoutLogsCollectionPath(userId), date);
@@ -125,12 +128,16 @@ export const saveExercisePerformanceEntry = async (userId: string, exerciseId: s
     date: Timestamp.now().toMillis(), 
     sets: validSets,
   };
+  
+  const performanceEntriesColPath = getExercisePerformanceEntriesCollectionPath(userId, exerciseId);
+  console.log(`[SERVICE] saveExercisePerformanceEntry: Attempting to save performance entry for exerciseId=${exerciseId} to path: ${performanceEntriesColPath} with data:`, JSON.stringify(entry));
+
   try {
-    const performanceEntriesColRef = collection(db, getExercisePerformanceEntriesCollectionPath(userId, exerciseId));
+    const performanceEntriesColRef = collection(db, performanceEntriesColPath);
     await addDoc(performanceEntriesColRef, entry);
-    console.log(`[SERVICE] saveExercisePerformanceEntry: Successfully saved performance entry for exerciseId=${exerciseId}:`, JSON.stringify(entry));
+    console.log(`[SERVICE] saveExercisePerformanceEntry: Successfully saved performance entry for exerciseId=${exerciseId}.`);
   } catch (error: any) {
-    console.error(`[SERVICE] saveExercisePerformanceEntry: Error saving exercise performance entry for exerciseId=${exerciseId}:`, error);
+    console.error(`[SERVICE] saveExercisePerformanceEntry: Error saving exercise performance entry for exerciseId=${exerciseId} to path ${performanceEntriesColPath}:`, error);
     throw new Error(`Failed to save performance entry for ${exerciseId}. ${error.message}`);
   }
 };
@@ -147,19 +154,19 @@ export const getLastLoggedPerformance = async (userId: string, exerciseId: strin
     console.error("[SERVICE] getLastLoggedPerformance called with no exerciseId");
     throw new Error("Exercise ID is required.");
   }
-  // console.log(`[SERVICE] getLastLoggedPerformance: userId=${userId}, exerciseId=${exerciseId}`);
+  console.log(`[SERVICE] getLastLoggedPerformance: userId=${userId}, exerciseId=${exerciseId}`);
 
   const performanceEntriesColRef = collection(db, getExercisePerformanceEntriesCollectionPath(userId, exerciseId));
-  // console.log(`[SERVICE] Querying path: ${performanceEntriesColRef.path}`);
+  console.log(`[SERVICE] Querying path: ${performanceEntriesColRef.path}`);
   const q = query(performanceEntriesColRef, orderBy("date", "desc"), limit(1));
   try {
     const querySnapshot = await getDocs(q);
     if (!querySnapshot.empty) {
       const data = querySnapshot.docs[0].data() as ExercisePerformanceEntry;
-      // console.log(`[SERVICE] Last performance FOUND for exerciseId=${exerciseId}:`, JSON.stringify(data));
+      console.log(`[SERVICE] Last performance FOUND for exerciseId=${exerciseId}:`, JSON.stringify(data));
       return data;
     }
-    // console.log(`[SERVICE] No last performance found for exerciseId=${exerciseId}`);
+    console.log(`[SERVICE] No last performance found for exerciseId=${exerciseId}`);
     return null;
   } catch (error: any) {
     console.error(`[SERVICE] Error getLastLoggedPerformance for exerciseId=${exerciseId}:`, error);
