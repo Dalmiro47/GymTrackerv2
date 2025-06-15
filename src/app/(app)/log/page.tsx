@@ -21,7 +21,7 @@ import { useTrainingLog } from '@/hooks/useTrainingLog';
 import type { LoggedExercise, Exercise } from '@/types';
 import { LoggedExerciseCard } from '@/components/training-log/LoggedExerciseCard';
 import { AddExerciseDialog } from '@/components/training-log/AddExerciseDialog';
-import { format, parseISO } from 'date-fns'; // Import parseISO
+import { format, parseISO } from 'date-fns';
 import { Loader2 } from 'lucide-react';
 import {
   AlertDialog,
@@ -68,7 +68,7 @@ export default function TrainingLogPage() {
     isLoadingRoutines,
     availableExercises, 
     isLoadingExercises, 
-    loggedDayStrings, // Get string dates
+    loggedDayStrings,
     isLoadingLoggedDayStrings,
     handleSelectRoutine,
     addExerciseToLog,
@@ -87,8 +87,27 @@ export default function TrainingLogPage() {
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
 
+  useEffect(() => {
+    console.log("[PAGE] isLoadingLoggedDayStrings state:", isLoadingLoggedDayStrings);
+  }, [isLoadingLoggedDayStrings]);
+
   const daysWithLogs = useMemo(() => {
-    return loggedDayStrings.map(dateStr => parseISO(dateStr));
+    console.log("[PAGE] Preparing daysWithLogs. Raw loggedDayStrings:", loggedDayStrings);
+    if (!loggedDayStrings || loggedDayStrings.length === 0) {
+      console.log("[PAGE] No loggedDayStrings to process for calendar indicators.");
+      return [];
+    }
+    const parsedDates = loggedDayStrings.map(dateStr => {
+      const parsed = parseISO(dateStr);
+      if (isNaN(parsed.getTime())) { // Check if parseISO returned a valid date
+        console.warn(`[PAGE] Failed to parse date string: '${dateStr}' into a valid Date object.`);
+        return null; // Return null for invalid dates
+      }
+      return parsed;
+    }).filter(date => date !== null) as Date[]; // Filter out any nulls if parsing failed
+    
+    console.log("[PAGE] Parsed dates for calendar modifiers (daysWithLogs):", parsedDates);
+    return parsedDates;
   }, [loggedDayStrings]);
 
   const sensors = useSensors(
@@ -121,7 +140,7 @@ export default function TrainingLogPage() {
   const canDeleteLog = useMemo(() => {
     return currentLog && (currentLog.exercises.length > 0 || (currentLog.notes && currentLog.notes.trim() !== ''));
   }, [currentLog]);
-
+  
   const routineSelectValue = useMemo(() => {
     if (isLoadingLog || !currentLog || !currentLog.routineId) {
       return ""; 
@@ -129,6 +148,7 @@ export default function TrainingLogPage() {
     const routineExists = availableRoutines.some(r => r.id === currentLog.routineId);
     return routineExists ? currentLog.routineId : "";
   }, [currentLog, isLoadingLog, availableRoutines]);
+
 
   if (authIsLoading) {
     return (
@@ -219,7 +239,7 @@ export default function TrainingLogPage() {
                   }}
                   modifiers={{ logged: daysWithLogs }}
                   modifiersClassNames={{ logged: 'day-is-logged' }} 
-                  disabled={isLoadingLoggedDayStrings}
+                  // Removed disabled={isLoadingLoggedDayStrings} to test if it affects modifier rendering
                 />
               </PopoverContent>
             </Popover>
@@ -308,4 +328,3 @@ export default function TrainingLogPage() {
     </div>
   );
 }
-
