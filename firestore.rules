@@ -1,33 +1,52 @@
+
 rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Users can only read and write their own documents in the 'users' collection.
-    // This is a common pattern for user profiles or top-level user-specific data.
+
+    // Helper function to check if the user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Helper function to check if the requesting user is the owner of the document
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Default deny all reads and writes
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // User-specific data
     match /users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      // Allow users to read their own user document (if you store public profiles here)
+      // For now, let's assume no direct writes/reads to the /users/{userId} doc itself from client
+      allow read: if isOwner(userId);
+      // Deny direct writes to the user document from client unless specifically handled
+      allow write: if false; 
 
-      // Rules for subcollections under a user's document.
-      // Examples: exercises, routines, workoutLogs, performanceEntries.
-
-      // Allow users to read and write their own exercises.
+      // Exercises subcollection
       match /exercises/{exerciseId} {
-        allow read, write: if request.auth != null && request.auth.uid == userId;
-
-        // Allow users to read and write performance entries for their own exercises.
-        match /performanceEntries/{entryId} {
-          allow read, write: if request.auth != null && request.auth.uid == userId;
-        }
+        allow read, write, delete: if isOwner(userId);
       }
 
-      // Allow users to read and write their own routines.
+      // Routines subcollection
       match /routines/{routineId} {
-        allow read, write: if request.auth != null && request.auth.uid == userId;
+        allow read, write, delete: if isOwner(userId);
       }
 
-      // Allow users to read and write their own workout logs.
-      match /workoutLogs/{logId} { // logId is typically YYYY-MM-DD
-        allow read, write: if request.auth != null && request.auth.uid == userId;
+      // WorkoutLogs subcollection
+      // Document ID is YYYY-MM-DD
+      match /workoutLogs/{logDate} {
+        allow read, write, delete: if isOwner(userId);
+      }
+      
+      // PerformanceEntries collection (NEW RULE)
+      // Document ID is the exerciseId
+      match /performanceEntries/{exerciseId} {
+        allow read, write, delete: if isOwner(userId);
       }
     }
   }
