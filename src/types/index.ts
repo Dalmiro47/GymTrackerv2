@@ -57,7 +57,7 @@ export interface LoggedExercise {
   exerciseSetup?: string; // Copied from the base exercise definition
   sets: LoggedSet[];
   notes?: string;
-  lastPerformanceDisplay?: string; // e.g., "3x10 @ 50kg"
+  personalRecordDisplay?: string; // e.g., "PR: 1x5 @ 100kg" or "PR: N/A"
 }
 
 // Represents the entire workout log for a specific day
@@ -74,10 +74,17 @@ export interface WorkoutLog {
 
 // For storing the single, latest performance entry per exercise.
 // The document ID in Firestore (users/{userId}/performanceEntries/{exerciseId}) *is* the exerciseId.
-// The document data itself is this structure:
+
+export interface PersonalRecord {
+  reps: number;
+  weight: number;
+  date: number; // Timestamp (milliseconds) of when PR was achieved
+}
+
 export interface ExercisePerformanceEntry {
-  date: number; // Firestore Timestamp converted to number (milliseconds since epoch) of when this performance was logged
-  sets: LoggedSet[]; // The sets recorded for this performance
+  lastPerformedDate: number; // Timestamp (milliseconds) of when sets were last performed
+  lastPerformedSets: LoggedSet[]; // The sets recorded for the last performance for pre-filling
+  personalRecord: PersonalRecord | null; // The best single set ever
 }
 
 

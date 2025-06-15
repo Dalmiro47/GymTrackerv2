@@ -15,9 +15,9 @@ import { cn } from '@/lib/utils';
 interface LoggedExerciseCardProps {
   loggedExercise: LoggedExercise;
   onUpdateSets: (sets: LoggedSet[]) => void;
-  onSaveProgress: () => Promise<void>; // Make it async for the card to await
+  onSaveProgress: () => Promise<void>; 
   onRemove: () => void;
-  onRefreshLastPerformance: () => void;
+  onRefreshStats: () => void; // Renamed from onRefreshLastPerformance
   isSavingParentLog: boolean; 
 }
 
@@ -26,7 +26,7 @@ export function LoggedExerciseCard({
   onUpdateSets,
   onSaveProgress,
   onRemove,
-  onRefreshLastPerformance,
+  onRefreshStats, // Renamed
   isSavingParentLog
 }: LoggedExerciseCardProps) {
   const {
@@ -78,13 +78,12 @@ export function LoggedExerciseCard({
 
   const handleSaveThisExercise = async () => {
     setIsSavingThisExercise(true);
-    setJustSaved(false); // Reset justSaved state
+    setJustSaved(false); 
     try {
       await onSaveProgress(); 
       setJustSaved(true);
-      setTimeout(() => setJustSaved(false), 2000); // Display "Saved!" for 2 seconds
+      setTimeout(() => setJustSaved(false), 2000); 
     } catch (error) {
-      // Handle error if needed (e.g., show a toast from the card, though hook might also show one)
       console.error("Error saving exercise progress from card:", error);
     } finally {
       setIsSavingThisExercise(false);
@@ -100,7 +99,7 @@ export function LoggedExerciseCard({
                 type="button" 
                 {...attributes} 
                 {...listeners} 
-                className="cursor-grab p-1 text-muted-foreground hover:text-foreground touch-none" // Added touch-none
+                className="cursor-grab p-1 text-muted-foreground hover:text-foreground touch-none"
                 aria-label={`Drag to reorder ${loggedExercise.name}`}
             >
               <GripVertical className="h-5 w-5" />
@@ -111,10 +110,10 @@ export function LoggedExerciseCard({
             <Trash2 className="h-4 w-4" />
           </Button>
         </div>
-        <div className="pl-8 space-y-1"> {/* Indent details to align with title after drag handle */}
+        <div className="pl-8 space-y-1">
             <div className="flex items-center justify-between text-xs text-muted-foreground mt-1">
-                <span>Last: {loggedExercise.lastPerformanceDisplay || 'N/A'}</span>
-                <Button variant="link" size="sm" onClick={onRefreshLastPerformance} className="p-0 h-auto text-xs">
+                <span>{loggedExercise.personalRecordDisplay || 'PR: N/A'}</span>
+                <Button variant="link" size="sm" onClick={onRefreshStats} className="p-0 h-auto text-xs">
                     <RotateCcw className="mr-1 h-3 w-3"/> Refresh
                 </Button>
             </div>
@@ -149,21 +148,15 @@ export function LoggedExerciseCard({
             onClick={handleSaveThisExercise} 
             disabled={isSavingThisExercise || isSavingParentLog}
             size="sm"
-            className="bg-primary/90 hover:bg-primary min-w-[120px]" // Added min-width
+            className="bg-primary/90 hover:bg-primary min-w-[120px]"
             >
             {isSavingThisExercise ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : 
              justSaved ? <Check className="mr-2 h-4 w-4" /> : <Save className="mr-2 h-4 w-4" />}
             {isSavingThisExercise ? "Saving..." : justSaved ? "Saved!" : "Save Exercise"}
           </Button>
         </div>
-        {/* Input for notes on the specific exercise for that day - To be implemented if needed */}
-        {/* <Input 
-            placeholder="Notes for this exercise (e.g., form cues)" 
-            defaultValue={loggedExercise.notes} // This should come from LoggedExercise.notes
-            className="mt-2 text-sm"
-            // onChange={(e) => onUpdateNotes(e.target.value)} // Need an onUpdateNotes prop
-        /> */}
       </CardContent>
     </Card>
   );
 }
+

@@ -78,7 +78,7 @@ export default function TrainingLogPage() {
     saveExerciseProgress,
     saveCurrentLog,
     updateOverallLogNotes,
-    fetchAndSetLastPerformance,
+    refreshExerciseStatsInLog, // Updated function name
     deleteCurrentLog,
   } = useTrainingLog(new Date());
 
@@ -99,12 +99,12 @@ export default function TrainingLogPage() {
     }
     const parsedDates = loggedDayStrings.map(dateStr => {
       const parsed = parseISO(dateStr);
-      if (isNaN(parsed.getTime())) { // Check if parseISO returned a valid date
+      if (isNaN(parsed.getTime())) { 
         console.warn(`[PAGE] Failed to parse date string: '${dateStr}' into a valid Date object.`);
-        return null; // Return null for invalid dates
+        return null; 
       }
       return parsed;
-    }).filter(date => date !== null) as Date[]; // Filter out any nulls if parsing failed
+    }).filter(date => date !== null) as Date[]; 
     
     console.log("[PAGE] Parsed dates for calendar modifiers (daysWithLogs):", parsedDates);
     return parsedDates;
@@ -239,7 +239,6 @@ export default function TrainingLogPage() {
                   }}
                   modifiers={{ logged: daysWithLogs }}
                   modifiersClassNames={{ logged: 'day-is-logged' }} 
-                  // Removed disabled={isLoadingLoggedDayStrings} to test if it affects modifier rendering
                 />
               </PopoverContent>
             </Popover>
@@ -283,7 +282,7 @@ export default function TrainingLogPage() {
                       onUpdateSets={(sets) => updateExerciseInLog({ ...loggedEx, sets })}
                       onSaveProgress={() => saveExerciseProgress(loggedEx)}
                       onRemove={() => removeExerciseFromLog(loggedEx.id)}
-                      onRefreshLastPerformance={() => fetchAndSetLastPerformance(loggedEx.exerciseId)}
+                      onRefreshStats={() => refreshExerciseStatsInLog(loggedEx.exerciseId)} // Renamed prop
                       isSavingParentLog={isSavingLog}
                     />
                   ))}
