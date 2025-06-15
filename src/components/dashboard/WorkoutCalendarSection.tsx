@@ -116,14 +116,14 @@ export function WorkoutCalendarSection() {
       <CardContent className="grid md:grid-cols-2 gap-6 p-4 md:p-6">
         {/* Left Column: Calendar */}
         <div className="space-y-4">
-          <Card className="shadow-md">
+          <Card className="shadow-md h-full flex flex-col">
             <CardHeader className="pb-2">
               <CardTitle className="text-lg font-headline">Your Training Schedule</CardTitle>
               <CardDescription>Days with logged workouts are underlined. Click a day to see details.</CardDescription>
             </CardHeader>
-            <CardContent className="flex flex-col items-center">
+            <CardContent className="flex flex-col items-center flex-grow">
               {isLoadingLoggedDays ? (
-                <div className="flex justify-center items-center h-[200px]">
+                <div className="flex-grow flex justify-center items-center h-[200px]">
                   <Loader2 className="h-8 w-8 animate-spin text-primary" />
                 </div>
               ) : (
@@ -147,20 +147,20 @@ export function WorkoutCalendarSection() {
 
         {/* Right Column: Workout Details */}
         <div className="space-y-4">
-          <Card className="shadow-md min-h-[400px]">
+          <Card className="shadow-md h-full flex flex-col">
             <CardHeader>
               <CardTitle className="text-lg font-headline">Workout Details</CardTitle>
               <CardDescription>
                 {selectedDate ? `Details for ${format(selectedDate, 'MMMM do, yyyy')}` : "Select a day to see details."}
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="flex-grow flex flex-col">
               {isLoadingLogDetails ? (
-                <div className="flex justify-center items-center h-[200px]">
+                <div className="flex-grow flex justify-center items-center">
                   <Loader2 className="h-8 w-8 animate-spin text-primary" />
                 </div>
               ) : selectedLog ? (
-                <ScrollArea className="h-[300px] pr-3">
+                <ScrollArea className="flex-grow pr-3">
                   <div className="space-y-4">
                     {selectedLog.routineName && (
                       <p className="text-sm">
@@ -205,7 +205,7 @@ export function WorkoutCalendarSection() {
                   </div>
                 </ScrollArea>
               ) : selectedDate ? (
-                <div className="text-center py-10">
+                <div className="flex-grow flex flex-col justify-center items-center text-center py-10">
                   <CalendarIcon className="mx-auto h-12 w-12 text-muted-foreground opacity-50 mb-3" />
                   <p className="text-md text-muted-foreground font-semibold">No workout logged for this day.</p>
                   <p className="text-sm text-muted-foreground">Select another day or log a workout!</p>
@@ -217,7 +217,7 @@ export function WorkoutCalendarSection() {
                     </Link>
                 </div>
               ) : (
-                 <div className="text-center py-10">
+                 <div className="flex-grow flex flex-col justify-center items-center text-center py-10">
                     <CalendarIcon className="mx-auto h-12 w-12 text-muted-foreground opacity-50 mb-3" />
                     <p className="text-md text-muted-foreground font-semibold">Please select a day on the calendar.</p>
                 </div>
