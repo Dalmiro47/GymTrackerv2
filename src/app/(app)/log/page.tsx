@@ -5,24 +5,23 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { 
-  Calendar as CalendarIconLucide, // Renamed to avoid conflict
+  Calendar as CalendarIconLucide, 
   PlusCircle, 
   Save, 
   RotateCcw, 
   Trash2, 
-  GripVertical,
-  AlertTriangle // For delete confirmation
+  AlertTriangle 
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar"; // ShadCN Calendar
+import { Calendar } from "@/components/ui/calendar"; 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea"; 
 import { useTrainingLog } from '@/hooks/useTrainingLog';
 import type { LoggedExercise, Exercise } from '@/types';
 import { LoggedExerciseCard } from '@/components/training-log/LoggedExerciseCard';
 import { AddExerciseDialog } from '@/components/training-log/AddExerciseDialog';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO } from 'date-fns'; // Import parseISO
 import { Loader2 } from 'lucide-react';
 import {
   AlertDialog,
@@ -69,6 +68,8 @@ export default function TrainingLogPage() {
     isLoadingRoutines,
     availableExercises, 
     isLoadingExercises, 
+    loggedDayStrings, // Get string dates
+    isLoadingLoggedDayStrings,
     handleSelectRoutine,
     addExerciseToLog,
     removeExerciseFromLog,
@@ -86,6 +87,9 @@ export default function TrainingLogPage() {
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
 
+  const daysWithLogs = useMemo(() => {
+    return loggedDayStrings.map(dateStr => parseISO(dateStr));
+  }, [loggedDayStrings]);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -211,9 +215,11 @@ export default function TrainingLogPage() {
                     if (date) {
                       setSelectedDate(date);
                     }
-                    setIsCalendarOpen(false); // This ensures the popover closes on date selection
+                    setIsCalendarOpen(false); 
                   }}
-                  // initialFocus // Removed initialFocus as a troubleshooting step
+                  modifiers={{ logged: daysWithLogs }}
+                  modifiersClassNames={{ logged: 'day-is-logged' }} 
+                  disabled={isLoadingLoggedDayStrings}
                 />
               </PopoverContent>
             </Popover>
@@ -302,3 +308,4 @@ export default function TrainingLogPage() {
     </div>
   );
 }
+

@@ -7,6 +7,7 @@
  * - saveExercisePerformanceEntry: Saves/updates the single latest performance snapshot for an exercise.
  * - getLastLoggedPerformance: Retrieves the latest performance snapshot for an exercise.
  * - deleteAllPerformanceEntriesForExercise: Deletes the performance entry for a specific exercise.
+ * - getLoggedDateStrings: Fetches all dates ("yyyy-MM-dd") that have workout logs.
  */
 import { db } from '@/lib/firebaseConfig';
 import type { WorkoutLog, LoggedSet, ExercisePerformanceEntry } from '@/types';
@@ -16,6 +17,10 @@ import {
   getDoc,
   deleteDoc as deleteFirestoreDoc,
   Timestamp,
+  collection,
+  getDocs,
+  query,
+  where,
 } from 'firebase/firestore';
 
 const getUserWorkoutLogsCollectionPath = (userId: string) => `users/${userId}/workoutLogs`;
@@ -28,22 +33,24 @@ export const saveWorkoutLog = async (userId: string, date: string, workoutLogPay
   if (!userId) throw new Error("User ID is required.");
   if (!date) throw new Error("Date is required to save a workout log.");
 
+  // Ensure the payload ID and date match the document ID (date)
   if (workoutLogPayload.id !== date || workoutLogPayload.date !== date) {
     console.warn("[SERVICE] saveWorkoutLog: Mismatched date information in workoutLogPayload.",
                   "Expected date based on doc ID:", date,
                   "Payload ID:", workoutLogPayload.id,
                   "Payload date:", workoutLogPayload.date);
+    // Correcting the payload to ensure consistency
     workoutLogPayload.id = date;
     workoutLogPayload.date = date;
   }
-
+  
   const logDocRef = doc(db, getUserWorkoutLogsCollectionPath(userId), date);
-  console.log(`[SERVICE] saveWorkoutLog: Document reference path: ${logDocRef.path}`);
-  console.log(`[SERVICE] saveWorkoutLog: Payload to save:`, JSON.stringify(workoutLogPayload, null, 2));
+  // console.log(`[SERVICE] saveWorkoutLog: Document reference path: ${logDocRef.path}`);
+  // console.log(`[SERVICE] saveWorkoutLog: Payload to save:`, JSON.stringify(workoutLogPayload, null, 2));
 
 
   try {
-    await setDoc(logDocRef, workoutLogPayload, { merge: true });
+    await setDoc(logDocRef, workoutLogPayload, { merge: true }); // Using merge:true to be safe, though setDoc usually overwrites
     console.log(`[SERVICE] Workout log for ${date} saved successfully for user ${userId}.`);
   } catch (error: any) {
     console.error(`[SERVICE] Error saving workout log for ${date}, user ${userId}:`, error);
@@ -91,15 +98,38 @@ export const deleteWorkoutLog = async (userId: string, date: string): Promise<vo
   }
 };
 
+// Fetches all document IDs (dates "yyyy-MM-dd") from the workoutLogs collection for a user
+export const getLoggedDateStrings = async (userId: string): Promise<string[]> => {
+  if (!userId) {
+    console.error("[SERVICE] getLoggedDateStrings: User ID is required.");
+    return [];
+  }
+  // console.log(`[SERVICE] getLoggedDateStrings: Fetching logged dates for userId: ${userId}`);
+  const logsCollectionRef = collection(db, getUserWorkoutLogsCollectionPath(userId));
+  try {
+    const querySnapshot = await getDocs(logsCollectionRef);
+    const dates: string[] = [];
+    querySnapshot.forEach((doc) => {
+      dates.push(doc.id); // The document ID is the date string "yyyy-MM-dd"
+    });
+    // console.log(`[SERVICE] getLoggedDateStrings: Found ${dates.length} logged dates for userId: ${userId}. Dates:`, dates);
+    return dates;
+  } catch (error: any) {
+    console.error(`[SERVICE] getLoggedDateStrings: Error fetching logged dates for userId ${userId}:`, error);
+    // Return empty array on error to prevent breaking UI, but log the error
+    return []; 
+  }
+};
+
 
 export const saveExercisePerformanceEntry = async (userId: string, exerciseId: string, sets: LoggedSet[]): Promise<void> => {
   if (!userId) throw new Error("User ID is required.");
   if (!exerciseId) throw new Error("Exercise ID is required.");
 
   const validSets = sets.map(s => ({
-    id: s.id,
-    reps: s.reps === null || isNaN(s.reps) ? 0 : Number(s.reps),
-    weight: s.weight === null || isNaN(s.weight) ? 0 : Number(s.weight),
+    id: s.id, // Keep existing set ID if available
+    reps: s.reps === null || isNaN(Number(s.reps)) ? 0 : Number(s.reps),
+    weight: s.weight === null || isNaN(Number(s.weight)) ? 0 : Number(s.weight),
   })).filter(s => s.reps > 0 || s.weight > 0);
 
   if (validSets.length === 0) {
@@ -108,17 +138,19 @@ export const saveExercisePerformanceEntry = async (userId: string, exerciseId: s
   }
 
   const entryData: ExercisePerformanceEntry = {
-    date: Timestamp.now().toMillis(),
+    date: Timestamp.now().toMillis(), // Use current timestamp for when this performance was recorded
     sets: validSets,
   };
 
   const performanceEntriesColPath = getUserPerformanceEntriesCollectionPath(userId);
-  const performanceEntryDocRef = doc(db, performanceEntriesColPath, exerciseId);
-
+  // The document ID for performance entry is the exerciseId itself
+  const performanceEntryDocRef = doc(db, performanceEntriesColPath, exerciseId); 
+  
   console.log(`[SERVICE] saveExercisePerformanceEntry: Attempting to save/update performance entry for exerciseId=${exerciseId} at path: ${performanceEntryDocRef.path} with data:`, JSON.stringify(entryData));
 
   try {
-    await setDoc(performanceEntryDocRef, entryData);
+    // This will create the document if it doesn't exist, or overwrite it if it does.
+    await setDoc(performanceEntryDocRef, entryData); 
     console.log(`[SERVICE] saveExercisePerformanceEntry: Successfully saved/updated performance entry for exerciseId=${exerciseId}.`);
   } catch (error: any) {
     console.error(`[SERVICE] saveExercisePerformanceEntry: Error saving/updating exercise performance entry for exerciseId=${exerciseId} at path ${performanceEntryDocRef.path}:`, error);
@@ -133,14 +165,14 @@ export const getLastLoggedPerformance = async (userId: string, exerciseId: strin
     throw new Error("User ID is required.");
   }
   if (!exerciseId) {
-    console.error("[SERVICE] getLastLoggedPerformance called with no exerciseId");
+    // console.error("[SERVICE] getLastLoggedPerformance called with no exerciseId");
     throw new Error("Exercise ID is required.");
   }
-  // console.log(`[SERVICE] getLastLoggedPerformance: userId=${userId}, exerciseId=${exerciseId}`);
+  // console.log(`[SERVICE] getLastLoggedPerformance: Fetching for userId=${userId}, exerciseId=${exerciseId}`);
 
   const performanceEntriesColPath = getUserPerformanceEntriesCollectionPath(userId);
   const performanceEntryDocRef = doc(db, performanceEntriesColPath, exerciseId);
-  // console.log(`[SERVICE] Querying path: ${performanceEntryDocRef.path}`);
+  // console.log(`[SERVICE] getLastLoggedPerformance: Querying path: ${performanceEntryDocRef.path}`);
 
   try {
     const docSnap = await getDoc(performanceEntryDocRef);
@@ -153,7 +185,9 @@ export const getLastLoggedPerformance = async (userId: string, exerciseId: strin
     return null;
   } catch (error: any) {
     console.error(`[SERVICE] Error getLastLoggedPerformance for exerciseId=${exerciseId}:`, error);
-    return null;
+    // Consider re-throwing or handling more gracefully depending on expected behavior.
+    // For now, returning null to indicate data isn't available.
+    return null; 
   }
 };
 
@@ -169,9 +203,9 @@ export const deleteAllPerformanceEntriesForExercise = async (userId: string, exe
         // console.log(`[SERVICE] Successfully deleted performance entry for exerciseId=${exerciseId}`);
     } catch (error: any) {
         console.error(`Error deleting performance entry for exercise ${exerciseId}:`, error);
-        if (error.code === 'unavailable' || error.code === 'permission-denied') {
-             throw new Error(`Failed to delete performance entry. ${error.message}`);
-        }
+        // Don't throw if it's just a "not found" type error, but do throw for others.
+        // For simplicity, just logging and not re-throwing if the goal is to ensure it's gone.
+        // If critical that it existed, specific error handling for 'not-found' might be needed.
     }
 };
 

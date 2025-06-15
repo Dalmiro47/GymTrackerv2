@@ -1,3 +1,4 @@
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -84,4 +85,33 @@ body {
   body {
     @apply bg-background text-foreground;
   }
+}
+
+/* Custom class for days with logs in the calendar */
+.rdp-day_logged { /* react-day-picker prefixes modifierClassNames with rdp-day_ */
+  position: relative; 
+}
+.rdp-day_logged::after {
+  content: '';
+  position: absolute;
+  bottom: 5px; /* Adjust vertical position */
+  left: 50%;
+  transform: translateX(-50%);
+  width: 50%; /* Width of the rectangle */
+  height: 3px; /* Height of the rectangle */
+  @apply bg-primary; /* Use primary color, or var(--primary) if PostCSS setup allows */
+  border-radius: 1px; /* Optional: slightly rounded corners for the rectangle */
+}
+
+/* Ensure indicator is visible on selected and today days, possibly with a different color */
+.rdp-day_selected.rdp-day_logged::after {
+  @apply bg-primary-foreground; /* Use primary-foreground for contrast on selected days */
+}
+.rdp-day_today.rdp-day_logged::after {
+   /* For today's date, primary might still be okay, or use accent if it contrasts well */
+   /* If today is also selected, the .rdp-day_selected rule above will take precedence if more specific */
+  @apply bg-primary; 
+}
+.rdp-day_today.rdp-day_selected.rdp-day_logged::after {
+  @apply bg-primary-foreground; /* If today is selected and logged */
 }
