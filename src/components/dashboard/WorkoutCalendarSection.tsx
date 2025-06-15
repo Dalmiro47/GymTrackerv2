@@ -9,9 +9,20 @@ import { useAuth } from '@/contexts/AuthContext';
 import { getWorkoutLog, getLoggedDateStrings } from '@/services/trainingLogService';
 import type { WorkoutLog, LoggedSet } from '@/types';
 import { format, parseISO, startOfMonth, endOfMonth, isWithinInterval, getMonth, getYear } from 'date-fns';
-import { Loader2, CalendarIcon, ListChecks, ExternalLink } from 'lucide-react';
+import { Loader2, CalendarIcon, ListChecks, ExternalLink, PlusCircle } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import Link from 'next/link';
+
+function getMonthlySummaryMessage(logCount: number): string {
+  if (logCount === 0) {
+    return "No workouts yet this month—your future self is waiting. Let’s get moving! 💪";
+  }
+  if (logCount <= 5) {
+    return `Great start! You’ve logged ${logCount} session${logCount > 1 ? "s" : ""} this month. Keep the momentum going!`;
+  }
+  // 6 or more
+  return `Wow—${logCount} sessions already! You’re turning gains into a habit. Keep crushing it! 🚀`;
+}
 
 export function WorkoutCalendarSection() {
   const { user } = useAuth();
@@ -90,6 +101,8 @@ export function WorkoutCalendarSection() {
       setDisplayedMonth(startOfMonth(date));
     }
   };
+  
+  const monthlySummaryMessage = getMonthlySummaryMessage(logsInCurrentDisplayedMonth);
 
   return (
     <Card className="shadow-xl overflow-hidden">
@@ -125,8 +138,8 @@ export function WorkoutCalendarSection() {
                   className="rounded-md border bg-card shadow"
                 />
               )}
-              <p className="text-sm text-muted-foreground mt-3">
-                Keep up the momentum! {logsInCurrentDisplayedMonth} session{logsInCurrentDisplayedMonth === 1 ? '' : 's'} logged this month.
+              <p className="text-sm text-muted-foreground mt-3 text-center px-2">
+                {monthlySummaryMessage}
               </p>
             </CardContent>
           </Card>
@@ -216,6 +229,3 @@ export function WorkoutCalendarSection() {
     </Card>
   );
 }
-
-// Ensure PlusCircle is imported if not already, for the "Log Workout for this Day" button
-import { PlusCircle } from 'lucide-react';
