@@ -84,6 +84,7 @@ export default function TrainingLogPage() {
   const [isAddExerciseDialogOpen, setIsAddExerciseDialogOpen] = useState(false);
   const [showLogNotes, setShowLogNotes] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+  const [isCalendarOpen, setIsCalendarOpen] = useState(false);
 
 
   const sensors = useSensors(
@@ -118,11 +119,13 @@ export default function TrainingLogPage() {
   }, [currentLog]);
 
   const routineSelectValue = useMemo(() => {
-    if (isLoadingLog || !currentLog) {
+    if (isLoadingLog || !currentLog || !currentLog.routineId) {
       return ""; 
     }
-    return currentLog.routineId || "";
-  }, [currentLog, isLoadingLog]);
+    // Check if the currentLog's routineId is actually among the available routines
+    const routineExists = availableRoutines.some(r => r.id === currentLog.routineId);
+    return routineExists ? currentLog.routineId : "";
+  }, [currentLog, isLoadingLog, availableRoutines]);
 
   if (authIsLoading) {
     return (
@@ -180,7 +183,7 @@ export default function TrainingLogPage() {
               </AlertDialogContent>
             </AlertDialog>
 
-            <Button onClick={() => saveCurrentLog()} disabled={isSavingLog || isLoadingLog} className="bg-accent hover:bg-accent/90">
+            <Button onClick={async () => await saveCurrentLog()} disabled={isSavingLog || isLoadingLog} className="bg-accent hover:bg-accent/90">
                 {isSavingLog ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                 Save Day's Log
             </Button>
@@ -194,7 +197,7 @@ export default function TrainingLogPage() {
               <CardTitle className="font-headline text-xl">Log for: {format(selectedDate, 'PPP')}</CardTitle>
               <CardDescription>Select a date, choose a routine, or add exercises manually.</CardDescription>
             </div>
-            <Popover>
+            <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
               <PopoverTrigger asChild>
                 <Button variant="outline" className="w-full sm:w-[280px] justify-start text-left font-normal">
                   <CalendarIconLucide className="mr-2 h-4 w-4" />
@@ -205,7 +208,12 @@ export default function TrainingLogPage() {
                 <Calendar
                   mode="single"
                   selected={selectedDate}
-                  onSelect={(date) => date && setSelectedDate(date)}
+                  onSelect={(date) => {
+                    if (date) {
+                      setSelectedDate(date);
+                    }
+                    setIsCalendarOpen(false); // Close popover on date select
+                  }}
                   initialFocus
                 />
               </PopoverContent>
@@ -220,7 +228,7 @@ export default function TrainingLogPage() {
               disabled={isLoadingRoutines || isLoadingLog}
             >
               <SelectTrigger>
-                <SelectValue placeholder={isLoadingRoutines || isLoadingLog ? "Loading routines..." : "Start from a routine (optional)"} />
+                <SelectValue placeholder={isLoadingRoutines || (isLoadingLog && !currentLog?.routineId) ? "Loading routines..." : "Start from a routine (optional)"} />
               </SelectTrigger>
               <SelectContent>
                 {availableRoutines.map(routine => (
