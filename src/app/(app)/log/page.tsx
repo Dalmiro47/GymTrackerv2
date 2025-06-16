@@ -1,7 +1,8 @@
 
 "use client";
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { 
@@ -20,7 +21,7 @@ import { useTrainingLog } from '@/hooks/useTrainingLog';
 import type { LoggedExercise, Exercise } from '@/types';
 import { LoggedExerciseCard } from '@/components/training-log/LoggedExerciseCard';
 import { AddExerciseDialog } from '@/components/training-log/AddExerciseDialog';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, isValid as isDateValid } from 'date-fns';
 import { Loader2 } from 'lucide-react';
 import {
   AlertDialog,
@@ -52,9 +53,23 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 
-export default function TrainingLogPage() {
+function TrainingLogPageContent() {
   const { user, isLoading: authIsLoading } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  
+  const getInitialDateFromParams = () => {
+    const dateQueryParam = searchParams.get('date');
+    if (dateQueryParam) {
+      const parsedDate = parseISO(dateQueryParam);
+      if (isDateValid(parsedDate)) {
+        return parsedDate;
+      }
+    }
+    return new Date();
+  };
+
+  const initialDate = getInitialDateFromParams();
   
   const {
     selectedDate,
@@ -68,7 +83,6 @@ export default function TrainingLogPage() {
     availableExercises, 
     isLoadingExercises, 
     loggedDayStrings,
-    // isLoadingLoggedDayStrings, // No longer directly used for rendering logic here
     handleSelectRoutine,
     addExerciseToLog,
     removeExerciseFromLog,
@@ -78,8 +92,8 @@ export default function TrainingLogPage() {
     saveCurrentLog,
     updateOverallLogNotes,
     deleteCurrentLog,
-    markExerciseAsInteracted, // New function from hook
-  } = useTrainingLog(new Date());
+    markExerciseAsInteracted,
+  } = useTrainingLog(initialDate);
 
   const [isAddExerciseDialogOpen, setIsAddExerciseDialogOpen] = useState(false);
   const [showLogNotes, setShowLogNotes] = useState(false);
@@ -129,15 +143,6 @@ export default function TrainingLogPage() {
   };
 
   const canDeleteLog = useMemo(() => {
-    // A log can be deleted if it has non-provisional exercises or notes.
-    // Or if it simply exists in Firestore (which means it was saved at some point).
-    // The currentLog from the hook reflects the version from Firestore OR the in-memory version.
-    // If currentLog.exercises.some(ex => !ex.isProvisional), it means there's something confirmed to delete.
-    // If all exercises are provisional, but there are notes, it can be deleted.
-    // If the log itself (currentLog.id) is present and associated with a db record, it implies it can be deleted.
-    // The hook's deleteCurrentLog will handle backend deletion.
-    // For UI, enable if there's *anything* in currentLog (notes or any exercises)
-    // or if `loggedDayStrings` includes the current `formattedDateId` (meaning it exists on backend).
     const formattedCurrentDate = format(selectedDate, 'yyyy-MM-dd');
     const existsOnBackend = loggedDayStrings.includes(formattedCurrentDate);
 
@@ -281,7 +286,7 @@ export default function TrainingLogPage() {
                       onSaveProgress={() => saveExerciseProgress(loggedEx)}
                       onRemove={() => removeExerciseFromLog(loggedEx.id)}
                       isSavingParentLog={isSavingLog}
-                      onMarkAsInteracted={() => markExerciseAsInteracted(loggedEx.id)} // Pass interaction handler
+                      onMarkAsInteracted={() => markExerciseAsInteracted(loggedEx.id)}
                     />
                   ))}
                 </div>
@@ -365,3 +370,13 @@ export default function TrainingLogPage() {
     </div>
   );
 }
+
+
+export default function TrainingLogPage() {
+  return (
+    <Suspense fallback={<div className="flex h-screen items-center justify-center"><Loader2 className="h-12 w-12 animate-spin text-primary" /></div>}>
+      <TrainingLogPageContent />
+    </Suspense>
+  );
+}
+
