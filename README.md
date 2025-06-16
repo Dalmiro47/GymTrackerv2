@@ -127,3 +127,4 @@ Once the server is running, you can open your browser to [http://localhost:9002]
 *   **Refine UI/UX**: Ensure a smooth and intuitive user experience.
 
 Happy coding!
+# GymTrackerv2
