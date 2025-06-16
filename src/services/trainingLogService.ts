@@ -4,11 +4,11 @@
  * - saveWorkoutLog: Saves or updates the workout log for a specific date.
  * - getWorkoutLog: Fetches the workout log for a specific date.
  * - deleteWorkoutLog: Deletes the workout log for a specific date.
- * - saveExercisePerformanceEntry: Saves/updates the performance snapshot (last session & PR) for an exercise.
+ * - saveExercisePerformanceEntry: Saves/updates the performance snapshot (last session & PR) for an exercise. Deletes entry if it becomes empty.
  * - getLastLoggedPerformance: Retrieves the performance snapshot for an exercise.
  * - deleteAllPerformanceEntriesForExercise: Deletes the performance entry for a specific exercise.
  * - getLoggedDateStrings: Fetches all dates ("yyyy-MM-dd") that have workout logs.
- * - updatePerformanceEntryOnLogDelete: Updates an exercise's performance entry (PR, last sets) if sourced from a deleted log, attempting to fall back to the next newest log.
+ * - updatePerformanceEntryOnLogDelete: Updates an exercise's performance entry (PR, last sets) if sourced from a deleted log, attempting to fall back to the next newest log. Deletes entry if it becomes empty.
  * - saveSingleExerciseToLogService: Saves a single exercise to a specific day's workout log, potentially creating the log with routine metadata.
  */
 import { db } from '@/lib/firebaseConfig';
@@ -65,7 +65,6 @@ export const saveWorkoutLog = async (userId: string, date: string, workoutLogPay
     })
   };
 
-  // Explicitly handle undefined optional fields for Firestore
   payloadForFirestore.routineId = workoutLogPayload.routineId || null;
   payloadForFirestore.routineName = workoutLogPayload.routineName || null;
   payloadForFirestore.duration = workoutLogPayload.duration || null;
@@ -185,6 +184,8 @@ export const saveExercisePerformanceEntry = async (
   const performanceEntryDocRef = doc(db, getUserPerformanceEntriesCollectionPath(userId), exerciseId);
   
   let newPersonalRecord: PersonalRecord | null = null;
+  let newLastPerformedDate: number | null = null;
+  let newLastPerformedSets: LoggedSet[] = [];
   
   try {
     const existingDocSnap = await getDoc(performanceEntryDocRef);
@@ -193,6 +194,9 @@ export const saveExercisePerformanceEntry = async (
     newPersonalRecord = existingEntryData?.personalRecord || null;
 
     if (validCurrentSessionSets.length > 0) {
+        newLastPerformedDate = Timestamp.now().toMillis();
+        newLastPerformedSets = validCurrentSessionSets;
+
         const bestSetThisSession = findBestSetInSetsArray(validCurrentSessionSets);
         if (bestSetThisSession) {
           if (!newPersonalRecord || 
@@ -201,24 +205,47 @@ export const saveExercisePerformanceEntry = async (
             newPersonalRecord = {
               reps: bestSetThisSession.reps,
               weight: bestSetThisSession.weight,
-              date: Timestamp.now().toMillis(), 
+              date: newLastPerformedDate, 
               logId: logDate, 
             };
           }
         }
+    } else {
+        // If no valid sets this session, retain old last performed data if PR wasn't from this log.
+        // If PR *was* from this log and we are clearing sets, then PR also needs re-evaluation (handled by log delete flow mostly).
+        // For direct save with empty sets, we assume user is clearing *this session's* data.
+        // PR logic remains tied to bestSetThisSession. If that's null, PR won't update to this session.
+        // We might need to fetch a previous log if PR's logId matches current logDate and sets are cleared.
+        // For simplicity now, if currentSessionSets is empty, lastPerformed is also considered empty for this update.
+        // The more complex fallback for PR is handled in updatePerformanceEntryOnLogDelete.
+        newLastPerformedDate = existingEntryData?.lastPerformedDate || null;
+        newLastPerformedSets = existingEntryData?.lastPerformedSets || [];
     }
-    const entryDataToSave: Partial<ExercisePerformanceEntry> = { // Use Partial to allow deleting fields
-      lastPerformedDate: validCurrentSessionSets.length > 0 ? Timestamp.now().toMillis() : (existingEntryData?.lastPerformedDate || null),
-      lastPerformedSets: validCurrentSessionSets.length > 0 ? validCurrentSessionSets : (existingEntryData?.lastPerformedSets || []), 
-      personalRecord: newPersonalRecord,
-    };
 
-    // If a field becomes null, ensure it's properly handled (e.g., deleted or set to null)
-    if (entryDataToSave.lastPerformedDate === null) entryDataToSave.lastPerformedDate = deleteField() as any;
-    if (entryDataToSave.personalRecord === null) entryDataToSave.personalRecord = deleteField() as any;
+    const isEntryEffectivelyEmpty = !newPersonalRecord && (!newLastPerformedDate || newLastPerformedSets.length === 0);
 
+    if (isEntryEffectivelyEmpty) {
+      if (existingDocSnap.exists()) {
+        await deleteFirestoreDoc(performanceEntryDocRef);
+      }
+      // If it doesn't exist and is empty, do nothing.
+    } else {
+      const entryDataToSave: Partial<ExercisePerformanceEntry> = {};
+      if (newPersonalRecord) {
+        entryDataToSave.personalRecord = newPersonalRecord;
+      } else {
+        entryDataToSave.personalRecord = deleteField() as any;
+      }
+      if (newLastPerformedDate && newLastPerformedSets.length > 0) {
+        entryDataToSave.lastPerformedDate = newLastPerformedDate;
+        entryDataToSave.lastPerformedSets = newLastPerformedSets;
+      } else {
+        entryDataToSave.lastPerformedDate = deleteField() as any;
+        entryDataToSave.lastPerformedSets = []; // Ensure it's an empty array if no date
+      }
+      await setDoc(performanceEntryDocRef, entryDataToSave, { merge: true });
+    }
 
-    await setDoc(performanceEntryDocRef, entryDataToSave, { merge: true });
   } catch (error: any) {
     console.error(`[SERVICE] saveExercisePerformanceEntry: Error saving/updating exercise performance entry for exerciseId=${exerciseId}:`, error);
     throw new Error(`Failed to save performance entry for ${exerciseId}. ${error.message}`);
@@ -273,87 +300,41 @@ export const updatePerformanceEntryOnLogDelete = async (
   if (!perfSnap.exists()) {
     return;
   }
-
-  const entryData = perfSnap.data() as ExercisePerformanceEntry;
-  let needsFallbackRecalculation = false;
-  const updatedFields: Partial<ExercisePerformanceEntry> = {};
-
-  if (entryData.personalRecord?.logId === deletedLogId) {
-    updatedFields.personalRecord = null; // Mark for deletion or nullification
-    needsFallbackRecalculation = true;
-  } else {
-    updatedFields.personalRecord = entryData.personalRecord;
-  }
-  
-  let lastPerformedDateMatchesDeletedLog = false;
-  if (entryData.lastPerformedDate) {
-    const lastPerformedDateString = format(new Date(entryData.lastPerformedDate), "yyyy-MM-dd");
-    if (lastPerformedDateString === deletedLogId) {
-      lastPerformedDateMatchesDeletedLog = true;
-    }
-  }
-  
-  if (lastPerformedDateMatchesDeletedLog) {
-    updatedFields.lastPerformedDate = null; // Mark for deletion or nullification
-    updatedFields.lastPerformedSets = [];
-    needsFallbackRecalculation = true;
-  } else {
-    updatedFields.lastPerformedDate = entryData.lastPerformedDate;
-    updatedFields.lastPerformedSets = entryData.lastPerformedSets;
-  }
-
-
-  if (!needsFallbackRecalculation) {
-    // Only update if PR was from deleted log but last performance wasn't
-    if (entryData.personalRecord?.logId === deletedLogId && updatedFields.lastPerformedDate !== null) {
-         await updateDoc(perfRef, { personalRecord: deleteField() });
-    }
-    return;
-  }
   
   const logsCol = collection(db, getUserWorkoutLogsCollectionPath(userId));
   let logsQuery = query(
     logsCol,
     where("exerciseIds", "array-contains", exerciseId),
     orderBy("date", "desc")
-    // limit(1) // We need to check beyond the first if it's the deleted log
   );
   
   let logsSnap = await getDocs(logsQuery);
   let fallbackLogDoc: typeof logsSnap.docs[0] | undefined;
 
   for (const doc of logsSnap.docs) {
-    if (doc.id !== deletedLogId) {
+    if (doc.id !== deletedLogId) { // Find the newest log that ISN'T the one being deleted
         fallbackLogDoc = doc;
         break;
     }
   }
 
-
-  if (!fallbackLogDoc) { // If no other log contains this exercise, clear performance data
-    await updateDoc(perfRef, {
-      personalRecord: deleteField(),
-      lastPerformedDate: deleteField(),
-      lastPerformedSets: [],
-    });
+  if (!fallbackLogDoc) { // No other log contains this exercise, so delete the performance entry
+    await deleteFirestoreDoc(perfRef);
     return;
   }
 
   const fallbackLogData = fallbackLogDoc.data() as WorkoutLog;
   const exerciseInFallbackLog = fallbackLogData.exercises.find(e => e.exerciseId === exerciseId);
 
-  if (!exerciseInFallbackLog) { // Should not happen if exerciseIds filter worked, but defensive
-    await updateDoc(perfRef, {
-      personalRecord: deleteField(),
-      lastPerformedDate: deleteField(),
-      lastPerformedSets: [],
-    });
+  if (!exerciseInFallbackLog || exerciseInFallbackLog.sets.length === 0 || exerciseInFallbackLog.sets.every(s => (s.reps ?? 0) === 0 && (s.weight ?? 0) === 0)) {
+    // Fallback log has no meaningful data for this exercise
+    await deleteFirestoreDoc(perfRef);
     return;
   }
   
   const bestSetInFallback = findBestSetInSetsArray(exerciseInFallbackLog.sets);
 
-  const newEntryDataToSet: Partial<ExercisePerformanceEntry> = {
+  const newEntryDataToSet: ExercisePerformanceEntry = { // Not partial, we are setting the whole doc
     lastPerformedDate: Timestamp.fromDate(parseISO(fallbackLogData.id)).toMillis(),
     lastPerformedSets: exerciseInFallbackLog.sets.map(s => ({
       id: s.id, 
@@ -367,19 +348,32 @@ export const updatePerformanceEntryOnLogDelete = async (
           date: Timestamp.fromDate(parseISO(fallbackLogData.id)).toMillis(),
           logId: fallbackLogData.id,
         }
-      : null, // Set to null if no valid sets in fallback
+      : null,
   };
-
-  if (newEntryDataToSet.personalRecord === null) {
-    await updateDoc(perfRef, {
-        lastPerformedDate: newEntryDataToSet.lastPerformedDate,
-        lastPerformedSets: newEntryDataToSet.lastPerformedSets,
-        personalRecord: deleteField()
-    });
-  } else {
-    await updateDoc(perfRef, newEntryDataToSet);
-  }
   
+  // If personalRecord is null after re-evaluation, it should be removed.
+  // setDoc will overwrite, so if personalRecord is null, it effectively "removes" it from the new state.
+  // However, if the entire entry becomes "empty" (no PR, no last performed sets/date), we should delete the doc.
+
+  const isFallbackEntryEmpty = !newEntryDataToSet.personalRecord && 
+                                (!newEntryDataToSet.lastPerformedDate || newEntryDataToSet.lastPerformedSets.length === 0);
+
+  if (isFallbackEntryEmpty) {
+      await deleteFirestoreDoc(perfRef);
+  } else {
+    // If PR is null, ensure it's deleted, not just set to null if the field should not exist
+    const finalData = {...newEntryDataToSet};
+    if (finalData.personalRecord === null) {
+      delete (finalData as any).personalRecord; // Prepare for potential deleteField if it was set to null
+      await setDoc(perfRef, { // Use setDoc to overwrite, then update to delete field if needed
+          lastPerformedDate: finalData.lastPerformedDate,
+          lastPerformedSets: finalData.lastPerformedSets,
+          personalRecord: deleteField() // Explicitly delete the field
+      });
+    } else {
+        await setDoc(perfRef, finalData); // Set the document with the new (potentially partial) data
+    }
+  }
 };
 
 
@@ -396,7 +390,7 @@ export const saveSingleExerciseToLogService = async (
   const logDocRef = doc(db, getUserWorkoutLogsCollectionPath(userId), date);
 
   const { isProvisional, personalRecordDisplay, ...restOfEx } = loggedExerciseData;
-  const exerciseToStore: LoggedExercise = {
+  const exerciseToStore: LoggedExercise = { // Type assertion for clarity
     ...restOfEx,
     sets: loggedExerciseData.sets.map(s => {
       const { isProvisional: setIsProvisional, ...restOfSet } = s; 
@@ -406,7 +400,7 @@ export const saveSingleExerciseToLogService = async (
         weight: restOfSet.weight === null || isNaN(Number(restOfSet.weight)) ? 0 : Number(restOfSet.weight),
       };
     }),
-  };
+  } as LoggedExercise; // Ensure it matches the type stored in DB
 
   try {
     const docSnap = await getDoc(logDocRef);
@@ -424,27 +418,21 @@ export const saveSingleExerciseToLogService = async (
       
       const updatedExerciseIds = Array.from(new Set(exercises.map(ex => ex.exerciseId)));
 
-      // When updating, only update exercises array and exerciseIds.
-      // Routine association and notes are managed by full "Save Day's Log" or initial creation.
       await updateDoc(logDocRef, {
         exercises: exercises,
         exerciseIds: updatedExerciseIds,
       });
     } else {
-      // Log doesn't exist, create it with this exercise AND metadata
-      const newLogData: Partial<WorkoutLog> = { // Use Partial, then clean undefined
+      const newLogData: Partial<WorkoutLog> = {
         id: date,
         date: date,
         exercises: [exerciseToStore],
         exerciseIds: [exerciseToStore.exerciseId],
         notes: logMetadata.notes || '',
-        routineId: logMetadata.routineId,
-        routineName: logMetadata.routineName,
       };
       
-      // Remove undefined fields before sending to Firestore
-      if (newLogData.routineId === undefined) delete newLogData.routineId;
-      if (newLogData.routineName === undefined) delete newLogData.routineName;
+      if (logMetadata.routineId) newLogData.routineId = logMetadata.routineId;
+      if (logMetadata.routineName) newLogData.routineName = logMetadata.routineName;
 
       await setDoc(logDocRef, newLogData);
     }
@@ -453,4 +441,3 @@ export const saveSingleExerciseToLogService = async (
     throw new Error(`Failed to save exercise to log. ${error.message}`);
   }
 };
-
