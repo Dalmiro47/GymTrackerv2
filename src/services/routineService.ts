@@ -13,7 +13,8 @@ import {
   query,
   orderBy,
   writeBatch, 
-  Timestamp 
+  Timestamp,
+  limit // Added limit import
 } from 'firebase/firestore';
 import { slugify } from '@/lib/utils'; 
 
