@@ -3,16 +3,18 @@ import { db } from '@/lib/firebaseConfig';
 import type { Routine, RoutineData, RoutineExercise } from '@/types';
 import {
   collection,
-  addDoc,
+  addDoc, // Keep for reference, but we'll use setDoc with specific ID
   getDocs,
   doc,
   updateDoc,
   deleteDoc,
   getDoc,
+  setDoc, // Import setDoc
   query,
   orderBy,
   Timestamp // For potential future use with timestamps
 } from 'firebase/firestore';
+import { slugify } from '@/lib/utils'; // Import slugify
 
 const getUserRoutinesCollectionPath = (userId: string) => `users/${userId}/routines`;
 
@@ -25,7 +27,7 @@ export const addRoutine = async (userId: string, routineData: RoutineData): Prom
         name: ex.name,
         muscleGroup: ex.muscleGroup,
         targetNotes: ex.targetNotes || '',
-        exerciseSetup: ex.exerciseSetup || '', // New field
+        exerciseSetup: ex.exerciseSetup || '',
         dataAiHint: ex.dataAiHint || ''
     }));
 
@@ -34,9 +36,21 @@ export const addRoutine = async (userId: string, routineData: RoutineData): Prom
       exercises: simplifiedExercises,
     };
 
+    // Generate a slug from the routine name to use as the document ID
+    const routineIdSlug = slugify(routineData.name); 
+    if (!routineIdSlug) {
+        // Fallback for empty or invalid names, though form validation should prevent this
+        throw new Error("Routine name is invalid and cannot be used to generate an ID.");
+    }
+
     const userRoutinesColRef = collection(db, getUserRoutinesCollectionPath(userId));
-    const docRef = await addDoc(userRoutinesColRef, dataToSave);
-    return { id: docRef.id, ...dataToSave } as Routine;
+    // Use doc() with the generated slug to create a reference to a specific document ID
+    const routineDocRef = doc(userRoutinesColRef, routineIdSlug); 
+    
+    // Use setDoc to create or overwrite the document with the specified ID
+    await setDoc(routineDocRef, dataToSave); 
+
+    return { id: routineIdSlug, ...dataToSave } as Routine;
   } catch (error: any) {
     console.error("Detailed error adding routine to Firestore: ", error);
     throw new Error(`Failed to add routine. Firestore error: ${error.message || 'Unknown error'}`);
@@ -91,7 +105,7 @@ export const updateRoutine = async (userId: string, routineId: string, routineDa
             name: ex.name,
             muscleGroup: ex.muscleGroup,
             targetNotes: ex.targetNotes || '',
-            exerciseSetup: ex.exerciseSetup || '', // New field
+            exerciseSetup: ex.exerciseSetup || '',
             dataAiHint: ex.dataAiHint || ''
         }));
     }
@@ -115,3 +129,4 @@ export const deleteRoutine = async (userId: string, routineId: string): Promise<
     throw new Error(`Failed to delete routine. Firestore error: ${error.message || 'Unknown error'}`);
   }
 };
+
