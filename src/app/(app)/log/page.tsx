@@ -12,7 +12,7 @@ import {
   Trash2, 
   AlertTriangle 
 } from "lucide-react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar"; 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -307,6 +307,46 @@ export default function TrainingLogPage() {
           </div>
 
         </CardContent>
+        <CardFooter className="flex justify-end gap-2 pt-6 border-t">
+          <AlertDialog open={isDeleteConfirmOpen} onOpenChange={setIsDeleteConfirmOpen}>
+            <AlertDialogTrigger asChild>
+              <Button 
+                  variant="outline" 
+                  className="border-destructive text-destructive hover:bg-destructive/10"
+                  disabled={isDeletingLog || isLoadingLog || !canDeleteLog}
+              >
+                {isDeletingLog ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
+                Delete Day's Log
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle className="flex items-center">
+                  <AlertTriangle className="mr-2 h-5 w-5 text-destructive" />
+                  Confirm Deletion
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  Are you sure you want to delete the entire log for {format(selectedDate, 'PPP')}? This action cannot be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction 
+                  onClick={handleDeleteConfirmed} 
+                  className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+                  disabled={isDeletingLog}
+                >
+                  {isDeletingLog ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Delete Log"}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+
+          <Button onClick={async () => await saveCurrentLog()} disabled={isSavingLog || isLoadingLog} className="bg-accent hover:bg-accent/90">
+              {isSavingLog ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+              Save Day's Log
+          </Button>
+        </CardFooter>
       </Card>
 
       <AddExerciseDialog
