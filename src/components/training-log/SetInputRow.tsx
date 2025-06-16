@@ -21,12 +21,10 @@ export function SetInputRow({ set, index, onSetChange, onRemoveSet, isProvisiona
   
   const handleInputChange = (field: keyof Omit<LoggedSet, 'id' | 'isProvisional'>, value: string) => {
     onSetChange(index, field, value);
-    onInteract(); // Call onInteract when input changes
+    onInteract(); // Call onInteract when input changes - this is correct
   };
 
-  const handleInputFocus = () => {
-    onInteract(); // Call onInteract on focus as well
-  };
+  // Removed handleInputFocus and the onFocus prop from Inputs below
 
   return (
     <div className="flex items-center gap-2">
@@ -36,7 +34,7 @@ export function SetInputRow({ set, index, onSetChange, onRemoveSet, isProvisiona
         placeholder="Reps"
         value={set.reps === null ? '' : String(set.reps)}
         onChange={(e) => handleInputChange('reps', e.target.value)}
-        onFocus={handleInputFocus}
+        // onFocus removed
         className={cn(
             "h-9 text-sm",
             isProvisional && "bg-muted/40 dark:bg-muted/20 placeholder:text-muted-foreground/70 opacity-80"
@@ -49,7 +47,7 @@ export function SetInputRow({ set, index, onSetChange, onRemoveSet, isProvisiona
         placeholder="Weight"
         value={set.weight === null ? '' : String(set.weight)}
         onChange={(e) => handleInputChange('weight', e.target.value)}
-        onFocus={handleInputFocus}
+        // onFocus removed
         className={cn(
             "h-9 text-sm",
             isProvisional && "bg-muted/40 dark:bg-muted/20 placeholder:text-muted-foreground/70 opacity-80"
