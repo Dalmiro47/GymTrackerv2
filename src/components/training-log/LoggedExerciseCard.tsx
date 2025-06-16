@@ -12,7 +12,7 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { VolumeChart } from '@/components/analytics/VolumeChart'; // Import VolumeChart
+import { VolumeChart } from '@/components/analytics/VolumeChart';
 
 interface LoggedExerciseCardProps {
   loggedExercise: LoggedExercise;
@@ -50,14 +50,14 @@ export function LoggedExerciseCard({
   const [localSets, setLocalSets] = useState<LoggedSet[]>(loggedExercise.sets);
   const [isSavingThisExercise, setIsSavingThisExercise] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
-  const [isHistoryDialogOpen, setIsHistoryDialogOpen] = useState(false); // State for history dialog
+  const [isHistoryDialogOpen, setIsHistoryDialogOpen] = useState(false);
 
   useEffect(() => {
     setLocalSets(loggedExercise.sets.map(s => ({...s, isProvisional: loggedExercise.isProvisional }))); 
   }, [loggedExercise.sets, loggedExercise.isProvisional]);
 
   const handleSetChange = (index: number, field: keyof Omit<LoggedSet, 'id' | 'isProvisional'>, value: string) => {
-    onMarkAsInteracted(); // Call when set is changed
+    onMarkAsInteracted(); 
     const newSets = [...localSets];
     const numericValue = value === '' ? null : parseFloat(value); 
     if (newSets[index]) {
@@ -68,7 +68,7 @@ export function LoggedExerciseCard({
   };
 
   const addSet = () => {
-    onMarkAsInteracted(); // Adding a set means interaction
+    onMarkAsInteracted(); 
     const newSet: LoggedSet = { 
         id: `set-${Date.now()}-${localSets.length + 1}`, 
         reps: null, 
@@ -81,7 +81,7 @@ export function LoggedExerciseCard({
   };
 
   const removeSet = (setId: string) => {
-    onMarkAsInteracted(); // Removing a set means interaction
+    onMarkAsInteracted(); 
     const newSets = localSets.filter(s => s.id !== setId);
     setLocalSets(newSets);
     onUpdateSets(newSets);
@@ -108,7 +108,7 @@ export function LoggedExerciseCard({
         ref={setNodeRef} 
         style={style} 
         className={cn(
-          "shadow-md transition-all", 
+          "shadow-md transition-all border rounded-lg", 
           isDragging && "ring-2 ring-primary",
           loggedExercise.isProvisional 
             ? "opacity-60 bg-muted/30 border-dashed border-primary/30" 
@@ -191,8 +191,14 @@ export function LoggedExerciseCard({
 
       <Dialog open={isHistoryDialogOpen} onOpenChange={setIsHistoryDialogOpen}>
         <DialogContent className="sm:max-w-3xl">
-          {/* DialogHeader and DialogTitle can be part of VolumeChart if we want, or here */}
-          {/* For now, let VolumeChart handle its own title based on selection */}
+           <DialogHeader>
+            <DialogTitle className="font-headline text-xl">
+              {loggedExercise.name} - Volume History
+            </DialogTitle>
+            <DialogDescription>
+              Track your total volume (sets × reps × weight) over time for this exercise.
+            </DialogDescription>
+          </DialogHeader>
           <VolumeChart 
             defaultExerciseId={loggedExercise.exerciseId} 
             defaultMuscleGroup={loggedExercise.muscleGroup}
