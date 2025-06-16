@@ -50,23 +50,20 @@ export function LoggedExerciseCard({
   const [justSaved, setJustSaved] = useState(false);
 
   useEffect(() => {
-    // Sync localSets when the sets from parent (currentLog) change
-    // This is important if parent log reloads or an exercise is added from routine
-    setLocalSets(loggedExercise.sets.map(s => ({...s}))); // Create new array to ensure re-render
-  }, [loggedExercise.sets]);
+    setLocalSets(loggedExercise.sets.map(s => ({...s, isProvisional: loggedExercise.isProvisional }))); 
+  }, [loggedExercise.sets, loggedExercise.isProvisional]);
 
   const handleSetChange = (index: number, field: keyof Omit<LoggedSet, 'id'>, value: string) => {
     const newSets = [...localSets];
     const numericValue = value === '' ? null : parseFloat(value); 
     if (newSets[index]) {
        newSets[index] = { ...newSets[index], [field]: numericValue };
-       setLocalSets(newSets); // Update local state for immediate UI feedback
-       onUpdateSets(newSets); // Propagate change to parent (useTrainingLog)
+       setLocalSets(newSets); 
+       onUpdateSets(newSets); 
     }
   };
 
   const addSet = () => {
-    // Generate a more unique ID if possible, though Date.now might suffice for client-side temp IDs
     const newSet: LoggedSet = { id: `set-${Date.now()}-${localSets.length + 1}`, reps: null, weight: null };
     const newSets = [...localSets, newSet];
     setLocalSets(newSets);
@@ -83,20 +80,26 @@ export function LoggedExerciseCard({
     setIsSavingThisExercise(true);
     setJustSaved(false); 
     try {
-      // onSaveProgress should handle saving to Firestore and then updating the PR display
       await onSaveProgress(); 
       setJustSaved(true);
       setTimeout(() => setJustSaved(false), 2000); 
     } catch (error) {
       console.error("Error saving exercise progress from card:", error);
-      // Toast message for error might be handled in useTrainingLog or here
     } finally {
       setIsSavingThisExercise(false);
     }
   };
 
   return (
-    <Card ref={setNodeRef} style={style} className={cn("shadow-md bg-card/80", isDragging && "ring-2 ring-primary")}>
+    <Card 
+      ref={setNodeRef} 
+      style={style} 
+      className={cn(
+        "shadow-md", 
+        isDragging && "ring-2 ring-primary",
+        loggedExercise.isProvisional ? "bg-muted/30 border-dashed border-primary/50" : "bg-card/80"
+      )}
+    >
       <CardHeader className="py-3 px-4 border-b">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -117,7 +120,6 @@ export function LoggedExerciseCard({
         </div>
         <div className="pl-8 space-y-1">
             <div className="flex items-center justify-between text-xs text-muted-foreground mt-1">
-                {/* Display Personal Record */}
                 <span>{loggedExercise.personalRecordDisplay || 'PR: N/A'}</span>
                 <Button variant="link" size="sm" onClick={onRefreshPersonalRecord} className="p-0 h-auto text-xs">
                     <RotateCcw className="mr-1 h-3 w-3"/> Refresh PR
@@ -134,27 +136,32 @@ export function LoggedExerciseCard({
       <CardContent className="p-4 space-y-3">
         {localSets.map((set, index) => (
           <SetInputRow
-            key={set.id} // Ensure key is stable, especially if IDs are temporary client-side
+            key={set.id} 
             set={set}
             index={index}
             onSetChange={handleSetChange}
             onRemoveSet={() => removeSet(set.id)}
-            isLastSet={index === localSets.length - 1}
-            onAddSet={addSet}
+            isProvisional={loggedExercise.isProvisional}
           />
         ))}
-        {localSets.length === 0 && (
-           <Button variant="outline" size="sm" onClick={addSet} className="w-full">
-            <PlusCircle className="mr-2 h-4 w-4" /> Add First Set
-          </Button>
-        )}
         
-        <div className="mt-3 flex justify-end">
+        <Button 
+          variant="outline" 
+          size="sm" 
+          onClick={addSet} 
+          className="w-full mt-2 border-dashed hover:border-solid hover:bg-primary/5 hover:text-primary"
+          disabled={isSavingThisExercise || isSavingParentLog}
+        >
+          <PlusCircle className="mr-2 h-4 w-4" /> 
+          {localSets.length === 0 ? "Add First Set" : "Add Another Set"}
+        </Button>
+        
+        <div className="mt-4 flex justify-end">
            <Button 
             onClick={handleSaveThisExercise} 
-            disabled={isSavingThisExercise || isSavingParentLog}
+            disabled={isSavingThisExercise || isSavingParentLog || loggedExercise.isProvisional}
             size="sm"
-            className="bg-primary/90 hover:bg-primary min-w-[140px]" // Adjusted min-width
+            className="bg-primary/90 hover:bg-primary min-w-[140px]" 
             >
             {isSavingThisExercise ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : 
              justSaved ? <Check className="mr-2 h-4 w-4" /> : <Save className="mr-2 h-4 w-4" />}
