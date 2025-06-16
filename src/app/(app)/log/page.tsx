@@ -8,7 +8,6 @@ import {
   Calendar as CalendarIconLucide, 
   PlusCircle, 
   Save, 
-  RotateCcw, // Keep for PageHeader if used elsewhere, or remove if not. For now, kept.
   Trash2, 
   AlertTriangle 
 } from "lucide-react";
@@ -69,7 +68,7 @@ export default function TrainingLogPage() {
     availableExercises, 
     isLoadingExercises, 
     loggedDayStrings,
-    isLoadingLoggedDayStrings,
+    // isLoadingLoggedDayStrings, // No longer directly used for rendering logic here
     handleSelectRoutine,
     addExerciseToLog,
     removeExerciseFromLog,
@@ -78,8 +77,8 @@ export default function TrainingLogPage() {
     saveExerciseProgress,
     saveCurrentLog,
     updateOverallLogNotes,
-    // refreshPersonalRecordDisplayForExercise, // Removed
     deleteCurrentLog,
+    markExerciseAsInteracted, // New function from hook
   } = useTrainingLog(new Date());
 
   const [isAddExerciseDialogOpen, setIsAddExerciseDialogOpen] = useState(false);
@@ -87,26 +86,18 @@ export default function TrainingLogPage() {
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
 
-  useEffect(() => {
-    // console.log("[PAGE] isLoadingLoggedDayStrings state:", isLoadingLoggedDayStrings);
-  }, [isLoadingLoggedDayStrings]);
 
   const daysWithLogs = useMemo(() => {
-    // console.log("[PAGE] Preparing daysWithLogs. Raw loggedDayStrings:", loggedDayStrings);
     if (!loggedDayStrings || loggedDayStrings.length === 0) {
-      // console.log("[PAGE] No loggedDayStrings to process for calendar indicators.");
       return [];
     }
     const parsedDates = loggedDayStrings.map(dateStr => {
       const parsed = parseISO(dateStr);
       if (isNaN(parsed.getTime())) { 
-        // console.warn(`[PAGE] Failed to parse date string: '${dateStr}' into a valid Date object.`);
         return null; 
       }
       return parsed;
     }).filter(date => date !== null) as Date[]; 
-    
-    // console.log("[PAGE] Parsed dates for calendar modifiers (daysWithLogs):", parsedDates);
     return parsedDates;
   }, [loggedDayStrings]);
 
@@ -138,8 +129,20 @@ export default function TrainingLogPage() {
   };
 
   const canDeleteLog = useMemo(() => {
-    return currentLog && (currentLog.exercises.length > 0 || (currentLog.notes && currentLog.notes.trim() !== ''));
-  }, [currentLog]);
+    // A log can be deleted if it has non-provisional exercises or notes.
+    // Or if it simply exists in Firestore (which means it was saved at some point).
+    // The currentLog from the hook reflects the version from Firestore OR the in-memory version.
+    // If currentLog.exercises.some(ex => !ex.isProvisional), it means there's something confirmed to delete.
+    // If all exercises are provisional, but there are notes, it can be deleted.
+    // If the log itself (currentLog.id) is present and associated with a db record, it implies it can be deleted.
+    // The hook's deleteCurrentLog will handle backend deletion.
+    // For UI, enable if there's *anything* in currentLog (notes or any exercises)
+    // or if `loggedDayStrings` includes the current `formattedDateId` (meaning it exists on backend).
+    const formattedCurrentDate = format(selectedDate, 'yyyy-MM-dd');
+    const existsOnBackend = loggedDayStrings.includes(formattedCurrentDate);
+
+    return currentLog && (currentLog.exercises.length > 0 || (currentLog.notes && currentLog.notes.trim() !== '') || existsOnBackend);
+  }, [currentLog, selectedDate, loggedDayStrings]);
   
   const routineSelectValue = currentLog?.routineId || "";
 
@@ -277,8 +280,8 @@ export default function TrainingLogPage() {
                       onUpdateSets={(sets) => updateExerciseInLog({ ...loggedEx, sets })}
                       onSaveProgress={() => saveExerciseProgress(loggedEx)}
                       onRemove={() => removeExerciseFromLog(loggedEx.id)}
-                      // onRefreshPersonalRecord prop removed
                       isSavingParentLog={isSavingLog}
+                      onMarkAsInteracted={() => markExerciseAsInteracted(loggedEx.id)} // Pass interaction handler
                     />
                   ))}
                 </div>

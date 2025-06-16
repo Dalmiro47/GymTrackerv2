@@ -47,6 +47,7 @@ export interface LoggedSet {
   id: string; // Unique ID for the set (e.g., UUID or timestamp-based)
   reps: number | null; // Allow null for empty input
   weight: number | null; // Allow null for empty input
+  isProvisional?: boolean; // Added for UI indication, not for Firestore storage within Set
 }
 
 export interface LoggedExercise {
@@ -58,6 +59,7 @@ export interface LoggedExercise {
   sets: LoggedSet[];
   notes?: string;
   personalRecordDisplay?: string; // e.g., "PR: 1x5 @ 100kg" or "PR: N/A"
+  isProvisional?: boolean; // True if auto-populated and not yet interacted with/saved
 }
 
 // Represents the entire workout log for a specific day

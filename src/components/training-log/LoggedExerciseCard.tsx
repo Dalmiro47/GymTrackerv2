@@ -6,7 +6,7 @@ import type { LoggedExercise, LoggedSet } from '@/types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { PlusCircle, Trash2, Save, GripVertical, Loader2, Check, Settings2 } from 'lucide-react'; // RotateCcw removed
+import { PlusCircle, Trash2, Save, GripVertical, Loader2, Check, Settings2 } from 'lucide-react';
 import { SetInputRow } from './SetInputRow'; 
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -17,8 +17,8 @@ interface LoggedExerciseCardProps {
   onUpdateSets: (sets: LoggedSet[]) => void;
   onSaveProgress: () => Promise<void>; 
   onRemove: () => void;
-  // onRefreshPersonalRecord prop removed
   isSavingParentLog: boolean; 
+  onMarkAsInteracted: () => void; // New prop
 }
 
 export function LoggedExerciseCard({
@@ -26,8 +26,8 @@ export function LoggedExerciseCard({
   onUpdateSets,
   onSaveProgress,
   onRemove,
-  // onRefreshPersonalRecord prop removed from destructuring
-  isSavingParentLog
+  isSavingParentLog,
+  onMarkAsInteracted, // New prop
 }: LoggedExerciseCardProps) {
   const {
     attributes,
@@ -50,51 +50,51 @@ export function LoggedExerciseCard({
   const [justSaved, setJustSaved] = useState(false);
 
   useEffect(() => {
-    // When the exercise itself changes (e.g. from provisional to not), update local sets
-    // and correctly reflect the provisional status in them for styling.
     setLocalSets(loggedExercise.sets.map(s => ({...s, isProvisional: loggedExercise.isProvisional }))); 
   }, [loggedExercise.sets, loggedExercise.isProvisional]);
 
-  const handleSetChange = (index: number, field: keyof Omit<LoggedSet, 'id'>, value: string) => {
+  const handleSetChange = (index: number, field: keyof Omit<LoggedSet, 'id' | 'isProvisional'>, value: string) => {
     const newSets = [...localSets];
     const numericValue = value === '' ? null : parseFloat(value); 
     if (newSets[index]) {
-       // Mark this exercise as no longer provisional because user interacted with its sets
        newSets[index] = { ...newSets[index], [field]: numericValue, isProvisional: false };
-       const updatedExerciseWithNonProvisionalSets = {
-         ...loggedExercise,
-         sets: newSets,
-         isProvisional: false // Mark the whole exercise as non-provisional
-       };
        setLocalSets(newSets); 
-       onUpdateSets(newSets); // This sends all sets up, but we also need to tell the parent exercise is no longer provisional
-       // Consider if onUpdateSets should take the whole exercise object or if a separate callback is needed for provisional status.
-       // For now, onUpdateSets in useTrainingLog handles marking the exercise non-provisional.
+       onUpdateSets(newSets); 
+       onMarkAsInteracted(); // Call when set is changed
     }
   };
 
   const addSet = () => {
-    const newSet: LoggedSet = { id: `set-${Date.now()}-${localSets.length + 1}`, reps: null, weight: null, isProvisional: false };
+    const newSet: LoggedSet = { 
+        id: `set-${Date.now()}-${localSets.length + 1}`, 
+        reps: null, 
+        weight: null, 
+        isProvisional: false // New sets added by user are not provisional
+    };
     const newSets = [...localSets, newSet];
     setLocalSets(newSets);
     onUpdateSets(newSets);
+    onMarkAsInteracted(); // Adding a set means interaction
   };
 
   const removeSet = (setId: string) => {
     const newSets = localSets.filter(s => s.id !== setId);
     setLocalSets(newSets);
     onUpdateSets(newSets);
+    onMarkAsInteracted(); // Removing a set means interaction
   };
 
   const handleSaveThisExercise = async () => {
     setIsSavingThisExercise(true);
     setJustSaved(false); 
     try {
+      onMarkAsInteracted(); // Ensure it's marked as interacted before saving
       await onSaveProgress(); 
       setJustSaved(true);
       setTimeout(() => setJustSaved(false), 2000); 
     } catch (error) {
       console.error("Error saving exercise progress from card:", error);
+      // Toast for error is handled by the hook
     } finally {
       setIsSavingThisExercise(false);
     }
@@ -105,9 +105,11 @@ export function LoggedExerciseCard({
       ref={setNodeRef} 
       style={style} 
       className={cn(
-        "shadow-md", 
+        "shadow-md transition-all", 
         isDragging && "ring-2 ring-primary",
-        loggedExercise.isProvisional ? "bg-muted/30 border-dashed border-primary/50" : "bg-card/80"
+        loggedExercise.isProvisional 
+          ? "opacity-70 bg-muted/50 border-dashed border-primary/30" 
+          : "opacity-100 bg-card border-border"
       )}
     >
       <CardHeader className="py-3 px-4 border-b">
@@ -131,7 +133,6 @@ export function LoggedExerciseCard({
         <div className="pl-8 space-y-1">
             <div className="flex items-center justify-between text-xs text-muted-foreground mt-1">
                 <span>{loggedExercise.personalRecordDisplay || 'PR: N/A'}</span>
-                {/* Refresh PR button removed */}
             </div>
             {loggedExercise.exerciseSetup && (
                 <div className="text-xs text-muted-foreground flex items-center">
@@ -149,7 +150,8 @@ export function LoggedExerciseCard({
             index={index}
             onSetChange={handleSetChange}
             onRemoveSet={() => removeSet(set.id)}
-            isProvisional={loggedExercise.isProvisional} // Pass provisional status to SetInputRow
+            isProvisional={loggedExercise.isProvisional} 
+            onInteract={onMarkAsInteracted} // Pass down onInteract
           />
         ))}
         
@@ -167,7 +169,7 @@ export function LoggedExerciseCard({
         <div className="mt-4 flex justify-end">
            <Button 
             onClick={handleSaveThisExercise} 
-            disabled={isSavingThisExercise || isSavingParentLog || !!loggedExercise.isProvisional} // Disable if provisional
+            disabled={isSavingThisExercise || isSavingParentLog} 
             size="sm"
             className="bg-primary/90 hover:bg-primary min-w-[140px]" 
             >
