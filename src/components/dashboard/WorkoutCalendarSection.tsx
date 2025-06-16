@@ -196,8 +196,8 @@ export function WorkoutCalendarSection() {
                         <p className="text-sm text-muted-foreground">No exercises were recorded for this day.</p>
                       )}
                     </div>
-                     <Link href={`/log?date=${selectedDate ? format(selectedDate, 'yyyy-MM-dd') : ''}`}>
-                        <Button variant="outline" size="sm" className="mt-4 w-full" disabled={!selectedDate}>
+                     <Link href={`/log?date=${format(selectedDate!, 'yyyy-MM-dd')}`}>
+                        <Button variant="outline" size="sm" className="mt-4 w-full">
                             <ExternalLink className="mr-2 h-4 w-4" />
                             View/Edit Full Log for this Day
                         </Button>
@@ -229,3 +229,4 @@ export function WorkoutCalendarSection() {
     </Card>
   );
 }
+
