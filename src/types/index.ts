@@ -38,6 +38,7 @@ export interface Routine {
   name: string;
   description?: string;
   exercises: RoutineExercise[]; 
+  order: number; // For drag-and-drop ordering
 }
 
 export type RoutineData = Omit<Routine, 'id'>;

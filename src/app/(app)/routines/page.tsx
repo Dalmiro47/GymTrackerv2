@@ -6,7 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import type { Routine, RoutineData } from '@/types';
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
-import { PlusCircle, Loader2, ListChecks, GripVertical } from 'lucide-react';
+import { PlusCircle, Loader2, ListChecks, GripVertical, Save } from 'lucide-react';
 import {
   Card,
   CardContent,
@@ -27,7 +27,13 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { RoutineCard } from '@/components/routines/RoutineCard';
 import { AddEditRoutineDialog } from '@/components/routines/AddEditRoutineDialog';
-import { addRoutine, getRoutines, updateRoutine, deleteRoutine as deleteRoutineService } from '@/services/routineService';
+import { 
+  addRoutine, 
+  getRoutines, 
+  updateRoutine, 
+  deleteRoutine as deleteRoutineService,
+  updateRoutinesOrder 
+} from '@/services/routineService';
 import { useRouter } from 'next/navigation';
 
 import {
@@ -57,6 +63,7 @@ export default function RoutinesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isDialogSaving, setIsDialogSaving] = useState(false);
+  const [isOrderSaving, setIsOrderSaving] = useState(false); // For saving order changes
   const [routineToEdit, setRoutineToEdit] = useState<Routine | null>(null);
   const [routineToDeleteId, setRoutineToDeleteId] = useState<string | null>(null);
 
@@ -69,7 +76,7 @@ export default function RoutinesPage() {
       console.error("Failed to fetch routines:", error);
       toast({
         title: "Error Fetching Routines",
-        description: `Could not fetch your routines. ${error.message || 'Please try again later.'}`,
+        description: `${error.message || 'Please try again later.'}. If this persists, ensure Firestore indexes are set up for 'order' on the routines collection.`,
         variant: "destructive",
       });
     } finally {
@@ -81,9 +88,8 @@ export default function RoutinesPage() {
     if (user?.id) {
       fetchUserRoutines(user.id);
     } else if (!authContext.isLoading && !user) {
-      // Not loading and no user, means definitely logged out
       setIsLoading(false);
-      setRoutines([]); // Clear routines if user logs out
+      setRoutines([]); 
     }
   }, [user, authContext.isLoading, fetchUserRoutines]);
 
@@ -97,22 +103,21 @@ export default function RoutinesPage() {
     setIsDialogOpen(true);
   };
 
-  const handleSaveRoutine = async (data: RoutineData, id?: string) => {
-    console.log("handleSaveRoutine called with data:", data, "and id:", id); // Diagnostic log
+  const handleSaveRoutine = async (data: Omit<RoutineData, 'order'>, id?: string) => {
     if (!user?.id) {
       toast({ title: "Authentication Error", description: "You must be logged in.", variant: "destructive" });
       return;
     }
     setIsDialogSaving(true);
     try {
-      if (id) { // Editing existing routine
+      if (id) { 
         await updateRoutine(user.id, id, data);
         toast({ title: "Routine Updated", description: `${data.name} has been successfully updated.` });
-      } else { // Creating new routine
+      } else { 
         await addRoutine(user.id, data);
         toast({ title: "Routine Created", description: `${data.name} has been successfully created.` });
       }
-      fetchUserRoutines(user.id); // Refresh list
+      fetchUserRoutines(user.id); 
       setIsDialogOpen(false);
       setRoutineToEdit(null);
     } catch (error: any) {
@@ -136,14 +141,27 @@ export default function RoutinesPage() {
       return;
     }
     const routineName = routines.find(r => r.id === routineToDeleteId)?.name || "The routine";
+    setIsLoading(true); // Indicate loading while deleting and re-fetching
     try {
       await deleteRoutineService(user.id, routineToDeleteId);
       toast({ title: "Routine Deleted", description: `${routineName} has been removed.` });
-      fetchUserRoutines(user.id); // Refresh list
+      // After deleting, re-fetch to get potentially re-ordered or updated list
+      // If order needs to be compacted, a more complex re-ordering logic would be needed here.
+      // For now, getRoutines will fetch based on existing 'order' values.
+      const updatedRoutines = await getRoutines(user.id);
+      
+      // Optional: If strict contiguous order is desired after delete, re-save all orders
+      // const remainingRoutineIds = updatedRoutines.map(r => r.id);
+      // await updateRoutinesOrder(user.id, remainingRoutineIds);
+      // const finalRoutines = await getRoutines(user.id);
+      // setRoutines(finalRoutines);
+
+      setRoutines(updatedRoutines); // Or just set directly if compaction isn't critical
     } catch (error: any) {
       toast({ title: "Delete Error", description: `Could not delete ${routineName}. ${error.message}`, variant: "destructive" });
     } finally {
       setRoutineToDeleteId(null);
+      setIsLoading(false);
     }
   };
 
@@ -154,15 +172,33 @@ export default function RoutinesPage() {
     })
   );
 
-  function handleDragEndRoutines(event: DragEndEvent) {
+  async function handleDragEndRoutines(event: DragEndEvent) {
     const { active, over } = event;
-    if (over && active.id !== over.id) {
-      setRoutines((currentRoutines) => {
-        const oldIndex = currentRoutines.findIndex((r) => r.id === active.id);
-        const newIndex = currentRoutines.findIndex((r) => r.id === over.id);
-        return arrayMove(currentRoutines, oldIndex, newIndex);
-      });
-      // Note: Order persistence to Firestore is not implemented in this step.
+    if (over && active.id !== over.id && user?.id) {
+      setIsOrderSaving(true);
+      const oldIndex = routines.findIndex((r) => r.id === active.id);
+      const newIndex = routines.findIndex((r) => r.id === over.id);
+      const reorderedRoutines = arrayMove(routines, oldIndex, newIndex);
+      setRoutines(reorderedRoutines); // Optimistically update UI
+
+      const orderedIds = reorderedRoutines.map(r => r.id);
+      try {
+        await updateRoutinesOrder(user.id, orderedIds);
+        // Optionally re-fetch to confirm order from DB, or trust optimistic update.
+        // For simplicity, we'll assume optimistic update is fine for now.
+        // fetchUserRoutines(user.id); 
+        toast({ title: "Order Saved", description: "Routine order has been updated." });
+      } catch (error: any) {
+        toast({
+          title: "Error Saving Order",
+          description: `Could not save the new routine order. ${error.message || 'Please try again.'}`,
+          variant: "destructive",
+        });
+        // Revert to original order if save fails (or re-fetch)
+        fetchUserRoutines(user.id);
+      } finally {
+        setIsOrderSaving(false);
+      }
     }
   }
 
@@ -187,15 +223,23 @@ export default function RoutinesPage() {
   
   return (
     <div className="space-y-6">
-      <PageHeader title="Workout Routines" description="Design and manage your custom workout plans.">
-        <Button 
-            variant="default" 
-            className="bg-accent hover:bg-accent/90 text-accent-foreground"
-            onClick={handleOpenAddDialog}
-            disabled={isLoading}
-        >
-          <PlusCircle className="mr-2 h-4 w-4" /> Create Routine
-        </Button>
+      <PageHeader title="Workout Routines" description="Design and manage your custom workout plans. Drag to reorder.">
+        <div className="flex items-center gap-2">
+            {isOrderSaving && (
+                <div className="flex items-center text-sm text-muted-foreground">
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Saving order...
+                </div>
+            )}
+            <Button 
+                variant="default" 
+                className="bg-accent hover:bg-accent/90 text-accent-foreground"
+                onClick={handleOpenAddDialog}
+                disabled={isLoading || isOrderSaving}
+            >
+            <PlusCircle className="mr-2 h-4 w-4" /> Create Routine
+            </Button>
+        </div>
       </PageHeader>
 
       <AddEditRoutineDialog
@@ -267,3 +311,4 @@ export default function RoutinesPage() {
     </div>
   );
 }
+
