@@ -8,7 +8,7 @@ import {
   Calendar as CalendarIconLucide, 
   PlusCircle, 
   Save, 
-  RotateCcw, 
+  RotateCcw, // Keep for PageHeader if used elsewhere, or remove if not. For now, kept.
   Trash2, 
   AlertTriangle 
 } from "lucide-react";
@@ -78,7 +78,7 @@ export default function TrainingLogPage() {
     saveExerciseProgress,
     saveCurrentLog,
     updateOverallLogNotes,
-    refreshPersonalRecordDisplayForExercise,
+    // refreshPersonalRecordDisplayForExercise, // Removed
     deleteCurrentLog,
   } = useTrainingLog(new Date());
 
@@ -277,7 +277,7 @@ export default function TrainingLogPage() {
                       onUpdateSets={(sets) => updateExerciseInLog({ ...loggedEx, sets })}
                       onSaveProgress={() => saveExerciseProgress(loggedEx)}
                       onRemove={() => removeExerciseFromLog(loggedEx.id)}
-                      onRefreshPersonalRecord={() => refreshPersonalRecordDisplayForExercise(loggedEx.exerciseId)}
+                      // onRefreshPersonalRecord prop removed
                       isSavingParentLog={isSavingLog}
                     />
                   ))}
