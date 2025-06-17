@@ -241,6 +241,7 @@ function TrainingLogPageContent() {
                   }}
                   modifiers={{ logged: daysWithLogs }}
                   modifiersClassNames={{ logged: 'day-is-logged' }} 
+                  weekStartsOn={1} // Start week on Monday
                 />
               </PopoverContent>
             </Popover>
