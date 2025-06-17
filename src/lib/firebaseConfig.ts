@@ -13,6 +13,13 @@ const firebaseConfig: FirebaseOptions = {
   // measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID, // Optional
 };
 
+// Diagnostic logs
+if (typeof window === 'undefined') { // Log only on the server-side during initialization if possible, or adjust as needed
+  console.log("Attempting to initialize Firebase with Project ID:", process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID);
+  console.log("Using Firebase Auth Domain:", process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN);
+}
+
+
 // Initialize Firebase
 let app;
 if (!getApps().length) {
@@ -25,3 +32,4 @@ const auth = getAuth(app);
 const db = getFirestore(app); // Initialize Firestore
 
 export { app, auth, db };
+
