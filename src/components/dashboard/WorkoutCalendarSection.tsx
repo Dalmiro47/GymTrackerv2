@@ -136,6 +136,7 @@ export function WorkoutCalendarSection() {
                   modifiers={{ logged: daysWithLogs }}
                   modifiersClassNames={{ logged: 'day-is-logged' }}
                   className="rounded-md border bg-card shadow"
+                  weekStartsOn={1} // Start week on Monday
                 />
               )}
               <p className="text-sm text-muted-foreground mt-3 text-center px-2">
