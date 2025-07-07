@@ -190,7 +190,7 @@ export function LoggedExerciseCard({
       </Card>
 
       <Dialog open={isHistoryDialogOpen} onOpenChange={setIsHistoryDialogOpen}>
-        <DialogContent className="sm:max-w-3xl">
+        <DialogContent className="p-4 sm:p-6 sm:max-w-3xl">
            <DialogHeader>
             <DialogTitle className="font-headline text-xl">
               {loggedExercise.name} - Volume History
