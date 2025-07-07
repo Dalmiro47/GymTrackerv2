@@ -190,19 +190,22 @@ export function LoggedExerciseCard({
       </Card>
 
       <Dialog open={isHistoryDialogOpen} onOpenChange={setIsHistoryDialogOpen}>
-        <DialogContent className="p-2 sm:p-6 w-full max-w-[95vw] sm:max-w-3xl rounded-lg">
-           <DialogHeader>
-            <DialogTitle className="font-headline text-xl">
+        <DialogContent className="max-w-full w-full h-full p-0 sm:max-w-3xl sm:h-auto sm:rounded-lg sm:p-6 overflow-y-auto">
+          <DialogHeader className="p-4 border-b sm:border-none sm:p-2">
+            <DialogTitle className="font-headline text-lg sm:text-xl">
               {loggedExercise.name} - Volume History
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="text-xs sm:text-sm">
               Track your total volume (sets × reps × weight) over time for this exercise.
             </DialogDescription>
           </DialogHeader>
-          <VolumeChart 
-            defaultExerciseId={loggedExercise.exerciseId} 
-            defaultMuscleGroup={loggedExercise.muscleGroup}
-          />
+          <div className="px-2 sm:px-0">
+            <VolumeChart 
+              defaultExerciseId={loggedExercise.exerciseId} 
+              defaultMuscleGroup={loggedExercise.muscleGroup}
+              containerClassName="shadow-none border-none"
+            />
+          </div>
         </DialogContent>
       </Dialog>
     </>
