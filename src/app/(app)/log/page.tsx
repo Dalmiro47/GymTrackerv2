@@ -276,23 +276,34 @@ function TrainingLogPageContent() {
               <p className="ml-3 text-lg text-muted-foreground">Loading log data...</p>
             </div>
           ) : currentLog && currentLog.exercises.length > 0 ? (
-            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-              <SortableContext items={loggedExerciseIds} strategy={verticalListSortingStrategy}>
-                <div className="space-y-4">
-                  {currentLog.exercises.map(loggedEx => (
-                    <LoggedExerciseCard
-                      key={loggedEx.id}
-                      loggedExercise={loggedEx}
-                      onUpdateSets={(sets) => updateExerciseInLog({ ...loggedEx, sets })}
-                      onSaveProgress={() => saveExerciseProgress(loggedEx)}
-                      onRemove={() => removeExerciseFromLog(loggedEx.id)}
-                      isSavingParentLog={isSavingLog}
-                      onMarkAsInteracted={() => markExerciseAsInteracted(loggedEx.id)}
-                    />
-                  ))}
-                </div>
-              </SortableContext>
-            </DndContext>
+            <>
+              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                <SortableContext items={loggedExerciseIds} strategy={verticalListSortingStrategy}>
+                  <div className="space-y-4">
+                    {currentLog.exercises.map(loggedEx => (
+                      <LoggedExerciseCard
+                        key={loggedEx.id}
+                        loggedExercise={loggedEx}
+                        onUpdateSets={(sets) => updateExerciseInLog({ ...loggedEx, sets })}
+                        onSaveProgress={() => saveExerciseProgress(loggedEx)}
+                        onRemove={() => removeExerciseFromLog(loggedEx.id)}
+                        isSavingParentLog={isSavingLog}
+                        onMarkAsInteracted={() => markExerciseAsInteracted(loggedEx.id)}
+                      />
+                    ))}
+                  </div>
+                </SortableContext>
+              </DndContext>
+              <div className="pt-4">
+                <Button 
+                  onClick={() => setIsAddExerciseDialogOpen(true)} 
+                  variant="outline" 
+                  className="w-full border-dashed hover:border-solid"
+                >
+                  <PlusCircle className="mr-2 h-4 w-4" /> Add Another Exercise
+                </Button>
+              </div>
+            </>
           ) : (
             <div className="text-center py-10 text-muted-foreground">
               <p className="text-lg font-semibold">No exercises logged for this day yet.</p>
@@ -380,4 +391,3 @@ export default function TrainingLogPage() {
     </Suspense>
   );
 }
-
