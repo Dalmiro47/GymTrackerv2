@@ -28,6 +28,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import type { Exercise, MuscleGroup, WorkoutLog } from "@/types";
 import { MUSCLE_GROUPS_LIST } from "@/lib/constants";
 import { Loader2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 type ChartDataEntry = { date: string; volume: number; formattedDate: string };
 
@@ -139,14 +140,14 @@ export const VolumeChart: React.FC<VolumeChartProps> = ({
   const showLoader = isLoadingExercises || isLoadingLoggedDates || isLoadingChartData;
 
   return (
-    <Card className={containerClassName}>
-      <CardHeader>
-        <CardTitle className="font-headline text-lg">
+    <Card className={cn("w-full", containerClassName)}>
+      <CardHeader className="px-2 pt-4 pb-2 sm:px-6 sm:pt-6 sm:pb-4">
+        <CardTitle className="font-headline text-base sm:text-lg">
           Volume Over Time: {selectedExerciseId ? selectedExerciseName : "Select Exercise"}
         </CardTitle>
-        <CardDescription>Total volume (reps × weight) for each workout session.</CardDescription>
+        <CardDescription className="text-xs sm:text-sm">Total volume (reps × weight) for each workout session.</CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-4 p-2 sm:p-6">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Select 
             onValueChange={(value) => {
@@ -184,7 +185,7 @@ export const VolumeChart: React.FC<VolumeChartProps> = ({
           </Select>
         </div>
 
-        <div className="h-[40vh] min-h-[250px] w-full mt-4">
+        <div className="h-[40vh] min-h-[250px] w-full mt-4 overflow-x-auto">
           {showLoader ? (
             <div className="flex items-center justify-center h-full">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
