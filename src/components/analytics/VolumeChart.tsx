@@ -192,22 +192,22 @@ export const VolumeChart: React.FC<VolumeChartProps> = ({
             </div>
           ) : chartData.length > 0 ? (
             <ChartContainer config={chartConfig} className="h-full w-full">
-              <LineChart data={chartData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+              <LineChart data={chartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border) / 0.5)" />
                 <XAxis 
                   dataKey="formattedDate" 
                   tickLine={false} 
                   axisLine={false} 
                   tickMargin={8}
-                  fontSize={12}
+                  fontSize={10}
                 />
                 <YAxis 
-                  label={{ value: "Total Volume (kg)", angle: -90, position: 'insideLeft', offset: -0, fontSize: 12, fill: "hsl(var(--muted-foreground))" }}
+                  label={{ value: "Volume (kg)", angle: -90, position: 'insideLeft', offset: 0, fontSize: 12, fill: "hsl(var(--muted-foreground))" }}
                   tickLine={false}
                   axisLine={false}
-                  tickMargin={8}
-                  fontSize={12}
-                  tickFormatter={(value) => `${value}kg`}
+                  tickMargin={4}
+                  fontSize={10}
+                  tickFormatter={(value) => `${value}`}
                 />
                 <ShadCNChartTooltip
                   cursor={true}
@@ -242,5 +242,4 @@ export const VolumeChart: React.FC<VolumeChartProps> = ({
   );
 };
 
-// Default export if this is the main export of the file
 export default VolumeChart;
