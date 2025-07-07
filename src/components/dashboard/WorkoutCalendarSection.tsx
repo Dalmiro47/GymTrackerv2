@@ -33,6 +33,7 @@ export function WorkoutCalendarSection() {
   const [loggedDayStrings, setLoggedDayStrings] = useState<string[]>([]);
   const [isLoadingLoggedDays, setIsLoadingLoggedDays] = useState(true);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+  const today = new Date();
 
 
   const fetchLoggedDates = useCallback(async () => {
@@ -136,7 +137,9 @@ export function WorkoutCalendarSection() {
                   modifiers={{ logged: daysWithLogs }}
                   modifiersClassNames={{ logged: 'day-is-logged' }}
                   className="rounded-md border bg-card shadow"
-                  weekStartsOn={1} // Start week on Monday
+                  weekStartsOn={1}
+                  toDate={today}
+                  disabled={{ after: today }}
                 />
               )}
               <p className="text-sm text-muted-foreground mt-3 text-center px-2">
