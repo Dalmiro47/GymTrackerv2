@@ -184,7 +184,7 @@ export const VolumeChart: React.FC<VolumeChartProps> = ({
           </Select>
         </div>
 
-        <div className="h-[300px] w-full mt-4">
+        <div className="h-[40vh] min-h-[250px] w-full mt-4">
           {showLoader ? (
             <div className="flex items-center justify-center h-full">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -192,7 +192,7 @@ export const VolumeChart: React.FC<VolumeChartProps> = ({
             </div>
           ) : chartData.length > 0 ? (
             <ChartContainer config={chartConfig} className="h-full w-full">
-              <LineChart data={chartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+              <LineChart data={chartData} margin={{ top: 5, right: 20, left: -20, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border) / 0.5)" />
                 <XAxis 
                   dataKey="formattedDate" 
