@@ -101,6 +101,7 @@ function TrainingLogPageContent() {
   const [showLogNotes, setShowLogNotes] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+  const today = new Date();
 
 
   const daysWithLogs = useMemo(() => {
@@ -247,7 +248,9 @@ function TrainingLogPageContent() {
                   }}
                   modifiers={{ logged: daysWithLogs }}
                   modifiersClassNames={{ logged: 'day-is-logged' }} 
-                  weekStartsOn={1} // Start week on Monday
+                  weekStartsOn={1}
+                  toDate={today}
+                  disabled={{ after: today }}
                 />
               </PopoverContent>
             </Popover>
