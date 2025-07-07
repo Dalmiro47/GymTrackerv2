@@ -51,6 +51,7 @@ import {
   rectSortingStrategy,
   sortableKeyboardCoordinates,
 } from '@dnd-kit/sortable';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 
 export default function RoutinesPage() {
@@ -58,6 +59,7 @@ export default function RoutinesPage() {
   const { user } = authContext;
   const { toast } = useToast();
   const router = useRouter();
+  const isMobile = useIsMobile();
 
   const [routines, setRoutines] = useState<Routine[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -166,7 +168,11 @@ export default function RoutinesPage() {
   };
 
   const sensors = useSensors(
-    useSensor(PointerSensor),
+    useSensor(PointerSensor, {
+      activationConstraint: isMobile
+        ? { delay: 200, tolerance: 8 }
+        : undefined,
+    }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     })
@@ -311,4 +317,3 @@ export default function RoutinesPage() {
     </div>
   );
 }
-

@@ -52,11 +52,13 @@ import {
 } from '@dnd-kit/sortable';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 function TrainingLogPageContent() {
   const { user, isLoading: authIsLoading } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const isMobile = useIsMobile();
   
   const getInitialDateFromParams = () => {
     const dateQueryParam = searchParams.get('date');
@@ -116,7 +118,11 @@ function TrainingLogPageContent() {
   }, [loggedDayStrings]);
 
   const sensors = useSensors(
-    useSensor(PointerSensor),
+    useSensor(PointerSensor, {
+      activationConstraint: isMobile
+        ? { delay: 200, tolerance: 8 }
+        : undefined,
+    }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 

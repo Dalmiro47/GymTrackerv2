@@ -24,6 +24,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 interface SortableExerciseItemProps {
   exercise: RoutineExercise;
@@ -94,8 +95,13 @@ export function SelectedRoutineExercisesList({
   onRemoveExercise,
   onReorderExercises,
 }: SelectedRoutineExercisesListProps) {
+  const isMobile = useIsMobile();
   const sensors = useSensors(
-    useSensor(PointerSensor),
+    useSensor(PointerSensor, {
+      activationConstraint: isMobile
+        ? { delay: 200, tolerance: 8 }
+        : undefined,
+    }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     })
