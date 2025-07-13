@@ -86,23 +86,20 @@ export const useTrainingLog = (initialDate: Date) => {
         
         // If a log for this day already exists in Firestore...
         if (fetchedLog) {
-            // ...it is the source of truth. Do not rebuild from the routine template.
             const finalExercisesForCurrentLog = await Promise.all(
                 fetchedLog.exercises.map(async (exFromStoredLog) => {
                     const performanceEntry = await fetchExercisePerformanceData(exFromStoredLog.exerciseId);
                     
-                    // Ensure every set has a unique ID for React keys, and is not provisional
                     const setsWithIds = exFromStoredLog.sets.map((s, idx) => ({
                       ...s,
                       id: s.id || `set-${dateId}-${exFromStoredLog.exerciseId}-${idx}-${Date.now()}`,
-                      isProvisional: exFromStoredLog.isProvisional, // Inherit provisional status from parent exercise
+                      isProvisional: exFromStoredLog.isProvisional,
                     }));
 
                     return {
                         ...exFromStoredLog,
                         sets: setsWithIds,
                         personalRecordDisplay: formatPersonalRecordDisplay(performanceEntry?.personalRecord || null),
-                        // isProvisional is loaded from the saved log
                     };
                 })
             );
@@ -118,8 +115,6 @@ export const useTrainingLog = (initialDate: Date) => {
             });
 
         } else {
-            // No log exists for this day. Set an empty state.
-            // The user can then optionally select a routine to populate the log for the first time.
             setCurrentLog({
                 id: dateId,
                 date: dateId,
@@ -306,6 +301,51 @@ export const useTrainingLog = (initialDate: Date) => {
     });
   };
 
+  const replaceExerciseInLog = async (exerciseIdToReplace: string, newExercise: Exercise) => {
+    if (!user?.id || !currentLog) return;
+  
+    const dateOfLog = format(selectedDate, 'yyyy-MM-dd');
+    const performanceEntry = await fetchExercisePerformanceData(newExercise.id);
+  
+    let initialSets: LoggedSet[];
+    if (performanceEntry?.lastPerformedSets && performanceEntry.lastPerformedSets.length > 0) {
+      initialSets = performanceEntry.lastPerformedSets.map((s, i) => ({
+        ...s,
+        id: `set-${dateOfLog}-${newExercise.id}-${i}-${Date.now()}`,
+        isProvisional: true,
+      }));
+    } else {
+      initialSets = [{ id: `set-${dateOfLog}-${newExercise.id}-0-${Date.now()}`, reps: null, weight: null, isProvisional: true }];
+    }
+  
+    const newLoggedExercise: LoggedExercise = {
+      id: `${newExercise.id}-${dateOfLog}-${Date.now()}`, // New unique ID for the replaced item
+      exerciseId: newExercise.id,
+      name: newExercise.name,
+      muscleGroup: newExercise.muscleGroup,
+      exerciseSetup: newExercise.exerciseSetup || '',
+      sets: initialSets,
+      notes: '',
+      personalRecordDisplay: formatPersonalRecordDisplay(performanceEntry?.personalRecord || null),
+      isProvisional: true,
+    };
+  
+    setCurrentLog(prev => {
+      if (!prev) return null;
+      const indexToReplace = prev.exercises.findIndex(ex => ex.id === exerciseIdToReplace);
+      if (indexToReplace === -1) return prev;
+  
+      const updatedExercises = [...prev.exercises];
+      updatedExercises[indexToReplace] = newLoggedExercise;
+  
+      return {
+        ...prev,
+        exercises: updatedExercises,
+        exerciseIds: updatedExercises.map(ex => ex.exerciseId),
+      };
+    });
+  };
+
   const reorderExercisesInLog = (reorderedExercises: LoggedExercise[]) => {
      setCurrentLog(prev => {
         if (!prev) return null;
@@ -342,7 +382,7 @@ export const useTrainingLog = (initialDate: Date) => {
 
       const exercisesWithUpdatedPrs = await Promise.all(
         allExercisesToSaveNonProvisional.map(async (loggedEx) => {
-          if (loggedEx.isProvisional) return loggedEx; // Don't update PR for provisional exercises
+          if (loggedEx.isProvisional) return loggedEx;
           
           const setsForPerformanceEntry = loggedEx.sets.map(s => ({
               id: s.id,
@@ -418,29 +458,28 @@ export const useTrainingLog = (initialDate: Date) => {
       toast({ title: "Error", description: "User or current log context not available.", variant: "destructive" });
       return;
     }
-    setIsSavingLog(true);
-
+    
+    // Create a snapshot of the entire current log state
+    const logStateToSave = { ...currentLog };
+    
+    // Find the specific exercise being updated in our snapshot and mark it as non-provisional
+    const updatedExercises = logStateToSave.exercises.map(ex => 
+      ex.id === loggedExercise.id 
+      ? { ...loggedExercise, isProvisional: false, sets: loggedExercise.sets.map(s => ({ ...s, isProvisional: false })) } 
+      : ex
+    );
+    
+    // Update the log snapshot with the modified exercises list
+    const finalLogToSave = { ...logStateToSave, exercises: updatedExercises };
+  
     try {
-      // Create a snapshot of the entire current log state
-      const logStateToSave = { ...currentLog };
-      
-      // Find the specific exercise being updated in our snapshot and mark it as non-provisional
-      const updatedExercises = logStateToSave.exercises.map(ex => 
-        ex.id === loggedExercise.id 
-        ? { ...loggedExercise, isProvisional: false, sets: loggedExercise.sets.map(s => ({ ...s, isProvisional: false })) } 
-        : ex
-      );
-      
-      // Update the log snapshot with the modified exercises list
-      const finalLogToSave = { ...logStateToSave, exercises: updatedExercises };
-
       // Save the performance data for the specific exercise
       const setsForPerformanceEntry = loggedExercise.sets.map(s => ({
         id: s.id,
         reps: Number(s.reps ?? 0),
         weight: Number(s.weight ?? 0),
       }));
-
+  
       if (setsForPerformanceEntry.length > 0 && setsForPerformanceEntry.some(s => s.reps > 0 || s.weight > 0)) {
         await savePerformanceEntryService(user.id, loggedExercise.exerciseId, setsForPerformanceEntry, formattedDateId);
       }
@@ -456,7 +495,7 @@ export const useTrainingLog = (initialDate: Date) => {
         sets: loggedExercise.sets.map(s => ({ ...s, isProvisional: false })),
         personalRecordDisplay: formatPersonalRecordDisplay(performanceEntry?.personalRecord || null) 
       };
-
+  
       // Update the local state to reflect the change
       setCurrentLog(prev => {
         if (!prev) return null;
@@ -469,14 +508,12 @@ export const useTrainingLog = (initialDate: Date) => {
           ),
         };
       });
-
+  
       await fetchLoggedDates(); // Refresh calendar highlights
-
+  
     } catch (error: any) {
       toast({ title: "Save Error", description: `Could not save progress for ${loggedExercise.name}. ${error.message}`, variant: "destructive" });
       throw error; // Re-throw to be caught in the UI component if needed
-    } finally {
-      setIsSavingLog(false);
     }
   };
 
@@ -551,6 +588,7 @@ export const useTrainingLog = (initialDate: Date) => {
     handleSelectRoutine,
     addExerciseToLog,
     removeExerciseFromLog,
+    replaceExerciseInLog,
     reorderExercisesInLog,
     updateExerciseInLog,
     saveExerciseProgress,
