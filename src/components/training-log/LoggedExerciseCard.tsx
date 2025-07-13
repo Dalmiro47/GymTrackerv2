@@ -6,7 +6,7 @@ import type { LoggedExercise, LoggedSet } from '@/types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { PlusCircle, Trash2, Save, GripVertical, Loader2, Check, Settings2, LineChart as LineChartIcon } from 'lucide-react';
+import { PlusCircle, Trash2, Save, GripVertical, Loader2, Check, Settings2, LineChart as LineChartIcon, RefreshCw } from 'lucide-react';
 import { SetInputRow } from './SetInputRow'; 
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -19,6 +19,7 @@ interface LoggedExerciseCardProps {
   onUpdateSets: (sets: LoggedSet[]) => void;
   onSaveProgress: () => Promise<void>; 
   onRemove: () => void;
+  onReplace: () => void;
   isSavingParentLog: boolean; 
   onMarkAsInteracted: () => void;
 }
@@ -28,6 +29,7 @@ export function LoggedExerciseCard({
   onUpdateSets,
   onSaveProgress,
   onRemove,
+  onReplace,
   isSavingParentLog,
   onMarkAsInteracted,
 }: LoggedExerciseCardProps) {
@@ -130,6 +132,9 @@ export function LoggedExerciseCard({
               <CardTitle className="font-headline text-lg">{loggedExercise.name}</CardTitle>
             </div>
             <div className="flex items-center">
+              <Button variant="ghost" size="icon" onClick={onReplace} className="text-primary hover:text-primary/80 h-8 w-8">
+                <RefreshCw className="h-4 w-4" />
+              </Button>
               <Button variant="ghost" size="icon" onClick={() => setIsHistoryDialogOpen(true)} className="text-primary hover:text-primary/80 h-8 w-8">
                 <LineChartIcon className="h-4 w-4" />
               </Button>
@@ -190,7 +195,7 @@ export function LoggedExerciseCard({
       </Card>
 
       <Dialog open={isHistoryDialogOpen} onOpenChange={setIsHistoryDialogOpen}>
-        <DialogContent className="max-w-full w-full h-full p-0 sm:max-w-3xl sm:h-auto sm:rounded-lg sm:p-6 overflow-y-auto">
+        <DialogContent className="fixed inset-0 m-0 rounded-none p-0 max-w-full w-full h-full sm:relative sm:p-6 sm:max-w-3xl sm:rounded-lg sm:h-auto overflow-y-auto">
           <DialogHeader className="p-4 border-b sm:border-none sm:p-2">
             <DialogTitle className="font-headline text-lg sm:text-xl">
               {loggedExercise.name} - Volume History
