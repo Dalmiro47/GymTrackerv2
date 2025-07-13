@@ -6,7 +6,7 @@ import type { LoggedExercise, LoggedSet } from '@/types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { PlusCircle, Trash2, Save, GripVertical, Loader2, Check, Settings2, LineChart as LineChartIcon, RefreshCw } from 'lucide-react';
+import { PlusCircle, Trash2, Save, GripVertical, Loader2, Check, Settings2, LineChart as LineChartIcon, Replace } from 'lucide-react';
 import { SetInputRow } from './SetInputRow'; 
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -132,13 +132,13 @@ export function LoggedExerciseCard({
               <CardTitle className="font-headline text-lg">{loggedExercise.name}</CardTitle>
             </div>
             <div className="flex items-center">
-              <Button variant="ghost" size="icon" onClick={onReplace} className="text-primary hover:text-primary/80 h-8 w-8">
-                <RefreshCw className="h-4 w-4" />
+              <Button variant="ghost" size="icon" onClick={onReplace} className="text-primary hover:text-primary/80 h-8 w-8" aria-label={`Replace ${loggedExercise.name}`}>
+                <Replace className="h-4 w-4" />
               </Button>
-              <Button variant="ghost" size="icon" onClick={() => setIsHistoryDialogOpen(true)} className="text-primary hover:text-primary/80 h-8 w-8">
+              <Button variant="ghost" size="icon" onClick={() => setIsHistoryDialogOpen(true)} className="text-primary hover:text-primary/80 h-8 w-8" aria-label={`View history for ${loggedExercise.name}`}>
                 <LineChartIcon className="h-4 w-4" />
               </Button>
-              <Button variant="ghost" size="icon" onClick={onRemove} className="text-destructive hover:text-destructive/90 h-8 w-8">
+              <Button variant="ghost" size="icon" onClick={onRemove} className="text-destructive hover:text-destructive/90 h-8 w-8" aria-label={`Remove ${loggedExercise.name}`}>
                 <Trash2 className="h-4 w-4" />
               </Button>
             </div>
