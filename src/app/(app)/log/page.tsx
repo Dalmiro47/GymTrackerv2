@@ -21,6 +21,7 @@ import { useTrainingLog } from '@/hooks/useTrainingLog';
 import type { LoggedExercise, Exercise } from '@/types';
 import { LoggedExerciseCard } from '@/components/training-log/LoggedExerciseCard';
 import { AddExerciseDialog } from '@/components/training-log/AddExerciseDialog';
+import { ReplaceExerciseDialog } from '@/components/training-log/ReplaceExerciseDialog';
 import { format, parseISO, isValid as isDateValid } from 'date-fns';
 import { Loader2 } from 'lucide-react';
 import {
@@ -95,9 +96,12 @@ function TrainingLogPageContent() {
     updateOverallLogNotes,
     deleteCurrentLog,
     markExerciseAsInteracted,
+    replaceExerciseInLog,
   } = useTrainingLog(initialDate);
 
   const [isAddExerciseDialogOpen, setIsAddExerciseDialogOpen] = useState(false);
+  const [isReplaceExerciseDialogOpen, setIsReplaceExerciseDialogOpen] = useState(false);
+  const [exerciseIdToReplace, setExerciseIdToReplace] = useState<string | null>(null);
   const [showLogNotes, setShowLogNotes] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
@@ -147,6 +151,19 @@ function TrainingLogPageContent() {
   const handleDeleteConfirmed = async () => {
     await deleteCurrentLog();
     setIsDeleteConfirmOpen(false);
+  };
+
+  const handleOpenReplaceDialog = (exerciseId: string) => {
+    setExerciseIdToReplace(exerciseId);
+    setIsReplaceExerciseDialogOpen(true);
+  };
+  
+  const handleReplaceExercise = (newExercise: Exercise) => {
+    if (exerciseIdToReplace) {
+      replaceExerciseInLog(exerciseIdToReplace, newExercise);
+    }
+    setIsReplaceExerciseDialogOpen(false);
+    setExerciseIdToReplace(null);
   };
 
   const canDeleteLog = useMemo(() => {
@@ -296,6 +313,7 @@ function TrainingLogPageContent() {
                         onUpdateSets={(sets) => updateExerciseInLog({ ...loggedEx, sets })}
                         onSaveProgress={() => saveExerciseProgress(loggedEx)}
                         onRemove={() => removeExerciseFromLog(loggedEx.id)}
+                        onReplace={() => handleOpenReplaceDialog(loggedEx.id)}
                         isSavingParentLog={isSavingLog}
                         onMarkAsInteracted={() => markExerciseAsInteracted(loggedEx.id)}
                       />
@@ -387,6 +405,13 @@ function TrainingLogPageContent() {
           addExerciseToLog(exercise);
           setIsAddExerciseDialogOpen(false);
         }}
+      />
+      <ReplaceExerciseDialog
+        isOpen={isReplaceExerciseDialogOpen}
+        setIsOpen={setIsReplaceExerciseDialogOpen}
+        availableExercises={availableExercises.filter(ex => !loggedExerciseIds.includes(ex.id))}
+        isLoadingExercises={isLoadingExercises}
+        onReplaceExercise={handleReplaceExercise}
       />
     </div>
   );
