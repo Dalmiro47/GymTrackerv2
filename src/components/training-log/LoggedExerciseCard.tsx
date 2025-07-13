@@ -6,13 +6,35 @@ import type { LoggedExercise, LoggedSet } from '@/types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { PlusCircle, Trash2, Save, GripVertical, Loader2, Check, Settings2, LineChart as LineChartIcon, Replace } from 'lucide-react';
+import { PlusCircle, Trash2, Save, GripVertical, Loader2, Check, Settings2, LineChart as LineChartIcon } from 'lucide-react';
 import { SetInputRow } from './SetInputRow'; 
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { VolumeChart } from '@/components/analytics/VolumeChart';
+
+// Custom Swap Icon component
+const SwapIcon = (props: React.SVGProps<SVGSVGElement>) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="24"
+    height="24"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <path d="M8 7l-4 4 4 4" />
+    <path d="M4 11h16" />
+    <path d="M16 17l4-4-4-4" />
+    <path d="M20 11H4" />
+  </svg>
+);
+
 
 interface LoggedExerciseCardProps {
   loggedExercise: LoggedExercise;
@@ -133,7 +155,7 @@ export function LoggedExerciseCard({
             </div>
             <div className="flex items-center">
               <Button variant="ghost" size="icon" onClick={onReplace} className="text-primary hover:text-primary/80 h-8 w-8" aria-label={`Replace ${loggedExercise.name}`}>
-                <Replace className="h-4 w-4" />
+                <SwapIcon className="h-4 w-4" />
               </Button>
               <Button variant="ghost" size="icon" onClick={() => setIsHistoryDialogOpen(true)} className="text-primary hover:text-primary/80 h-8 w-8" aria-label={`View history for ${loggedExercise.name}`}>
                 <LineChartIcon className="h-4 w-4" />
