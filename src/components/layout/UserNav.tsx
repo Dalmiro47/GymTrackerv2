@@ -1,3 +1,4 @@
+
 "use client";
 
 import React from "react"; // Added React import
@@ -13,13 +14,15 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/contexts/AuthContext";
-import { LogOut, User as UserIcon, Loader2 } from "lucide-react";
+import { LogOut, User as UserIcon, Loader2, Download } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { ExportLogsDialog } from "./ExportLogsDialog";
 
 export function UserNav() {
   const { user, logout, isLoading: authIsLoading } = useAuth();
   const router = useRouter();
   const [isLoggingOut, setIsLoggingOut] = React.useState(false);
+  const [isExportDialogOpen, setIsExportDialogOpen] = React.useState(false);
 
 
   const handleLogout = async () => {
@@ -60,6 +63,7 @@ export function UserNav() {
     : user.email ? user.email[0].toUpperCase() : "U";
 
   return (
+    <>
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" className="relative h-9 w-9 rounded-full">
@@ -87,6 +91,10 @@ export function UserNav() {
             <span>Profile</span>
             {/* <DropdownMenuShortcut>⇧⌘P</DropdownMenuShortcut> */}
           </DropdownMenuItem>
+           <DropdownMenuItem onClick={() => setIsExportDialogOpen(true)} disabled={isLoggingOut || authIsLoading}>
+            <Download className="mr-2 h-4 w-4" />
+            <span>Export Data</span>
+          </DropdownMenuItem>
           {/* Add more items here if needed, e.g., Settings */}
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
@@ -96,5 +104,7 @@ export function UserNav() {
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
+    <ExportLogsDialog isOpen={isExportDialogOpen} setIsOpen={setIsExportDialogOpen} />
+    </>
   );
 }
