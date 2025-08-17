@@ -26,7 +26,8 @@ import {
   QueryDocumentSnapshot,
   documentId
 } from 'firebase/firestore';
-import * as XLSX from 'xlsx';
+// XLSX will be imported dynamically
+// import * as XLSX from 'xlsx';
 
 // Define types based on the PRD
 interface SetEntry {
@@ -76,6 +77,12 @@ const buildQuery = (uid: string) =>
     orderBy(documentId()),          // doc id as final tiebreaker
     limit(PAGE_SIZE)
   );
+  
+const headers: (keyof ExportRow)[] = [
+  'date','exercise_id','exercise_name','muscle_group','set_index','set_id',
+  'reps','weight','notes','exercise_setup','created_at'
+];
+
 
 export function ExportLogsDialog({ isOpen, setIsOpen }: ExportLogsDialogProps) {
   const { firebaseUser } = useAuth();
@@ -166,20 +173,22 @@ export function ExportLogsDialog({ isOpen, setIsOpen }: ExportLogsDialogProps) {
         }
 
         // Optional soft cap to avoid OOM in the browser for XLSX
-        if (allRows.length > 200_000 && format === 'xlsx') {
-            throw new Error('Too many rows for Excel in browser. Please use the CSV export option.');
+        if (allRows.length > 200000 && format === 'xlsx') {
+            toast({
+                title: "Large Export Detected",
+                description: "Over 200,000 rows loaded. For very large exports, the CSV option is recommended to avoid browser memory issues.",
+                variant: "default",
+                duration: 5000,
+            });
         }
       }
 
       if (allRows.length === 0) {
         toast({ title: 'No Data', description: 'There are no workout logs to export.' });
+        setIsDownloading(false);
+        setDownloadFormat(null);
         return;
       }
-      
-      const headers: (keyof ExportRow)[] = [
-        'date','exercise_id','exercise_name','muscle_group','set_index','set_id',
-        'reps','weight','notes','exercise_setup','created_at'
-      ];
       
       const dateString = new Date().toISOString().slice(0,10).replace(/-/g,'');
       const filename = `workout-logs-${dateString}.${format}`;
@@ -189,6 +198,10 @@ export function ExportLogsDialog({ isOpen, setIsOpen }: ExportLogsDialogProps) {
         const csvString = streamRowsAsCsv(allRows, headers);
         blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
       } else {
+        if (allRows.length > 1048576) {
+           throw new Error('Excel has a 1,048,576 row limit. Please use CSV for this export.');
+        }
+        const XLSX = await import('xlsx');
         const ws = XLSX.utils.json_to_sheet(allRows, { header: headers as string[] });
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, 'workout_logs');
@@ -219,11 +232,12 @@ export function ExportLogsDialog({ isOpen, setIsOpen }: ExportLogsDialogProps) {
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogContent>
+      <DialogContent aria-busy={isDownloading}>
         <DialogHeader>
           <DialogTitle>Export Workout Data</DialogTitle>
           <DialogDescription>
-            Download a complete history of your workout logs. If Excel fails on very large files, try the CSV option.
+            Download a complete history of your workout logs. This may take a moment for large histories.
+            If Excel fails on very large files, try the CSV option.
           </DialogDescription>
         </DialogHeader>
 
