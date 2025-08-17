@@ -27,7 +27,6 @@ import {
   documentId
 } from 'firebase/firestore';
 // XLSX will be imported dynamically
-// import * as XLSX from 'xlsx';
 
 // Define types based on the PRD
 interface SetEntry {
@@ -71,10 +70,7 @@ const PAGE_SIZE = 1000;
 const buildQuery = (uid: string) =>
   query(
     collection(db, `users/${uid}/workoutLogs`),
-    // Stable, deterministic ordering for pagination:
-    orderBy('date'),                // string YYYY-MM-DD
-    orderBy('createdAt'),           // Firestore Timestamp (may be missing)
-    orderBy(documentId()),          // doc id as final tiebreaker
+    orderBy(documentId()),
     limit(PAGE_SIZE)
   );
   
