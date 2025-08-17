@@ -216,7 +216,7 @@ export function ExportLogsDialog({ isOpen, setIsOpen }: ExportLogsDialogProps) {
         const csvString = streamRowsAsCsv(allRows, headers);
         blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
       } else {
-        if (allRows.length > 1_048_576) {
+        if (allRows.length > 1048576) {
           throw new Error('Excel has a 1,048,576 row limit. Please use CSV for larger exports.');
         }
         const XLSX = await import('xlsx');
