@@ -54,6 +54,7 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { Separator } from '@/components/ui/separator';
 
 function TrainingLogPageContent() {
   const { user, isLoading: authIsLoading } = useAuth();
@@ -91,7 +92,6 @@ function TrainingLogPageContent() {
     removeExerciseFromLog,
     reorderExercisesInLog,
     updateExerciseInLog,
-    saveExerciseProgress,
     saveCurrentLog,
     updateOverallLogNotes,
     deleteCurrentLog,
@@ -100,6 +100,7 @@ function TrainingLogPageContent() {
   } = useTrainingLog(initialDate);
 
   const [isAddExerciseDialogOpen, setIsAddExerciseDialogOpen] = useState(false);
+  const [exerciseInsertionIndex, setExerciseInsertionIndex] = useState<number | null>(null);
   const [isReplaceExerciseDialogOpen, setIsReplaceExerciseDialogOpen] = useState(false);
   const [exerciseToReplace, setExerciseToReplace] = useState<{ id: string; muscleGroup: MuscleGroup } | null>(null);
   const [showLogNotes, setShowLogNotes] = useState(false);
@@ -151,6 +152,11 @@ function TrainingLogPageContent() {
   const handleDeleteConfirmed = async () => {
     await deleteCurrentLog();
     setIsDeleteConfirmOpen(false);
+  };
+
+  const handleOpenAddDialog = (index: number) => {
+    setExerciseInsertionIndex(index);
+    setIsAddExerciseDialogOpen(true);
   };
 
   const handleOpenReplaceDialog = (exerciseId: string, muscleGroup: MuscleGroup) => {
@@ -274,7 +280,7 @@ function TrainingLogPageContent() {
           </div>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Select 
               value={routineSelectValue}
               onValueChange={handleSelectRoutine} 
@@ -291,7 +297,7 @@ function TrainingLogPageContent() {
                 {availableRoutines.length === 0 && !isLoadingRoutines && <SelectItem value="no-routines" disabled>No routines available</SelectItem>}
               </SelectContent>
             </Select>
-            <Button onClick={() => setIsAddExerciseDialogOpen(true)} variant="outline" className="w-full md:w-auto">
+            <Button onClick={() => handleOpenAddDialog(currentLog?.exercises.length ?? 0)} variant="outline">
               <PlusCircle className="mr-2 h-4 w-4" /> Add Exercise Manually
             </Button>
           </div>
@@ -306,29 +312,48 @@ function TrainingLogPageContent() {
               <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
                 <SortableContext items={loggedExerciseIds} strategy={verticalListSortingStrategy}>
                   <div className="space-y-4">
-                    {currentLog.exercises.map(loggedEx => (
-                      <LoggedExerciseCard
-                        key={loggedEx.id}
-                        loggedExercise={loggedEx}
-                        onUpdateSets={(sets) => updateExerciseInLog({ ...loggedEx, sets })}
-                        onSaveProgress={() => saveExerciseProgress(loggedEx)}
-                        onRemove={() => removeExerciseFromLog(loggedEx.id)}
-                        onReplace={() => handleOpenReplaceDialog(loggedEx.id, loggedEx.muscleGroup)}
-                        isSavingParentLog={isSavingLog}
-                        onMarkAsInteracted={() => markExerciseAsInteracted(loggedEx.id)}
-                      />
+                    {currentLog.exercises.map((loggedEx, index) => (
+                      <React.Fragment key={loggedEx.id}>
+                        <LoggedExerciseCard
+                          loggedExercise={loggedEx}
+                          onUpdateSets={(sets) => updateExerciseInLog({ ...loggedEx, sets })}
+                          onSaveProgress={() => saveCurrentLog()}
+                          onRemove={() => removeExerciseFromLog(loggedEx.id)}
+                          onReplace={() => handleOpenReplaceDialog(loggedEx.id, loggedEx.muscleGroup)}
+                          isSavingParentLog={isSavingLog}
+                          onMarkAsInteracted={() => markExerciseAsInteracted(loggedEx.id)}
+                        />
+                         {index < currentLog.exercises.length - 1 && (
+                            <div className="flex items-center space-x-2 my-2">
+                                <Separator className="flex-1" />
+                                <Button 
+                                    onClick={() => handleOpenAddDialog(index + 1)}
+                                    variant="outline" 
+                                    size="sm"
+                                    className="border-dashed hover:border-solid hover:bg-muted/50 text-muted-foreground hover:text-foreground"
+                                >
+                                    <PlusCircle className="mr-2 h-4 w-4" /> Add Exercise Here
+                                </Button>
+                                <Separator className="flex-1" />
+                            </div>
+                        )}
+                      </React.Fragment>
                     ))}
                   </div>
                 </SortableContext>
               </DndContext>
-              <div className="pt-4">
-                <Button 
-                  onClick={() => setIsAddExerciseDialogOpen(true)} 
-                  variant="outline" 
-                  className="w-full border-dashed hover:border-solid"
-                >
-                  <PlusCircle className="mr-2 h-4 w-4" /> Add Another Exercise
-                </Button>
+              {/* Final Add Button */}
+              <div className="flex items-center space-x-2 my-2 pt-4">
+                  <Separator className="flex-1" />
+                  <Button 
+                      onClick={() => handleOpenAddDialog(currentLog.exercises.length)}
+                      variant="outline" 
+                      size="sm"
+                      className="border-dashed hover:border-solid hover:bg-muted/50 text-muted-foreground hover:text-foreground"
+                  >
+                      <PlusCircle className="mr-2 h-4 w-4" /> Add Another Exercise
+                  </Button>
+                  <Separator className="flex-1" />
               </div>
             </>
           ) : (
@@ -402,8 +427,11 @@ function TrainingLogPageContent() {
         availableExercises={availableExercises}
         isLoadingExercises={isLoadingExercises}
         onAddExercise={(exercise) => {
-          addExerciseToLog(exercise);
+          if (exerciseInsertionIndex !== null) {
+            addExerciseToLog(exercise, exerciseInsertionIndex);
+          }
           setIsAddExerciseDialogOpen(false);
+          setExerciseInsertionIndex(null);
         }}
       />
       <ReplaceExerciseDialog
