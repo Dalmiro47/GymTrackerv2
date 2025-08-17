@@ -18,7 +18,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea"; 
 import { useTrainingLog } from '@/hooks/useTrainingLog';
-import type { LoggedExercise, Exercise } from '@/types';
+import type { LoggedExercise, Exercise, MuscleGroup } from '@/types';
 import { LoggedExerciseCard } from '@/components/training-log/LoggedExerciseCard';
 import { AddExerciseDialog } from '@/components/training-log/AddExerciseDialog';
 import { ReplaceExerciseDialog } from '@/components/training-log/ReplaceExerciseDialog';
@@ -101,7 +101,7 @@ function TrainingLogPageContent() {
 
   const [isAddExerciseDialogOpen, setIsAddExerciseDialogOpen] = useState(false);
   const [isReplaceExerciseDialogOpen, setIsReplaceExerciseDialogOpen] = useState(false);
-  const [exerciseIdToReplace, setExerciseIdToReplace] = useState<string | null>(null);
+  const [exerciseToReplace, setExerciseToReplace] = useState<{ id: string; muscleGroup: MuscleGroup } | null>(null);
   const [showLogNotes, setShowLogNotes] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
@@ -153,17 +153,17 @@ function TrainingLogPageContent() {
     setIsDeleteConfirmOpen(false);
   };
 
-  const handleOpenReplaceDialog = (exerciseId: string) => {
-    setExerciseIdToReplace(exerciseId);
+  const handleOpenReplaceDialog = (exerciseId: string, muscleGroup: MuscleGroup) => {
+    setExerciseToReplace({ id: exerciseId, muscleGroup });
     setIsReplaceExerciseDialogOpen(true);
   };
   
   const handleReplaceExercise = (newExercise: Exercise) => {
-    if (exerciseIdToReplace) {
-      replaceExerciseInLog(exerciseIdToReplace, newExercise);
+    if (exerciseToReplace) {
+      replaceExerciseInLog(exerciseToReplace.id, newExercise);
     }
     setIsReplaceExerciseDialogOpen(false);
-    setExerciseIdToReplace(null);
+    setExerciseToReplace(null);
   };
 
   const canDeleteLog = useMemo(() => {
@@ -313,7 +313,7 @@ function TrainingLogPageContent() {
                         onUpdateSets={(sets) => updateExerciseInLog({ ...loggedEx, sets })}
                         onSaveProgress={() => saveExerciseProgress(loggedEx)}
                         onRemove={() => removeExerciseFromLog(loggedEx.id)}
-                        onReplace={() => handleOpenReplaceDialog(loggedEx.id)}
+                        onReplace={() => handleOpenReplaceDialog(loggedEx.id, loggedEx.muscleGroup)}
                         isSavingParentLog={isSavingLog}
                         onMarkAsInteracted={() => markExerciseAsInteracted(loggedEx.id)}
                       />
@@ -412,6 +412,7 @@ function TrainingLogPageContent() {
         availableExercises={availableExercises.filter(ex => !loggedExerciseIds.includes(ex.id))}
         isLoadingExercises={isLoadingExercises}
         onReplaceExercise={handleReplaceExercise}
+        initialMuscleGroup={exerciseToReplace?.muscleGroup}
       />
     </div>
   );
