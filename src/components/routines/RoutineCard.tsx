@@ -6,6 +6,7 @@ import { Edit3, Trash2, GripVertical } from 'lucide-react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { cn } from '@/lib/utils';
+import React from 'react';
 
 interface RoutineCardProps {
   routine: Routine;
@@ -30,6 +31,16 @@ export function RoutineCard({ routine, onEdit, onDelete }: RoutineCardProps) {
     zIndex: isDragging ? 10 : 'auto',
   };
 
+  const handlePointerDown = (e: React.PointerEvent) => {
+    // This allows scrolling on touch devices while keeping drag functionality.
+    if (e.pointerType === 'touch') return;
+    listeners?.onPointerDown(e);
+  };
+  
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>) => {
+    listeners?.onKeyDown(e);
+  };
+
   return (
     <Card 
       ref={setNodeRef} 
@@ -38,21 +49,23 @@ export function RoutineCard({ routine, onEdit, onDelete }: RoutineCardProps) {
         "flex h-full flex-col overflow-hidden shadow-lg transition-shadow hover:shadow-xl",
         isDragging && "ring-2 ring-primary ring-offset-2"
       )}
+      {...attributes}
     >
       <CardHeader className="pb-2 relative">
         <div className="flex items-start justify-between pr-10"> 
             <CardTitle className="font-headline text-xl leading-tight">
             {routine.name}
             </CardTitle>
-            {/* ListChecks icon removed */}
         </div>
         <CardDescription className="text-xs text-muted-foreground">
             {routine.exercises.length} exercise{routine.exercises.length === 1 ? '' : 's'}
         </CardDescription>
         <button
           type="button"
-          {...attributes}
-          {...listeners}
+          onPointerDown={handlePointerDown}
+          onKeyDown={handleKeyDown}
+          onTouchStart={listeners?.onTouchStart}
+          tabIndex={0}
           className="absolute top-2 right-2 p-1.5 cursor-grab text-muted-foreground hover:text-foreground focus:outline-none focus:ring-1 focus:ring-primary rounded-md"
           aria-label={`Drag to reorder ${routine.name}`}
         >

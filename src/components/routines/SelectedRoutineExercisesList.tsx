@@ -56,7 +56,7 @@ function SortableExerciseItem({ exercise, onRemoveExercise }: SortableExerciseIt
     >
       <div className="flex items-center flex-1">
         <button
-          type="button" // This is the fix!
+          type="button"
           {...attributes}
           {...listeners}
           className="p-1 cursor-grab mr-2 text-muted-foreground hover:text-foreground"
