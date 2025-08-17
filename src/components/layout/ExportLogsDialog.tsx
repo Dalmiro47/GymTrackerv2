@@ -55,11 +55,21 @@ interface ExportLogsDialogProps {
   setIsOpen: (open: boolean) => void;
 }
 
-// This should be replaced with your actual Cloud Function URL
-const FUNCTIONS_BASE_URL = "YOUR_FUNCTIONS_BASE_URL_HERE";
+const PAGE_SIZE = 1000;
+
+const buildQuery = (uid: string) =>
+  query(
+    collection(db, `users/${uid}/workoutLogs`),
+    // Stable, deterministic ordering for pagination:
+    orderBy('date'),                // string YYYY-MM-DD
+    orderBy('createdAt'),           // Firestore Timestamp (may be missing)
+    orderBy('__name__'),            // doc id as final tiebreaker
+    limit(PAGE_SIZE)
+  );
 
 export function ExportLogsDialog({ isOpen, setIsOpen }: ExportLogsDialogProps) {
-  const { user } = useAuth();
+  const { user } = useAuth(); // This hook returns the UserProfile, we need the firebase user for uid. Let's use it from context.
+  const { firebaseUser } = useAuth();
   const { toast } = useToast();
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadFormat, setDownloadFormat] = useState<'xlsx' | 'csv' | null>(null);
@@ -99,20 +109,23 @@ export function ExportLogsDialog({ isOpen, setIsOpen }: ExportLogsDialogProps) {
     return rows;
   };
 
+  // CSV: include UTF-8 BOM for Excel
   const streamRowsAsCsv = (rows: ExportRow[], headers: (keyof ExportRow)[]) => {
     const headerString = headers.join(',') + '\r\n';
-    const rowStrings = rows.map(row => {
-      return headers.map(header => {
-        const value = row[header];
-        const stringValue = (value === null || value === undefined) ? '' : String(value);
-        return `"${stringValue.replace(/"/g, '""')}"`; // Quote and escape quotes
-      }).join(',');
-    }).join('\r\n');
-    return headerString + rowStrings;
+    const rowStrings = rows.map(row =>
+      headers.map(h => {
+        const v = row[h as keyof ExportRow];
+        const s = (v === null || v === undefined) ? '' : String(v);
+        return `"${s.replace(/"/g, '""')}"`
+      }).join(',')
+    ).join('\r\n');
+    // Prepend BOM for excel compatibility
+    return '\uFEFF' + headerString + rowStrings;
   };
 
+
   const handleDownload = async (format: 'xlsx' | 'csv') => {
-    if (!user) {
+    if (!firebaseUser) {
       toast({ title: 'Error', description: 'You must be logged in to export data.', variant: 'destructive' });
       return;
     }
@@ -121,18 +134,12 @@ export function ExportLogsDialog({ isOpen, setIsOpen }: ExportLogsDialogProps) {
     setDownloadFormat(format);
 
     try {
-      // Client-side implementation as functions are not available
-      const dbQuery = query(
-        collection(db, `users/${user.id}/workoutLogs`),
-        orderBy('date'),
-        limit(1000)
-      );
-
       let allRows: ExportRow[] = [];
       let lastVisible: QueryDocumentSnapshot<DocumentData> | undefined;
+      const baseQuery = buildQuery(firebaseUser.uid);
 
       while (true) {
-        const currentQuery = lastVisible ? query(dbQuery, startAfter(lastVisible)) : dbQuery;
+        const currentQuery = lastVisible ? query(baseQuery, startAfter(lastVisible)) : baseQuery;
         const documentSnapshots = await getDocs(currentQuery);
         
         if (documentSnapshots.empty) {
@@ -144,8 +151,13 @@ export function ExportLogsDialog({ isOpen, setIsOpen }: ExportLogsDialogProps) {
         });
 
         lastVisible = documentSnapshots.docs[documentSnapshots.docs.length - 1];
-        if (documentSnapshots.size < 1000) {
+        if (documentSnapshots.size < PAGE_SIZE) {
             break;
+        }
+
+        // Optional soft cap to avoid OOM in the browser for XLSX
+        if (allRows.length > 200_000 && format === 'xlsx') {
+            throw new Error('Too many rows for Excel in browser. Please use the CSV export option.');
         }
       }
       
