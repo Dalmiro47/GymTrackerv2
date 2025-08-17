@@ -35,6 +35,15 @@ interface SetEntry {
   weight?: number;
 }
 
+interface ExerciseEntry {
+  exerciseId?: string;
+  name?: string;
+  muscleGroup?: string;
+  notes?: string;
+  exerciseSetup?: string;
+  sets?: SetEntry[];
+}
+
 interface WorkoutLog {
   date?: string;
   id?: string;
@@ -44,6 +53,7 @@ interface WorkoutLog {
   exerciseSetup?: string;
   createdAt?: { toDate: () => Date }; // Firestore Timestamp
   sets?: SetEntry[];
+  exercises?: ExerciseEntry[];       // new multi-exercise shape
 }
 
 interface ExportRow {
@@ -90,35 +100,47 @@ export function ExportLogsDialog({ isOpen, setIsOpen }: ExportLogsDialogProps) {
     const docId = logDoc.id;
     const data = logDoc.data() as WorkoutLog;
     const rows: ExportRow[] = [];
-
+  
     const isoFromId = /\d{4}-\d{2}-\d{2}/.test(docId) ? docId : '';
     const createdAtIso = data.createdAt ? data.createdAt.toDate().toISOString() : '';
     const date = data.date || isoFromId || (createdAtIso ? createdAtIso.slice(0, 10) : '');
-
-    const base = {
-      date,
-      exercise_id: data.id || docId,
-      exercise_name: data.name || '',
-      muscle_group: data.muscleGroup || '',
-      notes: data.notes || '',
-      exercise_setup: data.exerciseSetup || '',
-      created_at: createdAtIso,
-    };
-
-    const sets = data.sets ?? [];
-    if (sets.length === 0) {
-      rows.push({ ...base, set_index: -1, set_id: '', reps: '', weight: '' });
-    } else {
-      sets.forEach((s, i) => {
-        rows.push({
-          ...base,
-          set_index: i,
-          set_id: s.id || '',
-          reps: s.reps ?? '',
-          weight: s.weight ?? '',
+  
+    // Helper to push rows for a given exercise + its sets
+    const pushExercise = (exercise: Partial<ExerciseEntry>, sets: SetEntry[] | undefined) => {
+      const base = {
+        date,
+        exercise_id: exercise.exerciseId || data.id || docId,
+        exercise_name: exercise.name || data.name || '',
+        muscle_group: exercise.muscleGroup || data.muscleGroup || '',
+        notes: (exercise.notes ?? data.notes) || '',
+        exercise_setup: (exercise.exerciseSetup ?? data.exerciseSetup) || '',
+        created_at: createdAtIso,
+      };
+  
+      const s = sets ?? [];
+      if (s.length === 0) {
+        rows.push({ ...base, set_index: -1, set_id: '', reps: '', weight: '' });
+      } else {
+        s.forEach((set, i) => {
+          rows.push({
+            ...base,
+            set_index: i,
+            set_id: set.id || '',
+            reps: set.reps ?? '',
+            weight: set.weight ?? '',
+          });
         });
-      });
+      }
+    };
+  
+    if (Array.isArray(data.exercises) && data.exercises.length > 0) {
+      // New schema: multiple exercises per day
+      data.exercises.forEach(ex => pushExercise(ex, ex.sets));
+    } else {
+      // Legacy schema: single exercise per doc
+      pushExercise({}, data.sets);
     }
+  
     return rows;
   };
 
@@ -194,8 +216,8 @@ export function ExportLogsDialog({ isOpen, setIsOpen }: ExportLogsDialogProps) {
         const csvString = streamRowsAsCsv(allRows, headers);
         blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
       } else {
-        if (allRows.length > 1048576) {
-           throw new Error('Excel has a 1,048,576 row limit. Please use CSV for this export.');
+        if (allRows.length > 1_048_576) {
+          throw new Error('Excel has a 1,048,576 row limit. Please use CSV for larger exports.');
         }
         const XLSX = await import('xlsx');
         const ws = XLSX.utils.json_to_sheet(allRows, { header: headers as string[] });
