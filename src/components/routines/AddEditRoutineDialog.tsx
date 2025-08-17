@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
-import { useForm, Controller } from 'react-hook-form';
+import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import type { Exercise, Routine, RoutineData, RoutineExercise } from '@/types';
@@ -18,13 +18,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { AvailableExercisesSelector } from './AvailableExercisesSelector';
 import { SelectedRoutineExercisesList } from './SelectedRoutineExercisesList';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 
 const routineFormSchema = z.object({
   name: z.string().min(3, "Routine name must be at least 3 characters."),
@@ -103,22 +103,14 @@ export function AddEditRoutineDialog({
   const handleExerciseSelectionChange = (exerciseId: string, isSelected: boolean) => {
     setSelectedExerciseObjects(prevSelected => {
       if (isSelected) {
-        // Logic for ADDING an exercise
         const exerciseToAdd = allUserExercises.find(ex => ex.id === exerciseId);
-        if (!exerciseToAdd) {
-          // console.warn(`Exercise with ID ${exerciseId} not found in allUserExercises. Cannot add.`);
-          return prevSelected; // Exercise not found, don't change state
-        }
+        if (!exerciseToAdd) return prevSelected;
         if (!prevSelected.find(e => e.id === exerciseId)) {
-          // Exercise is not already selected, add it
           const routineExercise: RoutineExercise = { ...exerciseToAdd };
           return [...prevSelected, routineExercise];
         }
-        // Exercise already selected, do nothing
         return prevSelected;
       } else {
-        // Logic for REMOVING an exercise
-        // No need to check allUserExercises, just filter from prevSelected
         return prevSelected.filter(e => e.id !== exerciseId);
       }
     });
@@ -139,7 +131,7 @@ export function AddEditRoutineDialog({
     }
     const routineData: RoutineData = {
       ...data,
-      exercises: selectedExerciseObjects, // The order is maintained here
+      exercises: selectedExerciseObjects,
     };
     await onSave(routineData, routineToEdit?.id);
   };
@@ -148,8 +140,8 @@ export function AddEditRoutineDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogContent className="max-w-3xl">
-        <DialogHeader>
+      <DialogContent className="max-w-4xl flex flex-col h-full sm:h-auto max-h-[95vh]">
+        <DialogHeader className="flex-shrink-0">
           <DialogTitle className="font-headline text-xl">
             {routineToEdit ? 'Edit Routine' : 'Create New Routine'}
           </DialogTitle>
@@ -157,7 +149,8 @@ export function AddEditRoutineDialog({
             {routineToEdit ? 'Update the details for this routine.' : 'Fill in the details and select exercises for your new routine.'}
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-6 py-2">
+
+        <form onSubmit={handleSubmit(onSubmit)} className="flex-grow overflow-y-auto space-y-6 pr-4 -mr-4">
           <div className="grid grid-cols-1 gap-4">
             <div>
               <Label htmlFor="name">Routine Name</Label>
@@ -170,7 +163,7 @@ export function AddEditRoutineDialog({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <AvailableExercisesSelector
               allExercises={allUserExercises}
               selectedExerciseIds={selectedExerciseIds}
@@ -183,17 +176,17 @@ export function AddEditRoutineDialog({
               onReorderExercises={handleReorderExercises}
             />
           </div>
-
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setIsOpen(false)} disabled={isSaving}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={isSaving || isLoadingExercises} className="bg-primary hover:bg-primary/90 text-primary-foreground">
-              {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              {isSaving ? (routineToEdit ? "Saving..." : "Creating...") : (routineToEdit ? "Save Changes" : "Save Routine")}
-            </Button>
-          </DialogFooter>
         </form>
+
+        <DialogFooter className="flex-shrink-0 pt-4 border-t">
+          <Button type="button" variant="outline" onClick={() => setIsOpen(false)} disabled={isSaving}>
+            Cancel
+          </Button>
+          <Button type="button" onClick={handleSubmit(onSubmit)} disabled={isSaving || isLoadingExercises} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+            {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+            {isSaving ? (routineToEdit ? "Saving..." : "Creating...") : (routineToEdit ? "Save Changes" : "Save Routine")}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

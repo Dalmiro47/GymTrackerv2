@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Trash2, ListChecks, GripVertical } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
-import React, { useState } from 'react';
+import React from 'react';
 import {
   DndContext,
   closestCenter,
@@ -52,11 +52,11 @@ function SortableExerciseItem({ exercise, onRemoveExercise }: SortableExerciseIt
     <li
       ref={setNodeRef}
       style={style}
-      className="flex items-center justify-between p-2.5 rounded-md border bg-card shadow-sm touch-none" // touch-none is important for PointerSensor
+      className="flex items-center justify-between p-2.5 rounded-md border bg-card shadow-sm touch-none"
     >
       <div className="flex items-center flex-1">
         <button
-          type="button" // This is the fix!
+          type="button"
           {...attributes}
           {...listeners}
           className="p-1 cursor-grab mr-2 text-muted-foreground hover:text-foreground"
@@ -70,7 +70,7 @@ function SortableExerciseItem({ exercise, onRemoveExercise }: SortableExerciseIt
         </div>
       </div>
       <Button
-        type="button" // Also good practice for buttons not intended to submit
+        type="button"
         variant="ghost"
         size="icon"
         onClick={() => onRemoveExercise(exercise.id)}
@@ -98,9 +98,10 @@ export function SelectedRoutineExercisesList({
   const isMobile = useIsMobile();
   const sensors = useSensors(
     useSensor(PointerSensor, {
-      activationConstraint: isMobile
-        ? { delay: 200, tolerance: 8 }
-        : undefined,
+      activationConstraint: {
+        delay: 250,
+        tolerance: 5,
+      },
     }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
@@ -118,48 +119,46 @@ export function SelectedRoutineExercisesList({
   }
 
   return (
-    <div className="space-y-3">
-      <h3 className="text-lg font-medium flex items-center">
+    <div className="space-y-3 h-full flex flex-col">
+      <h3 className="text-lg font-medium flex items-center flex-shrink-0">
         Selected Exercises for Routine ({selectedExercises.length})
         <ListChecks className="ml-2 h-5 w-5 text-primary" />
       </h3>
 
-      <Card className="min-h-[365px] bg-muted/30">
-        <CardContent className="p-4">
-          {selectedExercises.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full min-h-[300px] text-center">
-              <ListChecks className="w-16 h-16 text-muted-foreground mb-4" />
-              <p className="text-muted-foreground font-semibold">No exercises selected yet.</p>
-              <p className="text-sm text-muted-foreground">
-                Check exercises from the "Available Exercises" list to add them here.
-              </p>
-            </div>
-          ) : (
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              onDragEnd={handleDragEnd}
-            >
-              <ScrollArea className="h-[330px] pr-3">
-                <SortableContext
-                  items={selectedExercises.map(ex => ex.id)}
-                  strategy={verticalListSortingStrategy}
-                >
-                  <ul className="space-y-2">
-                    {selectedExercises.map((exercise) => (
-                      <SortableExerciseItem
-                        key={exercise.id}
-                        exercise={exercise}
-                        onRemoveExercise={onRemoveExercise}
-                      />
-                    ))}
-                  </ul>
-                </SortableContext>
-              </ScrollArea>
-            </DndContext>
-          )}
-        </CardContent>
-      </Card>
+      <div className="flex-grow min-h-0">
+        {selectedExercises.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full min-h-[300px] text-center border rounded-lg bg-muted/30">
+            <ListChecks className="w-16 h-16 text-muted-foreground mb-4 opacity-50" />
+            <p className="text-muted-foreground font-semibold">No exercises selected.</p>
+            <p className="text-sm text-muted-foreground">
+              Select exercises from the list to add them here.
+            </p>
+          </div>
+        ) : (
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <ScrollArea className="h-[calc(100vh-28rem)] sm:h-[300px] w-full rounded-md border p-4 bg-muted/30">
+              <SortableContext
+                items={selectedExercises.map(ex => ex.id)}
+                strategy={verticalListSortingStrategy}
+              >
+                <ul className="space-y-2">
+                  {selectedExercises.map((exercise) => (
+                    <SortableExerciseItem
+                      key={exercise.id}
+                      exercise={exercise}
+                      onRemoveExercise={onRemoveExercise}
+                    />
+                  ))}
+                </ul>
+              </SortableContext>
+            </ScrollArea>
+          </DndContext>
+        )}
+      </div>
     </div>
   );
 }

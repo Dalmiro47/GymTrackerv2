@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import type { Exercise, MuscleGroup } from '@/types';
 import { MUSCLE_GROUPS_LIST } from '@/lib/constants';
 import { Input } from '@/components/ui/input';
@@ -12,7 +12,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Search, Filter, Loader2 } from 'lucide-react';
 
 interface AvailableExercisesSelectorProps {
-  allExercises: Exercise[]; // All available exercises for the user
+  allExercises: Exercise[];
   selectedExerciseIds: string[];
   onSelectionChange: (exerciseId: string, isSelected: boolean) => void;
   isLoadingExercises: boolean;
@@ -50,9 +50,9 @@ export function AvailableExercisesSelector({
   }
 
   return (
-    <div className="space-y-4 p-1">
-      <h3 className="text-lg font-medium">Available Exercises</h3>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+    <div className="space-y-4 p-1 h-full flex flex-col">
+      <h3 className="text-lg font-medium flex-shrink-0">Available Exercises</h3>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 flex-shrink-0">
         <div className="relative">
           <Filter className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Select
@@ -82,28 +82,30 @@ export function AvailableExercisesSelector({
         </div>
       </div>
 
-      <ScrollArea className="h-[300px] w-full rounded-md border p-4">
-        {filteredExercises.length > 0 ? (
-          <div className="space-y-3">
-            {filteredExercises.map(exercise => (
-              <div key={exercise.id} className="flex items-center space-x-2">
-                <Checkbox
-                  id={`ex-${exercise.id}`}
-                  checked={selectedExerciseIds.includes(exercise.id)}
-                  onCheckedChange={(checked) => onSelectionChange(exercise.id, !!checked)}
-                />
-                <Label htmlFor={`ex-${exercise.id}`} className="flex-1 cursor-pointer">
-                  {exercise.name} <span className="text-xs text-muted-foreground">({exercise.muscleGroup})</span>
-                </Label>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-sm text-muted-foreground text-center py-4">
-            No exercises match your criteria.
-          </p>
-        )}
-      </ScrollArea>
+      <div className="flex-grow min-h-0">
+        <ScrollArea className="h-[calc(100vh-28rem)] sm:h-[300px] w-full rounded-md border p-4">
+          {filteredExercises.length > 0 ? (
+            <div className="space-y-3">
+              {filteredExercises.map(exercise => (
+                <div key={exercise.id} className="flex items-center space-x-2">
+                  <Checkbox
+                    id={`ex-${exercise.id}`}
+                    checked={selectedExerciseIds.includes(exercise.id)}
+                    onCheckedChange={(checked) => onSelectionChange(exercise.id, !!checked)}
+                  />
+                  <Label htmlFor={`ex-${exercise.id}`} className="flex-1 cursor-pointer">
+                    {exercise.name} <span className="text-xs text-muted-foreground">({exercise.muscleGroup})</span>
+                  </Label>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground text-center py-4">
+              No exercises match your criteria.
+            </p>
+          )}
+        </ScrollArea>
+      </div>
     </div>
   );
 }
