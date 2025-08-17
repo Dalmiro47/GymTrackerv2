@@ -45,7 +45,7 @@ function SortableExerciseItem({ exercise, onRemoveExercise }: SortableExerciseIt
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.5 : 1,
-    zIndex: isDragging ? 10 : 0,
+    zIndex: isDragging ? 10 : 'auto',
   };
 
   return (
