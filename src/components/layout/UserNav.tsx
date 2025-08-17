@@ -91,7 +91,7 @@ export function UserNav() {
             <span>Profile</span>
             {/* <DropdownMenuShortcut>⇧⌘P</DropdownMenuShortcut> */}
           </DropdownMenuItem>
-           <DropdownMenuItem onClick={() => setIsExportDialogOpen(true)} disabled={isLoggingOut}>
+           <DropdownMenuItem onClick={() => setIsExportDialogOpen(true)} disabled={isLoggingOut || authIsLoading}>
             <Download className="mr-2 h-4 w-4" />
             <span>Export Data</span>
           </DropdownMenuItem>

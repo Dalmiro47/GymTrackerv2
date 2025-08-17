@@ -15,7 +15,17 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, FileSpreadsheet, FileText } from 'lucide-react';
 import { db } from '@/lib/firebaseConfig';
-import { collection, getDocs, query, orderBy, limit, startAfter, DocumentData, QueryDocumentSnapshot } from 'firebase/firestore';
+import { 
+  collection, 
+  getDocs, 
+  query, 
+  orderBy, 
+  limit, 
+  startAfter, 
+  DocumentData, 
+  QueryDocumentSnapshot,
+  documentId
+} from 'firebase/firestore';
 import * as XLSX from 'xlsx';
 
 // Define types based on the PRD
@@ -63,12 +73,11 @@ const buildQuery = (uid: string) =>
     // Stable, deterministic ordering for pagination:
     orderBy('date'),                // string YYYY-MM-DD
     orderBy('createdAt'),           // Firestore Timestamp (may be missing)
-    orderBy('__name__'),            // doc id as final tiebreaker
+    orderBy(documentId()),          // doc id as final tiebreaker
     limit(PAGE_SIZE)
   );
 
 export function ExportLogsDialog({ isOpen, setIsOpen }: ExportLogsDialogProps) {
-  const { user } = useAuth(); // This hook returns the UserProfile, we need the firebase user for uid. Let's use it from context.
   const { firebaseUser } = useAuth();
   const { toast } = useToast();
   const [isDownloading, setIsDownloading] = useState(false);
@@ -79,8 +88,9 @@ export function ExportLogsDialog({ isOpen, setIsOpen }: ExportLogsDialogProps) {
     const data = logDoc.data() as WorkoutLog;
     const rows: ExportRow[] = [];
 
-    const date = data.date || (/\d{4}-\d{2}-\d{2}/.test(docId) ? docId : '');
-    const createdAt = data.createdAt ? data.createdAt.toDate().toISOString() : '';
+    const isoFromId = /\d{4}-\d{2}-\d{2}/.test(docId) ? docId : '';
+    const createdAtIso = data.createdAt ? data.createdAt.toDate().toISOString() : '';
+    const date = data.date || isoFromId || (createdAtIso ? createdAtIso.slice(0, 10) : '');
 
     const base = {
       date,
@@ -89,7 +99,7 @@ export function ExportLogsDialog({ isOpen, setIsOpen }: ExportLogsDialogProps) {
       muscle_group: data.muscleGroup || '',
       notes: data.notes || '',
       exercise_setup: data.exerciseSetup || '',
-      created_at: createdAt,
+      created_at: createdAtIso,
     };
 
     const sets = data.sets ?? [];
@@ -160,6 +170,11 @@ export function ExportLogsDialog({ isOpen, setIsOpen }: ExportLogsDialogProps) {
             throw new Error('Too many rows for Excel in browser. Please use the CSV export option.');
         }
       }
+
+      if (allRows.length === 0) {
+        toast({ title: 'No Data', description: 'There are no workout logs to export.' });
+        return;
+      }
       
       const headers: (keyof ExportRow)[] = [
         'date','exercise_id','exercise_name','muscle_group','set_index','set_id',
@@ -174,7 +189,7 @@ export function ExportLogsDialog({ isOpen, setIsOpen }: ExportLogsDialogProps) {
         const csvString = streamRowsAsCsv(allRows, headers);
         blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
       } else {
-        const ws = XLSX.utils.json_to_sheet(allRows, { header: headers });
+        const ws = XLSX.utils.json_to_sheet(allRows, { header: headers as string[] });
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, 'workout_logs');
         const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
@@ -208,7 +223,7 @@ export function ExportLogsDialog({ isOpen, setIsOpen }: ExportLogsDialogProps) {
         <DialogHeader>
           <DialogTitle>Export Workout Data</DialogTitle>
           <DialogDescription>
-            Download a complete history of your workout logs. Choose your preferred format below.
+            Download a complete history of your workout logs. If Excel fails on very large files, try the CSV option.
           </DialogDescription>
         </DialogHeader>
 
