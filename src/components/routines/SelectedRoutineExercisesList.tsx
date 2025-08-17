@@ -5,7 +5,6 @@ import type { RoutineExercise } from '@/types';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Trash2, ListChecks, GripVertical } from 'lucide-react';
-import { Card, CardContent } from '@/components/ui/card';
 import React from 'react';
 import {
   DndContext,
@@ -25,6 +24,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { Card } from '../ui/card';
 
 interface SortableExerciseItemProps {
   exercise: RoutineExercise;
@@ -98,8 +98,10 @@ export function SelectedRoutineExercisesList({
   const isMobile = useIsMobile();
   const sensors = useSensors(
     useSensor(PointerSensor, {
+      // This is the key fix: it requires a short delay and some movement
+      // before a drag is initiated, allowing for scrolling.
       activationConstraint: {
-        delay: 250,
+        delay: 150,
         tolerance: 5,
       },
     }),
@@ -135,27 +137,29 @@ export function SelectedRoutineExercisesList({
             </p>
           </div>
         ) : (
-          <DndContext
+           <DndContext
             sensors={sensors}
             collisionDetection={closestCenter}
             onDragEnd={handleDragEnd}
           >
-            <ScrollArea className="h-[calc(100vh-28rem)] sm:h-[300px] w-full rounded-md border p-4 bg-muted/30">
-              <SortableContext
-                items={selectedExercises.map(ex => ex.id)}
-                strategy={verticalListSortingStrategy}
-              >
-                <ul className="space-y-2">
-                  {selectedExercises.map((exercise) => (
-                    <SortableExerciseItem
-                      key={exercise.id}
-                      exercise={exercise}
-                      onRemoveExercise={onRemoveExercise}
-                    />
-                  ))}
-                </ul>
-              </SortableContext>
-            </ScrollArea>
+            <Card className="h-full w-full bg-muted/30 p-0 border">
+                <ScrollArea className="h-full w-full rounded-md p-4">
+                <SortableContext
+                    items={selectedExercises.map(ex => ex.id)}
+                    strategy={verticalListSortingStrategy}
+                >
+                    <ul className="space-y-2">
+                    {selectedExercises.map((exercise) => (
+                        <SortableExerciseItem
+                        key={exercise.id}
+                        exercise={exercise}
+                        onRemoveExercise={onRemoveExercise}
+                        />
+                    ))}
+                    </ul>
+                </SortableContext>
+                </ScrollArea>
+            </Card>
           </DndContext>
         )}
       </div>
