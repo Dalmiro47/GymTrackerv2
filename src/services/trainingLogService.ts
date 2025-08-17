@@ -50,15 +50,15 @@ export const saveWorkoutLog = async (userId: string, date: string, workoutLogPay
     ...workoutLogPayload,
     exerciseIds: exerciseIds,
     exercises: workoutLogPayload.exercises.map(ex => { 
-      const { personalRecordDisplay, ...restOfEx } = ex; // Remove UI-only fields
+      const { personalRecordDisplay, isProvisional, ...restOfEx } = ex;
       return {
         ...restOfEx,
         sets: ex.sets.map(s => {
-          // const { isProvisional: setIsProvisional, ...restOfSet } = s; // This is now handled on the parent
+          const { isProvisional, ...restOfSet } = s; 
           return { 
-             id: s.id,
-             reps: s.reps === null || isNaN(Number(s.reps)) ? 0 : Number(s.reps),
-             weight: s.weight === null || isNaN(Number(s.weight)) ? 0 : Number(s.weight),
+             id: restOfSet.id,
+             reps: restOfSet.reps === null || isNaN(Number(restOfSet.reps)) ? 0 : Number(restOfSet.reps),
+             weight: restOfSet.weight === null || isNaN(Number(restOfSet.weight)) ? 0 : Number(restOfSet.weight),
           };
         })
       };
@@ -79,6 +79,10 @@ export const saveWorkoutLog = async (userId: string, date: string, workoutLogPay
     console.error(`[SERVICE] Error saving workout log for ${date}, user ${userId}:`, error);
     throw new Error(`Failed to save workout log. ${error.message}`);
   }
+};
+
+export const saveSingleExerciseToLogService = async (userId: string, date: string, workoutLogPayload: WorkoutLog): Promise<void> => {
+  await saveWorkoutLog(userId, date, workoutLogPayload);
 };
 
 
@@ -356,11 +360,4 @@ export const updatePerformanceEntryOnLogDelete = async (
   }
 };
 
-
-/**
- * @deprecated This function is deprecated and should not be used. Use saveWorkoutLog instead.
- */
-export const saveSingleExerciseToLogService = async (): Promise<void> => {
-  console.warn("saveSingleExerciseToLogService is deprecated. Use saveWorkoutLog for all log saving operations.");
-  return Promise.resolve();
-};
+    

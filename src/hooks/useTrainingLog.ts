@@ -11,6 +11,7 @@ import {
   getLastLoggedPerformance as fetchPerformanceEntryService, 
   getLoggedDateStrings as fetchLoggedDateStringsService,
   updatePerformanceEntryOnLogDelete,
+  saveSingleExerciseToLogService
 } from '@/services/trainingLogService';
 import { getExercises as fetchAllUserExercises } from '@/services/exerciseService';
 import { getRoutines as fetchUserRoutines } from '@/services/routineService';
@@ -35,6 +36,8 @@ export const useTrainingLog = (initialDate: Date) => {
 
   const [loggedDayStrings, setLoggedDayStrings] = useState<string[]>([]);
   const [isLoadingLoggedDayStrings, setIsLoadingLoggedDayStrings] = useState(true);
+
+  const [exerciseInsertionIndex, setExerciseInsertionIndex] = useState<number | null>(null);
 
   const formattedDateId = format(selectedDate, 'yyyy-MM-dd');
 
@@ -381,31 +384,29 @@ export const useTrainingLog = (initialDate: Date) => {
 
       const exercisesWithUpdatedPrs = await Promise.all(
         logToSave.exercises.map(async (loggedEx) => {
-          if (loggedEx.isProvisional) {
-            return {
-              ...loggedEx,
-              sets: loggedEx.sets.map(s => ({...s, isProvisional: false}))
-            };
-          }
-          const performanceEntry = await fetchExercisePerformanceData(loggedEx.exerciseId);
+          const { isProvisional, ...restOfEx } = loggedEx; // Remove isProvisional for saving
+          const performanceEntry = await fetchExercisePerformanceData(restOfEx.exerciseId);
           return {
-            ...loggedEx,
+            ...restOfEx,
             personalRecordDisplay: formatPersonalRecordDisplay(performanceEntry?.personalRecord || null),
-            sets: loggedEx.sets.map(s => ({...s, isProvisional: false}))
+            sets: restOfEx.sets.map(s => {
+                const { isProvisional: setProvisional, ...restOfSet } = s; // Also remove from set
+                return restOfSet;
+            })
           };
         })
       );
       
       const finalLogToSave: WorkoutLog = {
         ...logToSave, 
-        exercises: exercisesWithUpdatedPrs.map(ex => ({ ...ex, isProvisional: undefined })), // Remove UI prop before saving
+        exercises: exercisesWithUpdatedPrs.map(ex => ({ ...ex, isProvisional: undefined })),
         exerciseIds: exercisesWithUpdatedPrs.map(ex => ex.exerciseId),
       };
 
       const shouldSaveMainLogDocument = finalLogToSave.exercises.length > 0 || (finalLogToSave.notes && finalLogToSave.notes.trim() !== '') || finalLogToSave.routineId;
 
       if (shouldSaveMainLogDocument) {
-          await saveLogService(user.id, finalLogToSave.id, finalLogToSave);
+          await saveSingleExerciseToLogService(user.id, finalLogToSave.id, finalLogToSave);
           await fetchLoggedDates(); 
           toast({ title: "Log Saved", description: `Workout for ${formattedDateId} saved.` });
       } else {
@@ -490,6 +491,7 @@ export const useTrainingLog = (initialDate: Date) => {
     }
   };
 
+  const getSetInsertionIndex = () => exerciseInsertionIndex;
 
   return {
     selectedDate,
@@ -514,5 +516,10 @@ export const useTrainingLog = (initialDate: Date) => {
     updateOverallLogNotes,
     deleteCurrentLog,
     markExerciseAsInteracted,
+    exerciseInsertionIndex,
+    setExerciseInsertionIndex
   };
 };
+
+
+    
