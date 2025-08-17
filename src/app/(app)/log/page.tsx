@@ -92,7 +92,6 @@ function TrainingLogPageContent() {
     removeExerciseFromLog,
     reorderExercisesInLog,
     updateExerciseInLog,
-    saveExerciseProgress,
     saveCurrentLog,
     updateOverallLogNotes,
     deleteCurrentLog,
@@ -101,6 +100,7 @@ function TrainingLogPageContent() {
   } = useTrainingLog(initialDate);
 
   const [isAddExerciseDialogOpen, setIsAddExerciseDialogOpen] = useState(false);
+  const [exerciseInsertionIndex, setExerciseInsertionIndex] = useState<number | null>(null);
   const [isReplaceExerciseDialogOpen, setIsReplaceExerciseDialogOpen] = useState(false);
   const [exerciseToReplace, setExerciseToReplace] = useState<{ id: string; muscleGroup: MuscleGroup } | null>(null);
   const [showLogNotes, setShowLogNotes] = useState(false);
@@ -152,6 +152,11 @@ function TrainingLogPageContent() {
   const handleDeleteConfirmed = async () => {
     await deleteCurrentLog();
     setIsDeleteConfirmOpen(false);
+  };
+
+  const handleOpenAddDialog = (index: number) => {
+    setExerciseInsertionIndex(index);
+    setIsAddExerciseDialogOpen(true);
   };
 
   const handleOpenReplaceDialog = (exerciseId: string, muscleGroup: MuscleGroup) => {
@@ -292,7 +297,7 @@ function TrainingLogPageContent() {
                 {availableRoutines.length === 0 && !isLoadingRoutines && <SelectItem value="no-routines" disabled>No routines available</SelectItem>}
               </SelectContent>
             </Select>
-            <Button onClick={() => setIsAddExerciseDialogOpen(true)} variant="outline">
+            <Button onClick={() => handleOpenAddDialog(currentLog?.exercises.length ?? 0)} variant="outline">
               <PlusCircle className="mr-2 h-4 w-4" /> Add Exercise Manually
             </Button>
           </div>
@@ -312,17 +317,17 @@ function TrainingLogPageContent() {
                         <LoggedExerciseCard
                           loggedExercise={loggedEx}
                           onUpdateSets={(sets) => updateExerciseInLog({ ...loggedEx, sets })}
-                          onSaveProgress={() => saveExerciseProgress(loggedEx)}
+                          onSaveProgress={() => saveCurrentLog()}
                           onRemove={() => removeExerciseFromLog(loggedEx.id)}
                           onReplace={() => handleOpenReplaceDialog(loggedEx.id, loggedEx.muscleGroup)}
                           isSavingParentLog={isSavingLog}
                           onMarkAsInteracted={() => markExerciseAsInteracted(loggedEx.id)}
                         />
-                         {index < currentLog.exercises.length && (
+                         {index < currentLog.exercises.length - 1 && (
                             <div className="flex items-center space-x-2 my-2">
                                 <Separator className="flex-1" />
                                 <Button 
-                                    onClick={() => setIsAddExerciseDialogOpen(true)} 
+                                    onClick={() => handleOpenAddDialog(index + 1)}
                                     variant="outline" 
                                     size="sm"
                                     className="border-dashed hover:border-solid hover:bg-muted/50 text-muted-foreground hover:text-foreground"
@@ -337,6 +342,19 @@ function TrainingLogPageContent() {
                   </div>
                 </SortableContext>
               </DndContext>
+              {/* Final Add Button */}
+              <div className="flex items-center space-x-2 my-2 pt-4">
+                  <Separator className="flex-1" />
+                  <Button 
+                      onClick={() => handleOpenAddDialog(currentLog.exercises.length)}
+                      variant="outline" 
+                      size="sm"
+                      className="border-dashed hover:border-solid hover:bg-muted/50 text-muted-foreground hover:text-foreground"
+                  >
+                      <PlusCircle className="mr-2 h-4 w-4" /> Add Another Exercise
+                  </Button>
+                  <Separator className="flex-1" />
+              </div>
             </>
           ) : (
             <div className="text-center py-10 text-muted-foreground">
@@ -409,8 +427,11 @@ function TrainingLogPageContent() {
         availableExercises={availableExercises}
         isLoadingExercises={isLoadingExercises}
         onAddExercise={(exercise) => {
-          addExerciseToLog(exercise);
+          if (exerciseInsertionIndex !== null) {
+            addExerciseToLog(exercise, exerciseInsertionIndex);
+          }
           setIsAddExerciseDialogOpen(false);
+          setExerciseInsertionIndex(null);
         }}
       />
       <ReplaceExerciseDialog
@@ -433,5 +454,3 @@ export default function TrainingLogPage() {
     </Suspense>
   );
 }
-
-    
