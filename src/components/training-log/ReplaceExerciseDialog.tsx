@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import type { Exercise, MuscleGroup } from '@/types';
 import { MUSCLE_GROUPS_LIST } from '@/lib/constants';
 import { Button } from '@/components/ui/button';
@@ -24,6 +24,7 @@ interface ReplaceExerciseDialogProps {
   availableExercises: Exercise[];
   isLoadingExercises: boolean;
   onReplaceExercise: (exercise: Exercise) => void;
+  initialMuscleGroup?: MuscleGroup;
 }
 
 export function ReplaceExerciseDialog({
@@ -32,9 +33,17 @@ export function ReplaceExerciseDialog({
   availableExercises,
   isLoadingExercises,
   onReplaceExercise,
+  initialMuscleGroup,
 }: ReplaceExerciseDialogProps) {
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedMuscleGroup, setSelectedMuscleGroup] = useState<MuscleGroup | 'All'>('All');
+  const [selectedMuscleGroup, setSelectedMuscleGroup] = useState<MuscleGroup | 'All'>(initialMuscleGroup || 'All');
+
+  useEffect(() => {
+    if (isOpen) {
+        setSelectedMuscleGroup(initialMuscleGroup || 'All');
+    }
+  }, [isOpen, initialMuscleGroup]);
+
 
   const filteredExercises = useMemo(() => {
     let tempExercises = [...availableExercises];
