@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { getWorkoutLog, getLoggedDateStrings } from '@/services/trainingLogService';
 import type { WorkoutLog, LoggedSet } from '@/types';
-import { format, parseISO, startOfMonth, endOfMonth, isWithinInterval, getMonth, getYear } from 'date-fns';
+import { format, parseISO, startOfMonth, endOfMonth, isWithinInterval, getMonth, getYear, isValid } from 'date-fns';
 import { Loader2, CalendarIcon, ListChecks, ExternalLink, PlusCircle } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import Link from 'next/link';
@@ -200,12 +200,14 @@ export function WorkoutCalendarSection() {
                         <p className="text-sm text-muted-foreground">No exercises were recorded for this day.</p>
                       )}
                     </div>
-                     <Link href={`/log?date=${format(selectedDate!, 'yyyy-MM-dd')}`}>
-                        <Button variant="outline" size="sm" className="mt-4 w-full">
-                            <ExternalLink className="mr-2 h-4 w-4" />
-                            View/Edit Full Log for this Day
-                        </Button>
-                    </Link>
+                    {selectedDate && isValid(selectedDate) && (
+                      <Link href={`/log?date=${format(selectedDate, 'yyyy-MM-dd')}`}>
+                          <Button variant="outline" size="sm" className="mt-4 w-full">
+                              <ExternalLink className="mr-2 h-4 w-4" />
+                              View/Edit Full Log for this Day
+                          </Button>
+                      </Link>
+                    )}
                   </div>
                 </ScrollArea>
               ) : selectedDate ? (
@@ -233,4 +235,3 @@ export function WorkoutCalendarSection() {
     </Card>
   );
 }
-
