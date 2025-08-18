@@ -110,15 +110,21 @@ export function computeWarmup(input: WarmupInput): WarmupStep[] {
   const results: WarmupStep[] = [];
   const roundingIncrement = (template === 'HEAVY_DB' || template === 'ISOLATION') ? 2.5 : 5;
 
-  // Helper for rounding
   const round = (weight: number) => {
-    const remainder = weight % roundingIncrement;
-    if (remainder === 0) return weight; // No need to round
-    // If remainder is more than half the increment, round up, otherwise round down.
-    if (remainder > roundingIncrement / 2) {
-        return weight - remainder + roundingIncrement;
-    } else {
-        return weight - remainder;
+    if (weight <= 0) return 0;
+    const base = Math.floor(weight);
+    const decimal = weight - base;
+
+    if (decimal === 0.0 || decimal === 0.5) {
+        return weight;
+    }
+    
+    if (decimal < 0.3) { // .1, .2
+        return base;
+    } else if (decimal < 0.8) { // .3, .4, .5, .6, .7
+        return base + 0.5;
+    } else { // .8, .9
+        return base + 1.0;
     }
   };
 
