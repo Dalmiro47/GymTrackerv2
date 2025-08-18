@@ -23,13 +23,13 @@ export const addExercise = async (userId: string, exerciseData: ExerciseData): P
     const userExercisesColRef = collection(db, getUserExercisesCollectionPath(userId));
     
     // Explicitly remove undefined fields before saving
-    const dataToSave = { ...exerciseData };
+    const dataToSave: { [key: string]: any } = { ...exerciseData };
     if (dataToSave.warmup === undefined) {
-      delete (dataToSave as any).warmup;
+      delete dataToSave.warmup;
     }
 
     const docRef = await addDoc(userExercisesColRef, dataToSave); 
-    return { id: docRef.id, ...dataToSave };
+    return { id: docRef.id, ...dataToSave as ExerciseData };
   } catch (error: any) {
     console.error("Detailed error adding exercise to Firestore: ", error); 
     throw new Error(`Failed to add exercise. Firestore error: ${error.message || error}`);
@@ -51,9 +51,9 @@ export const addDefaultExercisesBatch = async (userId: string, defaultExercisesW
         return;
       }
       
-      const dataToSave = { ...exercisePayload };
+      const dataToSave: { [key: string]: any } = { ...exercisePayload };
       if (dataToSave.warmup === undefined) {
-        delete (dataToSave as any).warmup;
+        delete dataToSave.warmup;
       }
       
       const exerciseDocRef = doc(userExercisesColRef, id); 
@@ -92,9 +92,9 @@ export const updateExercise = async (userId: string, exerciseId: string, exercis
     const exerciseDocRef = doc(db, getUserExercisesCollectionPath(userId), exerciseId);
     
     // Explicitly remove undefined fields before updating
-    const dataToUpdate = { ...exerciseData };
+    const dataToUpdate: { [key: string]: any } = { ...exerciseData };
     if (dataToUpdate.warmup === undefined) {
-      delete (dataToUpdate as any).warmup;
+      delete dataToUpdate.warmup;
     }
     
     await updateDoc(exerciseDocRef, dataToUpdate);
