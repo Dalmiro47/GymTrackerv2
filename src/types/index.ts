@@ -17,8 +17,7 @@ export const MUSCLE_GROUPS = [
 export type MuscleGroup = typeof MUSCLE_GROUPS[number];
 
 // --- Warm-up Types ---
-export const WARMUP_TEMPLATES = ['HEAVY_BARBELL', 'HEAVY_DB', 'MACHINE_COMPOUND', 'BODYWEIGHT', 'ISOLATION', 'NONE'] as const;
-export type WarmupTemplate = typeof WARMUP_TEMPLATES[number];
+export type WarmupTemplate = 'HEAVY_BARBELL' | 'HEAVY_DB' | 'MACHINE_COMPOUND' | 'BODYWEIGHT' | 'ISOLATION' | 'NONE';
 
 export type WarmupStepSpec = {
   type: 'PERCENT' | 'LABEL';
