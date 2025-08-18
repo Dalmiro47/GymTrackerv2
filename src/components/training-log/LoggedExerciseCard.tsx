@@ -205,6 +205,18 @@ export function LoggedExerciseCard({
               )}
             </div>
             <div className="flex items-center">
+              {loggedExercise.warmupConfig && loggedExercise.warmupConfig.template !== 'NONE' && (
+                  <Popover>
+                      <PopoverTrigger asChild>
+                          <Button variant="ghost" size="icon" className="text-orange-500 hover:text-orange-400 h-8 w-8">
+                              <Flame className="h-4 w-4" />
+                          </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-[400px]">
+                          <WarmupPanel loggedExercise={loggedExercise} />
+                      </PopoverContent>
+                  </Popover>
+              )}
               <Button variant="ghost" size="icon" onClick={onReplace} className="text-primary hover:text-primary/80 h-8 w-8" aria-label={`Replace ${loggedExercise.name}`}>
                 <ArrowLeftRight className="h-4 w-4" />
               </Button>
