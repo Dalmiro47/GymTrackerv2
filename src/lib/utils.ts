@@ -111,7 +111,17 @@ export function computeWarmup(input: WarmupInput): WarmupStep[] {
   const roundingIncrement = (template === 'HEAVY_DB' || template === 'ISOLATION') ? 2.5 : 5;
 
   // Helper for rounding
-  const round = (weight: number) => Math.max(roundingIncrement, Math.round(weight / roundingIncrement) * roundingIncrement);
+  const round = (weight: number) => {
+    const remainder = weight % roundingIncrement;
+    if (remainder === 0) return weight; // No need to round
+    // If remainder is more than half the increment, round up, otherwise round down.
+    if (remainder > roundingIncrement / 2) {
+        return weight - remainder + roundingIncrement;
+    } else {
+        return weight - remainder;
+    }
+  };
+
 
   // Special "Empty Bar" step for lower body barbell exercises
   if (template === 'HEAVY_BARBELL' && isLowerBodyBarbell) {
@@ -147,6 +157,12 @@ export function computeWarmup(input: WarmupInput): WarmupStep[] {
       
       const rawWeight = baseWeight * spec.percent;
       let finalWeightTotal = round(rawWeight);
+
+      // Clamp to a minimum value if rounding results in zero
+      if (finalWeightTotal <= 0) {
+        finalWeightTotal = roundingIncrement;
+      }
+
 
       results.push({ label, weightTotal: finalWeightTotal, reps: spec.reps, rest: spec.rest, note });
     }
