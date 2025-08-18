@@ -1,7 +1,7 @@
 
 "use client";
 
-import React from "react"; // Added React import
+import React from "react"; 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -32,7 +32,6 @@ export function UserNav() {
       router.push("/login");
     } catch (error) {
       console.error("Logout failed", error);
-      // Optionally show a toast error
     } finally {
       setIsLoggingOut(false);
     }
@@ -47,10 +46,6 @@ export function UserNav() {
   }
 
   if (!user) {
-    // This case should ideally not be reached if useRequireAuth is used on layouts
-    // Or it means the user is genuinely logged out and on a public page.
-    // For a user nav, it implies the user should be logged in.
-    // However, if on login page, this might be rendered before redirect.
     return null; 
   }
 
@@ -89,13 +84,11 @@ export function UserNav() {
           <DropdownMenuItem disabled>
             <UserIcon className="mr-2 h-4 w-4" />
             <span>Profile</span>
-            {/* <DropdownMenuShortcut>⇧⌘P</DropdownMenuShortcut> */}
           </DropdownMenuItem>
            <DropdownMenuItem onClick={() => setIsExportDialogOpen(true)} disabled={isLoggingOut || authIsLoading}>
             <Download className="mr-2 h-4 w-4" />
             <span>Export Data</span>
           </DropdownMenuItem>
-          {/* Add more items here if needed, e.g., Settings */}
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={handleLogout} disabled={isLoggingOut}>

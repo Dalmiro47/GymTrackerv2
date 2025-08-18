@@ -26,9 +26,7 @@ import {
   QueryDocumentSnapshot,
   documentId
 } from 'firebase/firestore';
-// XLSX will be imported dynamically
 
-// Define types based on the PRD
 interface SetEntry {
   id?: string;
   reps?: number;
@@ -51,10 +49,11 @@ interface WorkoutLog {
   muscleGroup?: string;
   notes?: string;
   exerciseSetup?: string;
-  createdAt?: { toDate: () => Date }; // Firestore Timestamp
+  createdAt?: { toDate: () => Date }; 
   sets?: SetEntry[];
-  exercises?: ExerciseEntry[];       // new multi-exercise shape
+  exercises?: ExerciseEntry[];
 }
+
 
 interface ExportRow {
   date: string;
@@ -83,7 +82,7 @@ const buildQuery = (uid: string) =>
     orderBy(documentId()),
     limit(PAGE_SIZE)
   );
-  
+
 const headers: (keyof ExportRow)[] = [
   'date','exercise_id','exercise_name','muscle_group','set_index','set_id',
   'reps','weight','notes','exercise_setup','created_at'
@@ -105,7 +104,6 @@ export function ExportLogsDialog({ isOpen, setIsOpen }: ExportLogsDialogProps) {
     const createdAtIso = data.createdAt ? data.createdAt.toDate().toISOString() : '';
     const date = data.date || isoFromId || (createdAtIso ? createdAtIso.slice(0, 10) : '');
   
-    // Helper to push rows for a given exercise + its sets
     const pushExercise = (exercise: Partial<ExerciseEntry>, sets: SetEntry[] | undefined) => {
       const base = {
         date,
@@ -134,17 +132,14 @@ export function ExportLogsDialog({ isOpen, setIsOpen }: ExportLogsDialogProps) {
     };
   
     if (Array.isArray(data.exercises) && data.exercises.length > 0) {
-      // New schema: multiple exercises per day
       data.exercises.forEach(ex => pushExercise(ex, ex.sets));
     } else {
-      // Legacy schema: single exercise per doc
       pushExercise({}, data.sets);
     }
   
     return rows;
   };
 
-  // CSV: include UTF-8 BOM for Excel
   const streamRowsAsCsv = (rows: ExportRow[], headers: (keyof ExportRow)[]) => {
     const headerString = headers.join(',') + '\r\n';
     const rowStrings = rows.map(row =>
@@ -154,7 +149,6 @@ export function ExportLogsDialog({ isOpen, setIsOpen }: ExportLogsDialogProps) {
         return `"${s.replace(/"/g, '""')}"`
       }).join(',')
     ).join('\r\n');
-    // Prepend BOM for excel compatibility
     return '\uFEFF' + headerString + rowStrings;
   };
 
@@ -190,7 +184,6 @@ export function ExportLogsDialog({ isOpen, setIsOpen }: ExportLogsDialogProps) {
             break;
         }
 
-        // Optional soft cap to avoid OOM in the browser for XLSX
         if (allRows.length > 200000 && format === 'xlsx') {
             toast({
                 title: "Large Export Detected",
@@ -227,7 +220,6 @@ export function ExportLogsDialog({ isOpen, setIsOpen }: ExportLogsDialogProps) {
         blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
       }
 
-      // Create a link and trigger the download
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
       link.setAttribute('download', filename);
