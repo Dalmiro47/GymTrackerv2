@@ -57,28 +57,28 @@ const BUILT_IN_TEMPLATES: Record<WarmupTemplate, WarmupStepSpec[]> = {
 };
 
 // --- HEURISTICS ---
-export const inferWarmupTemplate = (exerciseName: string): { template: WarmupTemplate; perHand: boolean; isLowerBodyBarbell: boolean; isWeightedBodyweight: boolean } => {
+export const inferWarmupTemplate = (exerciseName: string): { template: WarmupTemplate; isLowerBodyBarbell: boolean; isWeightedBodyweight: boolean } => {
   const name = exerciseName.toLowerCase();
   
   // Dumbbells first
   if (name.includes('dumbbell') || name.includes('db')) {
-    return { template: 'HEAVY_DB', perHand: true, isLowerBodyBarbell: false, isWeightedBodyweight: false };
+    return { template: 'HEAVY_DB', isLowerBodyBarbell: false, isWeightedBodyweight: false };
   }
   // Then bodyweight
   if (name.includes('pull-up') || name.includes('chin-up') || name.includes('dip') || name.includes('push-up') || name.includes('leg raise')) {
-    return { template: 'BODYWEIGHT', perHand: false, isLowerBodyBarbell: false, isWeightedBodyweight: true };
+    return { template: 'BODYWEIGHT', isLowerBodyBarbell: false, isWeightedBodyweight: true };
   }
   // Then barbell
   if (name.includes('barbell') || name.includes('squat') || name.includes('deadlift') || name.includes('rdl') || name.includes('ohp') || name.includes('bench')) {
     const isLowerBody = name.includes('squat') || name.includes('deadlift') || name.includes('rdl');
-    return { template: 'HEAVY_BARBELL', perHand: false, isLowerBodyBarbell: isLowerBody, isWeightedBodyweight: false };
+    return { template: 'HEAVY_BARBELL', isLowerBodyBarbell: isLowerBody, isWeightedBodyweight: false };
   }
   // Then machines
   if (name.includes('machine') || name.includes('smith') || name.includes('leg press') || name.includes('chest press') || name.includes('seated row') || name.includes('shoulder press') || name.includes('hack squat')) {
-    return { template: 'MACHINE_COMPOPOUND', perHand: false, isLowerBodyBarbell: false, isWeightedBodyweight: false };
+    return { template: 'MACHINE_COMPOUND', isLowerBodyBarbell: false, isWeightedBodyweight: false };
   }
   // Default to isolation
-  return { template: 'ISOLATION', perHand: false, isLowerBodyBarbell: false, isWeightedBodyweight: false };
+  return { template: 'ISOLATION', isLowerBodyBarbell: false, isWeightedBodyweight: false };
 };
 
 
@@ -86,7 +86,6 @@ export const inferWarmupTemplate = (exerciseName: string): { template: WarmupTem
 export interface WarmupInput {
   template: WarmupTemplate;
   workingWeight: number;
-  perHand?: boolean;
   isLowerBodyBarbell?: boolean;
   isWeightedBodyweight?: boolean;
   overrideSteps?: WarmupStepSpec[];
@@ -96,13 +95,12 @@ export interface WarmupStep {
   label: string;
   reps: string;
   rest: string;
-  weightEach?: number;
   weightTotal: number;
   note?: string;
 }
 
 export function computeWarmup(input: WarmupInput): WarmupStep[] {
-  const { template, workingWeight, perHand, isLowerBodyBarbell, isWeightedBodyweight, overrideSteps } = input;
+  const { template, workingWeight, isLowerBodyBarbell, isWeightedBodyweight, overrideSteps } = input;
 
   if (template === 'NONE') return [];
 
@@ -110,7 +108,7 @@ export function computeWarmup(input: WarmupInput): WarmupStep[] {
   if (!stepsSpec) return [];
 
   const results: WarmupStep[] = [];
-  const roundingIncrement = perHand ? 2.5 : 5; // Simplified default
+  const roundingIncrement = (template === 'HEAVY_DB' || template === 'ISOLATION') ? 2.5 : 5;
 
   // Helper for rounding
   const round = (weight: number) => Math.max(roundingIncrement, Math.round(weight / roundingIncrement) * roundingIncrement);
@@ -150,12 +148,7 @@ export function computeWarmup(input: WarmupInput): WarmupStep[] {
       const rawWeight = baseWeight * spec.percent;
       let finalWeightTotal = round(rawWeight);
 
-      if (perHand) {
-        const weightEach = round(rawWeight / 2);
-        results.push({ label, weightTotal: weightEach * 2, weightEach, reps: spec.reps, rest: spec.rest, note });
-      } else {
-        results.push({ label, weightTotal: finalWeightTotal, reps: spec.reps, rest: spec.rest, note });
-      }
+      results.push({ label, weightTotal: finalWeightTotal, reps: spec.reps, rest: spec.rest, note });
     }
   });
 

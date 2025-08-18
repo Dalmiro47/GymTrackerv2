@@ -30,7 +30,6 @@ export type WarmupStepSpec = {
 
 export interface WarmupConfig {
   template: WarmupTemplate;
-  perHand?: boolean; // true for dumbbells
   isWeightedBodyweight?: boolean;
   roundingIncrementKg?: number; // optional, e.g., 2.5; defaults by template/unit
   overrideSteps?: WarmupStepSpec[]; // optional per-exercise override of steps

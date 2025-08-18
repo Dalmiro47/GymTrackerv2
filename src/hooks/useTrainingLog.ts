@@ -187,8 +187,8 @@ export const useTrainingLog = (initialDate: Date) => {
     if (exercise.warmup) {
       return exercise.warmup;
     }
-    const { template, perHand, isWeightedBodyweight } = inferWarmupTemplate(exercise.name);
-    return { template, perHand, isWeightedBodyweight };
+    const { template, isWeightedBodyweight } = inferWarmupTemplate(exercise.name);
+    return { template, isWeightedBodyweight };
   };
 
   const handleSelectRoutine = async (routineId: string) => {

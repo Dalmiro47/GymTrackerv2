@@ -37,7 +37,6 @@ const WarmupPanel: React.FC<{ loggedExercise: LoggedExercise }> = ({ loggedExerc
         const input: WarmupInput = {
             template: loggedExercise.warmupConfig.template,
             workingWeight: workingWeight,
-            perHand: loggedExercise.warmupConfig.perHand,
             isWeightedBodyweight: loggedExercise.warmupConfig.isWeightedBodyweight,
             overrideSteps: loggedExercise.warmupConfig.overrideSteps,
         };
@@ -67,8 +66,7 @@ const WarmupPanel: React.FC<{ loggedExercise: LoggedExercise }> = ({ loggedExerc
                         <TableRow key={index}>
                             <TableCell>{step.label}</TableCell>
                             <TableCell>
-                                {step.weightEach ? `${step.weightEach}kg` : `${step.weightTotal}kg`}
-                                {step.weightEach && <div className="text-xs text-muted-foreground">({step.weightTotal}kg total)</div>}
+                                {`${step.weightTotal}kg`}
                             </TableCell>
                             <TableCell>{step.reps}</TableCell>
                             <TableCell>{step.rest}</TableCell>

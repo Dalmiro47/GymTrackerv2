@@ -41,7 +41,6 @@ const exerciseFormSchema = z.object({
   exerciseSetup: z.string().optional(),
   warmup: z.object({
     template: z.enum(WARMUP_TEMPLATES),
-    perHand: z.boolean().optional(),
     isWeightedBodyweight: z.boolean().optional(),
     roundingIncrementKg: z.number().optional(),
     overrideSteps: z.array(warmupStepSchema).optional(),
@@ -176,10 +175,6 @@ export function AddExerciseDialog({
                       </Select>
                     )}
                   />
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Controller name="warmup.perHand" control={control} render={({ field }) => <Checkbox id="warmup.perHand" checked={field.value} onCheckedChange={field.onChange} />} />
-                  <Label htmlFor="warmup.perHand">Per-hand dumbbells</Label>
                 </div>
                  <div className="flex items-center space-x-2">
                   <Controller name="warmup.isWeightedBodyweight" control={control} render={({ field }) => <Checkbox id="warmup.isWeightedBodyweight" checked={field.value} onCheckedChange={field.onChange} />} />
