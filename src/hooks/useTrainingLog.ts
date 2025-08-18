@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
-import type { WorkoutLog, LoggedExercise, LoggedSet, Routine, Exercise, ExercisePerformanceEntry, PersonalRecord } from '@/types';
+import type { WorkoutLog, LoggedExercise, LoggedSet, Routine, Exercise, ExercisePerformanceEntry, PersonalRecord, WarmupConfig } from '@/types';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   getWorkoutLog as fetchLogService,
@@ -17,6 +17,7 @@ import { getExercises as fetchAllUserExercises } from '@/services/exerciseServic
 import { getRoutines as fetchUserRoutines } from '@/services/routineService';
 import { format, parseISO } from 'date-fns';
 import { useToast } from './use-toast';
+import { inferWarmupTemplate } from '@/lib/utils';
 
 export const useTrainingLog = (initialDate: Date) => {
   const { user, isLoading: authIsLoading } = useAuth();
@@ -181,6 +182,14 @@ export const useTrainingLog = (initialDate: Date) => {
       };
     });
   };
+  
+  const getWarmupConfig = (exercise: Exercise): WarmupConfig => {
+    if (exercise.warmup) {
+      return exercise.warmup;
+    }
+    const { template, perHand, isWeightedBodyweight } = inferWarmupTemplate(exercise.name);
+    return { template, perHand, isWeightedBodyweight };
+  };
 
   const handleSelectRoutine = async (routineId: string) => {
     if (!user?.id) return;
@@ -212,6 +221,7 @@ export const useTrainingLog = (initialDate: Date) => {
 
     const exercisesFromRoutine: LoggedExercise[] = await Promise.all(
         selectedRoutine.exercises.map(async (routineEx, index) => {
+            const fullExerciseDef = availableExercises.find(ex => ex.id === routineEx.id);
             const performanceEntry = await fetchExercisePerformanceData(routineEx.id);
             let initialSets: LoggedSet[];
             if (performanceEntry?.lastPerformedSets && performanceEntry.lastPerformedSets.length > 0) {
@@ -234,6 +244,7 @@ export const useTrainingLog = (initialDate: Date) => {
                 notes: '',
                 personalRecordDisplay: formatPersonalRecordDisplay(performanceEntry?.personalRecord || null),
                 isProvisional: true, 
+                warmupConfig: fullExerciseDef ? getWarmupConfig(fullExerciseDef) : undefined,
             };
         })
     );
@@ -276,7 +287,8 @@ export const useTrainingLog = (initialDate: Date) => {
       sets: initialSets,
       notes: '',
       personalRecordDisplay: formatPersonalRecordDisplay(performanceEntry?.personalRecord || null),
-      isProvisional: true, 
+      isProvisional: true,
+      warmupConfig: getWarmupConfig(exercise),
     };
 
     setCurrentLog(prev => {
@@ -332,6 +344,7 @@ export const useTrainingLog = (initialDate: Date) => {
       notes: '',
       personalRecordDisplay: formatPersonalRecordDisplay(performanceEntry?.personalRecord || null),
       isProvisional: true,
+      warmupConfig: getWarmupConfig(newExercise),
     };
   
     setCurrentLog(prev => {
@@ -520,6 +533,3 @@ export const useTrainingLog = (initialDate: Date) => {
     setExerciseInsertionIndex
   };
 };
-
-
-    

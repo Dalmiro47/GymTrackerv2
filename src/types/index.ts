@@ -16,6 +16,28 @@ export const MUSCLE_GROUPS = [
 
 export type MuscleGroup = typeof MUSCLE_GROUPS[number];
 
+// --- Warm-up Types ---
+export const WARMUP_TEMPLATES = ['HEAVY_BARBELL', 'HEAVY_DB', 'MACHINE_COMPOUND', 'BODYWEIGHT', 'ISOLATION', 'NONE'] as const;
+export type WarmupTemplate = typeof WARMUP_TEMPLATES[number];
+
+export type WarmupStepSpec = {
+  type: 'PERCENT' | 'LABEL';
+  percent?: number; // 0.4 = 40% (required if type='PERCENT')
+  reps: string; // "12", "6-8", "5", etc.
+  rest: string; // "45s", "60-75s"
+  appliesTo?: 'TOTAL' | 'ADDED'; // for BODYWEIGHT; default TOTAL for others
+  note?: string; // optional UI note
+};
+
+export interface WarmupConfig {
+  template: WarmupTemplate;
+  perHand?: boolean; // true for dumbbells
+  isWeightedBodyweight?: boolean;
+  roundingIncrementKg?: number; // optional, e.g., 2.5; defaults by template/unit
+  overrideSteps?: WarmupStepSpec[]; // optional per-exercise override of steps
+}
+// --- End Warm-up Types ---
+
 export interface Exercise {
   id: string; // Firestore document ID
   name: string;
@@ -24,6 +46,7 @@ export interface Exercise {
   exerciseSetup?: string; 
   instructions?: string; 
   dataAiHint?: string;
+  warmup?: WarmupConfig; // New field for warm-up settings
 }
 
 export type ExerciseData = Omit<Exercise, 'id'>;
@@ -61,6 +84,7 @@ export interface LoggedExercise {
   notes?: string;
   personalRecordDisplay?: string; // e.g., "PR: 1x5 @ 100kg" or "PR: N/A"
   isProvisional?: boolean; // True if auto-populated and not yet interacted with/saved
+  warmupConfig?: WarmupConfig; // Pass along for warmup calculation
 }
 
 // Represents the entire workout log for a specific day
@@ -99,4 +123,3 @@ export interface UserProfile {
   name?: string | null;
   avatarUrl?: string | null;
 }
-
