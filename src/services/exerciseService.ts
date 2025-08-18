@@ -21,8 +21,15 @@ export const addExercise = async (userId: string, exerciseData: ExerciseData): P
   if (!userId) throw new Error("User ID is required to add an exercise.");
   try {
     const userExercisesColRef = collection(db, getUserExercisesCollectionPath(userId));
-    const docRef = await addDoc(userExercisesColRef, exerciseData); 
-    return { id: docRef.id, ...exerciseData };
+    
+    // Explicitly remove undefined fields before saving
+    const dataToSave: { [key: string]: any } = { ...exerciseData };
+    if (dataToSave.warmup === undefined) {
+      delete dataToSave.warmup;
+    }
+
+    const docRef = await addDoc(userExercisesColRef, dataToSave); 
+    return { id: docRef.id, ...dataToSave as ExerciseData };
   } catch (error: any) {
     console.error("Detailed error adding exercise to Firestore: ", error); 
     throw new Error(`Failed to add exercise. Firestore error: ${error.message || error}`);
@@ -43,14 +50,19 @@ export const addDefaultExercisesBatch = async (userId: string, defaultExercisesW
         console.warn("Skipping default exercise due to missing ID:", exercise.name);
         return;
       }
-      // Use the predefined ID from exercise.id for the document reference
+      
+      const dataToSave: { [key: string]: any } = { ...exercisePayload };
+      if (dataToSave.warmup === undefined) {
+        delete dataToSave.warmup;
+      }
+      
       const exerciseDocRef = doc(userExercisesColRef, id); 
-      // The exercisePayload (which excludes the id) is set as the document data
-      batch.set(exerciseDocRef, exercisePayload); 
+      batch.set(exerciseDocRef, dataToSave); 
     });
 
     await batch.commit();
-  } catch (error: any) {
+  } catch (error: any)
+  {
     console.error("Error adding/updating default exercises batch in Firestore: ", error);
     throw new Error("Failed to add/update default exercises.");
   }
@@ -78,7 +90,14 @@ export const updateExercise = async (userId: string, exerciseId: string, exercis
   if (!exerciseId) throw new Error("Exercise ID is required to update an exercise.");
   try {
     const exerciseDocRef = doc(db, getUserExercisesCollectionPath(userId), exerciseId);
-    await updateDoc(exerciseDocRef, exerciseData);
+    
+    // Explicitly remove undefined fields before updating
+    const dataToUpdate: { [key: string]: any } = { ...exerciseData };
+    if (dataToUpdate.warmup === undefined) {
+      delete dataToUpdate.warmup;
+    }
+    
+    await updateDoc(exerciseDocRef, dataToUpdate);
   } catch (error: any) {
     console.error("Error updating exercise in Firestore: ", error);
     throw new Error("Failed to update exercise.");

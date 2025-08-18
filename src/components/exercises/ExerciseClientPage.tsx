@@ -188,6 +188,7 @@ export function ExerciseClientPage() {
         targetNotes: formData.targetNotes || '',
         exerciseSetup: formData.exerciseSetup || '',
         dataAiHint: formData.name.toLowerCase().split(" ").slice(0,2).join(" ") || 'exercise',
+        warmup: formData.warmup,
       };
 
       if (exerciseToEdit) {
@@ -402,4 +403,3 @@ export function ExerciseClientPage() {
     </>
   );
 }
-
