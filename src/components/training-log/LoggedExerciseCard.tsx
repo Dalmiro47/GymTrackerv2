@@ -191,18 +191,6 @@ export function LoggedExerciseCard({
                 <GripVertical className="h-5 w-5" />
               </button>
               <CardTitle className="font-headline text-lg">{loggedExercise.name}</CardTitle>
-              {loggedExercise.warmupConfig && loggedExercise.warmupConfig.template !== 'NONE' && (
-                  <Popover>
-                      <PopoverTrigger asChild>
-                          <Button variant="ghost" size="icon" className="text-orange-500 hover:text-orange-400 h-7 w-7">
-                              <Flame className="h-4 w-4" />
-                          </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-[400px]">
-                          <WarmupPanel loggedExercise={loggedExercise} />
-                      </PopoverContent>
-                  </Popover>
-              )}
             </div>
             <div className="flex items-center">
               {loggedExercise.warmupConfig && loggedExercise.warmupConfig.template !== 'NONE' && (
