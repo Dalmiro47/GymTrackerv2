@@ -52,6 +52,7 @@ const WarmupPanel: React.FC<{ loggedExercise: LoggedExercise }> = ({ loggedExerc
 
     return (
         <div className="space-y-4">
+            <h4 className="font-medium text-center text-sm px-4">Warm-up Sets</h4>
             <Table>
                 <TableHeader>
                     <TableRow>
