@@ -155,7 +155,7 @@ export function AddExerciseDialog({
             <Input id="exerciseSetup" {...register('exerciseSetup')} placeholder="e.g., Machine position 8, Bench incline 30°" />
           </div>
           
-          <Accordion type="single" collapsible className="w-full">
+          <Accordion type="single" collapsible className="w-full" defaultValue="warmup-settings">
             <AccordionItem value="warmup-settings">
               <AccordionTrigger>Warm-up Settings</AccordionTrigger>
               <AccordionContent className="space-y-4">
