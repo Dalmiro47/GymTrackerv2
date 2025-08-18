@@ -23,7 +23,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { Trash2, PlusCircle } from 'lucide-react';
+import { Trash2, PlusCircle, Info } from 'lucide-react';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 const warmupStepSchema = z.object({
   type: z.enum(['PERCENT', 'LABEL']),
@@ -158,7 +164,30 @@ export function AddExerciseDialog({
               <AccordionTrigger>Warm-up Settings</AccordionTrigger>
               <AccordionContent className="space-y-4">
                 <div className="grid gap-2">
-                  <Label htmlFor="warmup.template">Warm-up Template</Label>
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="warmup.template">Warm-up Template</Label>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button type="button" variant="ghost" size="icon" className="h-5 w-5 text-muted-foreground">
+                            <Info className="h-4 w-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-xs sm:max-w-sm" side="top">
+                          <div className="space-y-2 p-1 text-xs">
+                            <p>Warm-up sets are calculated based on the working weight you enter in the Training Log.</p>
+                            <h4 className="font-bold text-sm">Template Details:</h4>
+                            <div><strong>HEAVY_BARBELL:</strong> 3 sets (40%, 65%, 80%). Adds an "Empty Bar" set for lower body exercises.</div>
+                            <div><strong>HEAVY_DB:</strong> 2 sets (50%, 70%). Assumes total weight of both dumbbells.</div>
+                            <div><strong>MACHINE_COMPOUND:</strong> 2 sets (50%, 70%).</div>
+                            <div><strong>BODYWEIGHT:</strong> For weighted, one bodyweight set then one set at 50% of added weight. For unweighted, one light/assisted set.</div>
+                            <div><strong>ISOLATION:</strong> A single "feeler" set at 50% of working weight.</div>
+                            <div><strong>NONE:</strong> No warm-up sets will be shown.</div>
+                          </div>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
                    <Controller
                     name="warmup.template"
                     control={control}
