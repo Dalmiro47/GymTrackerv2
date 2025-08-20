@@ -251,35 +251,26 @@ export function LoggedExerciseCard({
             />
           ))}
           
-          <div className="flex flex-col sm:flex-row gap-2 w-full mt-2">
-             <Button 
-                variant="outline" 
+          <div className="pt-2">
+            <Separator className="mb-4 border-dashed" />
+            <div className="flex justify-center">
+              <Button 
+                variant="ghost" 
                 size="sm" 
                 onClick={addSet} 
-                className="flex-1 border-dashed hover:border-solid hover:bg-primary/5 hover:text-primary"
+                className="w-full sm:w-auto text-muted-foreground hover:text-primary"
                 disabled={isSavingThisExercise || isSavingParentLog}
               >
                 <PlusCircle className="mr-2 h-4 w-4" /> 
-                {localSets.length === 0 ? "Add First Set" : "Add Another Set"}
+                Add Another Set
               </Button>
-              <Button 
-                onClick={handleSaveThisExercise} 
-                disabled={isSavingThisExercise || isSavingParentLog} 
-                size="sm"
-                className="flex-1 bg-primary/90 hover:bg-primary" 
-              >
-                {isSavingThisExercise ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : 
-                justSaved ? <Check className="mr-2 h-4 w-4" /> : <Save className="mr-2 h-4 w-4" />}
-                {isSavingThisExercise ? "Saving..." : justSaved ? "Progress Saved!" : "Save Progress"}
-              </Button>
+            </div>
           </div>
 
           <Separator className="my-4"/>
           
           <div className="flex flex-col sm:flex-row items-center justify-between gap-2">
-             <span className="text-xs text-muted-foreground">Session Set Structure</span>
-             <div className="flex items-center gap-2">
-                <SetStructurePicker
+             <SetStructurePicker
                     value={loggedExercise.setStructureOverride ?? (loggedExercise.setStructure ?? 'normal')}
                     onChange={(val) => onUpdateSetStructureOverride(val === 'normal' ? null : val)}
                     disabled={isSavingThisExercise || isSavingParentLog}
@@ -294,7 +285,16 @@ export function LoggedExerciseCard({
                         Reset
                     </Button>
                 )}
-             </div>
+            <Button 
+              onClick={handleSaveThisExercise} 
+              disabled={isSavingThisExercise || isSavingParentLog} 
+              size="sm"
+              className="bg-primary/90 hover:bg-primary" 
+            >
+              {isSavingThisExercise ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : 
+              justSaved ? <Check className="mr-2 h-4 w-4" /> : <Save className="mr-2 h-4 w-4" />}
+              {isSavingThisExercise ? "Saving..." : justSaved ? "Progress Saved!" : "Save Progress"}
+            </Button>
           </div>
         </CardContent>
       </Card>
