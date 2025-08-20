@@ -114,12 +114,14 @@ export const getWorkoutLog = async (userId: string, date: string): Promise<Worko
     const docSnap = await getDoc(logDocRef);
     if (docSnap.exists()) {
       const logData = docSnap.data() as WorkoutLog;
-      // When fetching, ensure isProvisional is present on exercises for the UI
-      const exercisesWithProvisional = logData.exercises.map(ex => ({
+      // Normalize exercises for backward compatibility (and UI)
+      const exercisesNormalized = (logData.exercises || []).map(ex => ({
         ...ex,
         isProvisional: ex.isProvisional ?? false,
+        setStructure: ex.setStructure ?? 'normal',
+        setStructureOverride: ex.setStructureOverride ?? null,
       }));
-      return { ...logData, exercises: exercisesWithProvisional };
+      return { ...logData, exercises: exercisesNormalized };
     }
     return null;
   } catch (error: any) {

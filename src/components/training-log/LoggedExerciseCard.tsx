@@ -2,7 +2,8 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from 'react';
-import type { LoggedExercise, LoggedSet, SetStructure, WarmupConfig, WarmupStep } from '@/types';
+import type { LoggedExercise, LoggedSet, SetStructure, WarmupConfig } from '@/types';
+import type { WarmupStep } from '@/lib/utils';
 import { computeWarmup, WarmupInput } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -17,6 +18,7 @@ import { useRouter } from 'next/navigation';
 import { SetStructureBadge } from '../SetStructureBadge';
 import { SetStructurePicker } from '../SetStructurePicker';
 import { Separator } from '../ui/separator';
+import { SET_STRUCTURE_COLORS } from '@/types/setStructure';
 
 interface LoggedExerciseCardProps {
   loggedExercise: LoggedExercise;
@@ -128,6 +130,8 @@ export function LoggedExerciseCard({
     return loggedExercise.setStructureOverride ?? loggedExercise.setStructure ?? 'normal';
   }, [loggedExercise.setStructure, loggedExercise.setStructureOverride]);
 
+  const tint = SET_STRUCTURE_COLORS[effectiveSetStructure];
+
   const handleSetChange = (index: number, field: keyof Omit<LoggedSet, 'id' | 'isProvisional'>, value: string) => {
     onMarkAsInteracted(); 
     const newSets = [...localSets];
@@ -177,8 +181,7 @@ export function LoggedExerciseCard({
   return (
     <>
       <Card 
-        ref={setNodeRef} 
-        style={style} 
+        ref={setNodeRef}  
         className={cn(
           "shadow-md transition-all border rounded-lg", 
           isDragging && "ring-2 ring-primary",
@@ -186,6 +189,12 @@ export function LoggedExerciseCard({
             ? "opacity-60 bg-muted/30 border-dashed border-primary/30" 
             : "opacity-100 bg-card border-border"
         )}
+        style={{
+          ...style,
+          ...(effectiveSetStructure !== 'normal' && !loggedExercise.isProvisional
+            ? { backgroundColor: tint.bg, borderColor: tint.border }
+            : null),
+        }}
       >
         <CardHeader className="py-3 px-4 border-b">
           <div className="flex items-start justify-between">
@@ -279,7 +288,7 @@ export function LoggedExerciseCard({
              <span className="text-xs text-muted-foreground">Session Set Structure</span>
              <div className="flex items-center gap-2">
                 <SetStructurePicker
-                    value={loggedExercise.setStructureOverride ?? 'normal'}
+                    value={loggedExercise.setStructureOverride ?? (loggedExercise.setStructure ?? 'normal')}
                     onChange={(val) => onUpdateSetStructureOverride(val === 'normal' ? null : val)}
                     disabled={isSavingThisExercise || isSavingParentLog}
                 />
