@@ -271,37 +271,52 @@ export const getLastLoggedPerformance = async (userId: string, exerciseId: strin
 export const getLastNonDeloadPerformance = async (userId: string, exerciseId: string, routineId?: string): Promise<ExercisePerformanceEntry | null> => {
     if (!userId || !exerciseId) return null;
 
-    const logsColRef = collection(db, getUserWorkoutLogsCollectionPath(userId));
-    const q = query(
-        logsColRef,
-        where("exerciseIds", "array-contains", exerciseId),
-        orderBy("date", "desc"),
-        limit(10)
-    );
-
     try {
-        const snap = await getDocs(q);
-        const firstNonDeload = snap.docs.find(d => {
-            const data = d.data() as WorkoutLog;
-            return data?.isDeload !== true; // treat missing as non-deload
-        });
+        // First, get the overall performance entry which holds the definitive PR
+        const overallPerformanceEntry = await getLastLoggedPerformance(userId, exerciseId);
 
-        if (firstNonDeload) {
-            const log = firstNonDeload.data() as WorkoutLog;
-            const ex = log.exercises.find(e => e.exerciseId === exerciseId);
-            if (ex) {
-                return {
-                    lastPerformedDate: Timestamp.fromDate(parseISO(log.date)).toMillis(),
-                    lastPerformedSets: ex.sets,
-                    personalRecord: null,
-                };
+        // Next, find the sets from the most recent non-deload day to use for pre-filling
+        const logsColRef = collection(db, getUserWorkoutLogsCollectionPath(userId));
+        const q = query(
+            logsColRef,
+            where("exerciseIds", "array-contains", exerciseId),
+            orderBy("date", "desc"),
+            limit(10) // Fetch a few recent logs to find a non-deload one
+        );
+        const logsSnap = await getDocs(q);
+        const lastNonDeloadLogDoc = logsSnap.docs.find(doc => doc.data()?.isDeload !== true);
+
+        let lastSets: LoggedSet[] = [];
+        let lastDate: number | null = null;
+
+        if (lastNonDeloadLogDoc) {
+            const logData = lastNonDeloadLogDoc.data() as WorkoutLog;
+            const exerciseInLog = logData.exercises.find(e => e.exerciseId === exerciseId);
+            if (exerciseInLog) {
+                lastSets = exerciseInLog.sets;
+                lastDate = Timestamp.fromDate(parseISO(logData.date)).toMillis();
             }
+        } else if (overallPerformanceEntry?.lastPerformedSets) {
+            // Fallback to the overall last performance if no specific non-deload log is found
+            lastSets = overallPerformanceEntry.lastPerformedSets;
+            lastDate = overallPerformanceEntry.lastPerformedDate;
         }
 
-        // If none found, fall back to “last overall” as you do now
-        return await getLastLoggedPerformance(userId, exerciseId);
+        // If neither source gives us anything, return null
+        if (!overallPerformanceEntry && lastSets.length === 0) {
+            return null;
+        }
+
+        // Combine the definitive PR with the last non-deload sets
+        return {
+            personalRecord: overallPerformanceEntry?.personalRecord || null,
+            lastPerformedSets: lastSets,
+            lastPerformedDate: lastDate,
+        };
+
     } catch (e) {
-        console.error("Error fetching non-deload performance; falling back.", e);
+        console.error("Error fetching non-deload performance; falling back to overall last performance.", e);
+        // Fallback to the simplest fetch in case of query errors
         return await getLastLoggedPerformance(userId, exerciseId);
     }
 };
@@ -402,3 +417,5 @@ export const updatePerformanceEntryOnLogDelete = async (
     }
   }
 };
+
+    
