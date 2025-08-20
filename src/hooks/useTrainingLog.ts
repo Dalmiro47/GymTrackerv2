@@ -191,14 +191,37 @@ export const useTrainingLog = (initialDate: Date) => {
   const applyDeloadTransform = (log: WorkoutLog | null): WorkoutLog | null => {
     if (!log) return null;
     const { volumeMultiplier, intensityMultiplier } = DEFAULT_DELOAD_PARAMS;
-    const transformedExercises = log.exercises.map(ex => {
-      const newSetCount = Math.max(1, Math.ceil(ex.sets.length * volumeMultiplier));
-      const transformedSets = ex.sets.slice(0, newSetCount).map(set => ({
+  
+    const transformSets = (sets: LoggedSet[]): LoggedSet[] => {
+      if (!sets || sets.length === 0) return sets;
+  
+      const keepCount = Math.max(1, Math.ceil(sets.length * volumeMultiplier));
+  
+      // Rank by weight desc (null/NaN treated as 0), pick top N
+      const ranked = sets
+        .map((s, i) => ({ i, w: Number.isFinite(Number(s.weight)) ? Number(s.weight) : 0 }))
+        .sort((a, b) => b.w - a.w)
+        .slice(0, keepCount)
+        .map(x => x.i);
+  
+      // Preserve original order of the picked indices
+      const selectedIndexSet = new Set(ranked);
+      const selected = sets.filter((_, i) => selectedIndexSet.has(i));
+  
+      // Apply intensity reduction + rounding
+      return selected.map(set => ({
         ...set,
-        weight: set.weight != null ? roundToGymHalf(set.weight * intensityMultiplier) : set.weight,
+        weight: set.weight != null
+          ? roundToGymHalf(Number(set.weight) * intensityMultiplier)
+          : set.weight,
       }));
-      return { ...ex, sets: transformedSets };
-    });
+    };
+  
+    const transformedExercises = log.exercises.map(ex => ({
+      ...ex,
+      sets: transformSets(ex.sets),
+    }));
+  
     return { ...log, exercises: transformedExercises };
   };
 

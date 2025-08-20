@@ -59,7 +59,6 @@ import { Separator } from '@/components/ui/separator';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 function TrainingLogPageContent() {
   const { user, isLoading: authIsLoading } = useAuth();
@@ -312,16 +311,16 @@ function TrainingLogPageContent() {
           {currentLog?.routineId && (
             <div className="flex items-center justify-end space-x-2 pt-2">
                 <Label htmlFor="deload-mode" className="text-muted-foreground">Deload Mode</Label>
-                <TooltipProvider delayDuration={200}>
-                    <Tooltip>
-                        <TooltipTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-5 w-5 text-muted-foreground"><Info className="h-4 w-4" /></Button>
-                        </TooltipTrigger>
-                        <TooltipContent className="max-w-xs">
-                            <p>-50% sets, -10% weight. This day won’t count for progression.</p>
-                        </TooltipContent>
-                    </Tooltip>
-                </TooltipProvider>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-5 w-5 text-muted-foreground">
+                      <Info className="h-4 w-4" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="max-w-xs text-sm">
+                    <p>-50% sets, -10% weight. This day won’t count for progression.</p>
+                  </PopoverContent>
+                </Popover>
                 <Switch
                     id="deload-mode"
                     checked={isDeload}
