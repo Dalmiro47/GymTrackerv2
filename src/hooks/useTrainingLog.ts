@@ -19,11 +19,15 @@ import { getRoutines as fetchUserRoutines } from '@/services/routineService';
 import { format, parseISO } from 'date-fns';
 import { useToast } from './use-toast';
 import { inferWarmupTemplate, roundToNearestIncrement } from '@/lib/utils';
-import { cloneDeep } from 'is-what';
 
 const DEFAULT_DELOAD_PARAMS = {
   volumeMultiplier: 0.5,
   intensityMultiplier: 0.9,
+};
+
+// A safe deep-clone function using JSON stringify/parse, suitable for serializable data.
+const cloneDeep = <T>(obj: T): T => {
+  return JSON.parse(JSON.stringify(obj));
 };
 
 export const useTrainingLog = (initialDate: Date) => {
