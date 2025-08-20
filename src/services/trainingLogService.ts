@@ -69,8 +69,13 @@ export const saveWorkoutLog = async (userId: string, date: string, workoutLogPay
   if (payloadForFirestore.routineId === undefined || payloadForFirestore.routineId === null) delete (payloadForFirestore as any).routineId;
   if (payloadForFirestore.routineName === undefined || payloadForFirestore.routineName === null) delete (payloadForFirestore as any).routineName;
   if (payloadForFirestore.duration === undefined || payloadForFirestore.duration === null) delete (payloadForFirestore as any).duration;
-  if (payloadForFirestore.isDeload === undefined || payloadForFirestore.isDeload === false) delete (payloadForFirestore as any).isDeload;
-  if (payloadForFirestore.deloadParams === undefined) delete (payloadForFirestore as any).deloadParams;
+  
+  // Always set isDeload to a boolean
+  payloadForFirestore.isDeload = !!payloadForFirestore.isDeload;
+  if (!payloadForFirestore.isDeload) {
+    delete (payloadForFirestore as any).deloadParams;
+  }
+
   payloadForFirestore.notes = payloadForFirestore.notes || '';
 
 
@@ -272,7 +277,7 @@ export const getLastNonDeloadPerformance = async (userId: string, exerciseId: st
     const q = query(
         logsColRef,
         where("exerciseIds", "array-contains", exerciseId),
-        where("isDeload", "!=", true),
+        where("isDeload", "==", false),
         orderBy("date", "desc"),
         limit(1)
     );

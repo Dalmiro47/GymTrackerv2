@@ -18,7 +18,7 @@ import { getExercises as fetchAllUserExercises } from '@/services/exerciseServic
 import { getRoutines as fetchUserRoutines } from '@/services/routineService';
 import { format, parseISO } from 'date-fns';
 import { useToast } from './use-toast';
-import { inferWarmupTemplate, roundToNearestIncrement } from '@/lib/utils';
+import { inferWarmupTemplate, roundToGymHalf } from '@/lib/utils';
 
 const DEFAULT_DELOAD_PARAMS = {
   volumeMultiplier: 0.5,
@@ -197,7 +197,7 @@ export const useTrainingLog = (initialDate: Date) => {
       const newSetCount = Math.max(1, Math.ceil(ex.sets.length * volumeMultiplier));
       const transformedSets = ex.sets.slice(0, newSetCount).map(set => ({
         ...set,
-        weight: set.weight != null ? roundToNearestIncrement(set.weight * intensityMultiplier, 2.5) : set.weight,
+        weight: set.weight != null ? roundToGymHalf(set.weight * intensityMultiplier) : set.weight,
       }));
       return { ...ex, sets: transformedSets };
     });

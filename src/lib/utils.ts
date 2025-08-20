@@ -20,7 +20,7 @@ export const slugify = (text: string, context: string = ''): string => {
 
   if (context) {
     const contextSlug = context.toString().toLowerCase().trim()
-      .replace(NC_RE, '')
+      .replace(NC_re, '')
       .replace(WS_RE, S)
       .replace(MULTI_S_RE, S);
     return `${slug}_${contextSlug}`; // Use underscore to differentiate parts if needed
@@ -28,12 +28,34 @@ export const slugify = (text: string, context: string = ''): string => {
   return slug;
 };
 
-// --- Rounding Logic ---
-export function roundToNearestIncrement(value: number, increment: number): number {
-    if (increment <= 0) return value;
-    const inverse = 1 / increment;
-    return Math.round(value * inverse) / inverse;
+// Rounds to 0.0 / 0.5 / 1.0 using the rule:
+// .1 .2 → down to .0
+// .3 .4 → up to .5
+// .5     → stays .5
+// .6 .7 → down to .5
+// .8 .9 → up to next .0
+export function roundToGymHalf(value: number): number {
+  if (!isFinite(value)) return 0;
+  const sign = value < 0 ? -1 : 1;
+  const abs = Math.abs(value);
+  const base = Math.floor(abs);
+  const dec = abs - base;
+
+  let out = abs;
+  if (dec === 0.5) {
+    out = base + 0.5;
+  } else if (dec > 0.0 && dec <= 0.2) {
+    out = base;
+  } else if (dec > 0.2 && dec < 0.5) {
+    out = base + 0.5;
+  } else if (dec > 0.5 && dec <= 0.7) {
+    out = base + 0.5;
+  } else if (dec > 0.7) {
+    out = base + 1;
+  }
+  return sign * out;
 }
+
 
 // --- WARMUP LOGIC ---
 
@@ -116,27 +138,6 @@ export function computeWarmup(input: WarmupInput): WarmupStep[] {
   const results: WarmupStep[] = [];
   const roundingIncrement = (template === 'HEAVY_DB' || template === 'ISOLATION') ? 2.5 : 5;
 
-  const round = (weight: number): number => {
-    if (weight <= 0) return 0;
-    const base = Math.floor(weight);
-    const decimal = weight - base;
-
-    // Custom rounding rule
-    if (decimal >= 0.8) { // .8, .9 -> round up to next whole number
-      return base + 1;
-    }
-    if (decimal > 0.5) { // .6, .7 -> round down to .5
-      return base + 0.5;
-    }
-    if (decimal > 0.2) { // .3, .4 -> round up to .5
-      return base + 0.5;
-    }
-    if (decimal > 0) { // .1, .2 -> round down to whole number
-      return base;
-    }
-    return weight; // .0 and .5 remain unchanged
-  };
-
 
   // Special "Empty Bar" step for lower body barbell exercises
   if (template === 'HEAVY_BARBELL' && isLowerBodyBarbell) {
@@ -171,7 +172,7 @@ export function computeWarmup(input: WarmupInput): WarmupStep[] {
       }
       
       const rawWeight = baseWeight * spec.percent;
-      let finalWeightTotal = round(rawWeight);
+      let finalWeightTotal = roundToGymHalf(rawWeight);
 
       // Clamp to a minimum value if rounding results in zero
       if (finalWeightTotal <= 0) {
