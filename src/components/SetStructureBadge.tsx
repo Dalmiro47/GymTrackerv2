@@ -12,17 +12,22 @@ export function SetStructureBadge({ value }: { value: SetStructure }) {
   
   return (
     <span style={{
-      display: 'inline-block',
+      display: 'inline-flex',
+      alignItems: 'center',
       padding: '2px 8px',
-      borderRadius: '9999px',
+      borderRadius: 9999,
       backgroundColor: styles.bg,
       color: styles.text,
       border: `1px solid ${styles.border}`,
-      fontSize: '11px',
-      fontWeight: 500,
-      lineHeight: 1.5,
+      fontSize: 11,
+      fontWeight: 600,
+      lineHeight: 1.4,
       textTransform: 'uppercase',
       letterSpacing: '0.05em',
+      whiteSpace: 'nowrap',
+      width: 'auto',
+      maxWidth: 'max-content',
+      flex: '0 0 auto',
     }}>
       {SET_STRUCTURE_LABEL[value]}
     </span>

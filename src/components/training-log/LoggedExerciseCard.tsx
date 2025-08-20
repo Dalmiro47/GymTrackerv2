@@ -191,7 +191,7 @@ export function LoggedExerciseCard({
         )}
         style={{
           ...style,
-          ...(effectiveSetStructure !== 'normal' && !loggedExercise.isProvisional
+          ...(effectiveSetStructure !== 'normal'
             ? { backgroundColor: tint.bg, borderColor: tint.border }
             : null),
         }}
@@ -208,7 +208,7 @@ export function LoggedExerciseCard({
               >
                 <GripVertical className="h-5 w-5" />
               </button>
-              <div className="flex flex-col gap-1">
+              <div className="flex flex-col gap-1 items-start">
                  <CardTitle className="font-headline text-lg">{loggedExercise.name}</CardTitle>
                  <SetStructureBadge value={effectiveSetStructure} />
               </div>
