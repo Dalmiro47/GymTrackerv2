@@ -18,7 +18,6 @@ import { useRouter } from 'next/navigation';
 import { SetStructureBadge } from '../SetStructureBadge';
 import { SetStructurePicker } from '../SetStructurePicker';
 import { Separator } from '../ui/separator';
-import { SET_STRUCTURE_COLORS } from '@/types/setStructure';
 
 interface LoggedExerciseCardProps {
   loggedExercise: LoggedExercise;
@@ -130,8 +129,6 @@ export function LoggedExerciseCard({
     return loggedExercise.setStructureOverride ?? loggedExercise.setStructure ?? 'normal';
   }, [loggedExercise.setStructure, loggedExercise.setStructureOverride]);
 
-  const tint = SET_STRUCTURE_COLORS[effectiveSetStructure];
-
   const handleSetChange = (index: number, field: keyof Omit<LoggedSet, 'id' | 'isProvisional'>, value: string) => {
     onMarkAsInteracted(); 
     const newSets = [...localSets];
@@ -182,6 +179,7 @@ export function LoggedExerciseCard({
     <>
       <Card 
         ref={setNodeRef}  
+        style={style}
         className={cn(
           "shadow-md transition-all border rounded-lg", 
           isDragging && "ring-2 ring-primary",
@@ -189,12 +187,6 @@ export function LoggedExerciseCard({
             ? "opacity-60 bg-muted/30 border-dashed border-primary/30" 
             : "opacity-100 bg-card border-border"
         )}
-        style={{
-          ...style,
-          ...(effectiveSetStructure !== 'normal'
-            ? { backgroundColor: tint.bg, borderColor: tint.border }
-            : null),
-        }}
       >
         <CardHeader className="py-3 px-4 border-b">
           <div className="flex items-start justify-between">
