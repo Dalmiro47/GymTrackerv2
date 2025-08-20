@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import type { Exercise, Routine, RoutineData, RoutineExercise } from '@/types';
+import type { Exercise, Routine, RoutineData, RoutineExercise, SetStructure } from '@/types';
 import { useAuth } from '@/contexts/AuthContext';
 import { getExercises as fetchAllUserExercises } from '@/services/exerciseService'; 
 
@@ -106,7 +106,7 @@ export function AddEditRoutineDialog({
         const exerciseToAdd = allUserExercises.find(ex => ex.id === exerciseId);
         if (!exerciseToAdd) return prevSelected;
         if (!prevSelected.find(e => e.id === exerciseId)) {
-          const routineExercise: RoutineExercise = { ...exerciseToAdd };
+          const routineExercise: RoutineExercise = { ...exerciseToAdd, setStructure: 'normal' };
           return [...prevSelected, routineExercise];
         }
         return prevSelected;
@@ -114,6 +114,12 @@ export function AddEditRoutineDialog({
         return prevSelected.filter(e => e.id !== exerciseId);
       }
     });
+  };
+
+  const handleUpdateSetStructure = (exerciseId: string, structure: SetStructure) => {
+    setSelectedExerciseObjects(prev => 
+      prev.map(ex => ex.id === exerciseId ? { ...ex, setStructure: structure } : ex)
+    );
   };
 
   const handleReorderExercises = (reorderedExercises: RoutineExercise[]) => {
@@ -174,6 +180,7 @@ export function AddEditRoutineDialog({
               selectedExercises={selectedExerciseObjects}
               onRemoveExercise={(exerciseId) => handleExerciseSelectionChange(exerciseId, false)}
               onReorderExercises={handleReorderExercises}
+              onUpdateSetStructure={handleUpdateSetStructure}
             />
           </div>
         </form>

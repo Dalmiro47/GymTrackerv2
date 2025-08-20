@@ -48,27 +48,38 @@ export const saveWorkoutLog = async (userId: string, date: string, workoutLogPay
     ...workoutLogPayload,
     exerciseIds: exerciseIds,
     exercises: workoutLogPayload.exercises.map(ex => { 
+      // Destructure to remove UI-only fields before saving
       const { personalRecordDisplay, isProvisional, ...restOfEx } = ex;
+
+      // Clean up optional fields that might be null or undefined on the exercise
+      const exerciseToSave: { [key: string]: any } = { ...restOfEx };
+      if (exerciseToSave.setStructure === 'normal' || !exerciseToSave.setStructure) {
+        delete exerciseToSave.setStructure;
+      }
+      if (!exerciseToSave.setStructureOverride) {
+        delete exerciseToSave.setStructureOverride;
+      }
+      
       return {
-        ...restOfEx,
+        ...exerciseToSave,
         sets: ex.sets.map(s => {
-          const { isProvisional, ...restOfSet } = s; 
+          const { isProvisional, ...restOfSet } = s; // Also remove from set
           return { 
              id: restOfSet.id,
              reps: restOfSet.reps === null || isNaN(Number(restOfSet.reps)) ? 0 : Number(restOfSet.reps),
              weight: restOfSet.weight === null || isNaN(Number(restOfSet.weight)) ? 0 : Number(restOfSet.weight),
           };
         })
-      };
+      } as LoggedExercise;
     })
   };
 
-  // Clean up optional fields before saving
+  // Clean up optional fields on the root log object before saving
   if (payloadForFirestore.routineId === undefined || payloadForFirestore.routineId === null) delete (payloadForFirestore as any).routineId;
   if (payloadForFirestore.routineName === undefined || payloadForFirestore.routineName === null) delete (payloadForFirestore as any).routineName;
   if (payloadForFirestore.duration === undefined || payloadForFirestore.duration === null) delete (payloadForFirestore as any).duration;
   
-  // Always set isDeload to a boolean
+  // Always set isDeload to a boolean for consistent querying
   payloadForFirestore.isDeload = !!payloadForFirestore.isDeload;
   if (!payloadForFirestore.isDeload) {
     delete (payloadForFirestore as any).deloadParams;
@@ -103,12 +114,14 @@ export const getWorkoutLog = async (userId: string, date: string): Promise<Worko
     const docSnap = await getDoc(logDocRef);
     if (docSnap.exists()) {
       const logData = docSnap.data() as WorkoutLog;
-      // When fetching, ensure isProvisional is present on exercises for the UI
-      const exercisesWithProvisional = logData.exercises.map(ex => ({
+      // Normalize exercises for backward compatibility (and UI)
+      const exercisesNormalized = (logData.exercises || []).map(ex => ({
         ...ex,
         isProvisional: ex.isProvisional ?? false,
+        setStructure: ex.setStructure ?? 'normal',
+        setStructureOverride: ex.setStructureOverride ?? null,
       }));
-      return { ...logData, exercises: exercisesWithProvisional };
+      return { ...logData, exercises: exercisesNormalized };
     }
     return null;
   } catch (error: any) {
@@ -417,5 +430,3 @@ export const updatePerformanceEntryOnLogDelete = async (
     }
   }
 };
-
-    

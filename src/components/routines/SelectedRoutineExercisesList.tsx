@@ -1,7 +1,7 @@
 
 "use client";
 
-import type { RoutineExercise } from '@/types';
+import type { RoutineExercise, SetStructure } from '@/types';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Trash2, ListChecks, GripVertical } from 'lucide-react';
@@ -25,13 +25,15 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Card } from '../ui/card';
+import { SetStructurePicker } from '../SetStructurePicker';
 
 interface SortableExerciseItemProps {
   exercise: RoutineExercise;
   onRemoveExercise: (exerciseId: string) => void;
+  onUpdateSetStructure: (exerciseId: string, structure: SetStructure) => void;
 }
 
-function SortableExerciseItem({ exercise, onRemoveExercise }: SortableExerciseItemProps) {
+function SortableExerciseItem({ exercise, onRemoveExercise, onUpdateSetStructure }: SortableExerciseItemProps) {
   const {
     attributes,
     listeners,
@@ -52,33 +54,41 @@ function SortableExerciseItem({ exercise, onRemoveExercise }: SortableExerciseIt
     <li
       ref={setNodeRef}
       style={style}
-      className="flex items-center justify-between p-2.5 rounded-md border bg-card shadow-sm touch-none"
+      className="p-2.5 rounded-md border bg-card shadow-sm touch-none"
     >
-      <div className="flex items-center flex-1">
-        <button
-          type="button"
-          {...attributes}
-          {...listeners}
-          className="p-1 cursor-grab mr-2 text-muted-foreground hover:text-foreground"
-          aria-label={`Drag to reorder ${exercise.name}`}
-        >
-          <GripVertical className="h-5 w-5" />
-        </button>
-        <div>
-          <p className="text-sm font-medium">{exercise.name}</p>
-          <p className="text-xs text-muted-foreground">{exercise.muscleGroup}</p>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center flex-1">
+          <button
+            type="button"
+            {...attributes}
+            {...listeners}
+            className="p-1 cursor-grab mr-2 text-muted-foreground hover:text-foreground"
+            aria-label={`Drag to reorder ${exercise.name}`}
+          >
+            <GripVertical className="h-5 w-5" />
+          </button>
+          <div>
+            <p className="text-sm font-medium">{exercise.name}</p>
+            <p className="text-xs text-muted-foreground">{exercise.muscleGroup}</p>
+          </div>
         </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          onClick={() => onRemoveExercise(exercise.id)}
+          aria-label={`Remove ${exercise.name}`}
+          className="text-destructive hover:text-destructive/90"
+        >
+          <Trash2 className="h-4 w-4" />
+        </Button>
       </div>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        onClick={() => onRemoveExercise(exercise.id)}
-        aria-label={`Remove ${exercise.name}`}
-        className="text-destructive hover:text-destructive/90"
-      >
-        <Trash2 className="h-4 w-4" />
-      </Button>
+       <div className="pl-8 pt-2">
+           <SetStructurePicker
+              value={exercise.setStructure ?? 'normal'}
+              onChange={(value) => onUpdateSetStructure(exercise.id, value)}
+            />
+        </div>
     </li>
   );
 }
@@ -88,12 +98,14 @@ interface SelectedRoutineExercisesListProps {
   selectedExercises: RoutineExercise[];
   onRemoveExercise: (exerciseId: string) => void;
   onReorderExercises: (reorderedExercises: RoutineExercise[]) => void;
+  onUpdateSetStructure: (exerciseId: string, structure: SetStructure) => void;
 }
 
 export function SelectedRoutineExercisesList({
   selectedExercises,
   onRemoveExercise,
   onReorderExercises,
+  onUpdateSetStructure,
 }: SelectedRoutineExercisesListProps) {
   const isMobile = useIsMobile();
   const sensors = useSensors(
@@ -151,9 +163,10 @@ export function SelectedRoutineExercisesList({
                     <ul className="space-y-2">
                     {selectedExercises.map((exercise) => (
                         <SortableExerciseItem
-                        key={exercise.id}
-                        exercise={exercise}
-                        onRemoveExercise={onRemoveExercise}
+                          key={exercise.id}
+                          exercise={exercise}
+                          onRemoveExercise={onRemoveExercise}
+                          onUpdateSetStructure={onUpdateSetStructure}
                         />
                     ))}
                     </ul>

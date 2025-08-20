@@ -1,5 +1,5 @@
-
 import type { LucideIcon } from 'lucide-react';
+import type { SetStructure } from './setStructure';
 
 export type NavItem = {
   title: string;
@@ -52,6 +52,7 @@ export type ExerciseData = Omit<Exercise, 'id'>;
 
 export interface RoutineExercise extends Exercise {
   // order?: number; // To maintain order in the routine
+  setStructure?: SetStructure;
 }
 
 export interface Routine {
@@ -83,6 +84,8 @@ export interface LoggedExercise {
   personalRecordDisplay?: string; // e.g., "PR: 1x5 @ 100kg" or "PR: N/A"
   isProvisional?: boolean; // True if auto-populated and not yet interacted with/saved
   warmupConfig?: WarmupConfig; // Pass along for warmup calculation
+  setStructure?: SetStructure; // Default from the routine
+  setStructureOverride?: SetStructure | null; // User override for this specific log
 }
 
 // Represents the entire workout log for a specific day

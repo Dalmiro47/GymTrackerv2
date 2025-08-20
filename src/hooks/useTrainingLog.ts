@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import type { WorkoutLog, LoggedExercise, LoggedSet, Routine, Exercise, ExercisePerformanceEntry, PersonalRecord, WarmupConfig } from '@/types';
+import type { WorkoutLog, LoggedExercise, LoggedSet, Routine, Exercise, ExercisePerformanceEntry, PersonalRecord, WarmupConfig, SetStructure } from '@/types';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   getWorkoutLog as fetchLogService,
@@ -11,7 +11,6 @@ import {
   getLoggedDateStrings as fetchLoggedDateStringsService,
   updatePerformanceEntryOnLogDelete,
   getLastNonDeloadPerformance,
-  getLastLoggedPerformance,
 } from '@/services/trainingLogService';
 import { getExercises as fetchAllUserExercises } from '@/services/exerciseService';
 import { getRoutines as fetchUserRoutines } from '@/services/routineService';
@@ -312,6 +311,8 @@ export const useTrainingLog = (initialDate: Date) => {
                 personalRecordDisplay: formatPersonalRecordDisplay(performanceEntry?.personalRecord || null),
                 isProvisional: true, 
                 warmupConfig: fullExerciseDef ? getWarmupConfig(fullExerciseDef) : undefined,
+                setStructure: routineEx.setStructure ?? 'normal',
+                setStructureOverride: null,
             };
         })
     );
@@ -361,6 +362,8 @@ export const useTrainingLog = (initialDate: Date) => {
       personalRecordDisplay: formatPersonalRecordDisplay(performanceEntry?.personalRecord || null),
       isProvisional: true,
       warmupConfig: getWarmupConfig(exercise),
+      setStructure: 'normal',
+      setStructureOverride: null,
     };
 
     const updater = (log: WorkoutLog | null) => {
@@ -421,6 +424,8 @@ export const useTrainingLog = (initialDate: Date) => {
       personalRecordDisplay: formatPersonalRecordDisplay(performanceEntry?.personalRecord || null),
       isProvisional: true,
       warmupConfig: getWarmupConfig(newExercise),
+      setStructure: 'normal',
+      setStructureOverride: null,
     };
   
     const updater = (log: WorkoutLog | null) => {
@@ -462,6 +467,22 @@ export const useTrainingLog = (initialDate: Date) => {
             ...log,
             exercises: log.exercises.map(ex => ex.id === finalUpdatedExercise.id ? finalUpdatedExercise : ex)
         };
+    };
+    setCurrentLog(updater);
+    setOriginalLogState(updater);
+  };
+  
+  const updateExerciseSetStructureOverride = (exerciseId: string, structure: SetStructure | null) => {
+    const updater = (log: WorkoutLog | null) => {
+      if (!log) return null;
+      return {
+        ...log,
+        exercises: log.exercises.map(ex =>
+          ex.id === exerciseId
+            ? { ...ex, setStructureOverride: structure, isProvisional: false }
+            : ex
+        )
+      };
     };
     setCurrentLog(updater);
     setOriginalLogState(updater);
@@ -617,6 +638,7 @@ export const useTrainingLog = (initialDate: Date) => {
     replaceExerciseInLog,
     reorderExercisesInLog,
     updateExerciseInLog,
+    updateExerciseSetStructureOverride,
     saveCurrentLog,
     updateOverallLogNotes,
     deleteCurrentLog,

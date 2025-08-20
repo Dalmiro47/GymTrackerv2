@@ -103,6 +103,7 @@ function TrainingLogPageContent() {
     replaceExerciseInLog,
     isDeload,
     setIsDeload,
+    updateExerciseSetStructureOverride,
   } = useTrainingLog(initialDate);
 
   const [isAddExerciseDialogOpen, setIsAddExerciseDialogOpen] = useState(false);
@@ -360,6 +361,7 @@ function TrainingLogPageContent() {
                           onReplace={() => handleOpenReplaceDialog(loggedEx.id, loggedEx.muscleGroup)}
                           isSavingParentLog={isSavingLog}
                           onMarkAsInteracted={() => markExerciseAsInteracted(loggedEx.id)}
+                          onUpdateSetStructureOverride={(structure) => updateExerciseSetStructureOverride(loggedEx.id, structure)}
                         />
                          {index < currentLog.exercises.length - 1 && (
                             <div className="flex items-center space-x-2 my-2">

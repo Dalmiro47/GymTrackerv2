@@ -40,7 +40,8 @@ export const addRoutine = async (userId: string, routineData: Omit<RoutineData, 
         muscleGroup: ex.muscleGroup,
         targetNotes: ex.targetNotes || '',
         exerciseSetup: ex.exerciseSetup || '',
-        dataAiHint: ex.dataAiHint || ''
+        dataAiHint: ex.dataAiHint || '',
+        setStructure: ex.setStructure || 'normal',
     }));
 
     const dataToSave: RoutineData = {
@@ -116,7 +117,8 @@ export const updateRoutine = async (userId: string, routineId: string, routineDa
             muscleGroup: ex.muscleGroup,
             targetNotes: ex.targetNotes || '',
             exerciseSetup: ex.exerciseSetup || '',
-            dataAiHint: ex.dataAiHint || ''
+            dataAiHint: ex.dataAiHint || '',
+            setStructure: ex.setStructure || 'normal',
         }));
     }
     // Note: The 'order' field is managed by updateRoutinesOrder, not here.
@@ -164,4 +166,3 @@ export const updateRoutinesOrder = async (userId: string, orderedRoutineIds: str
     throw new Error(`Failed to update routines order. Firestore error: ${error.message || 'Unknown error'}`);
   }
 };
-
