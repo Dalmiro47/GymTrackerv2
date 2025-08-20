@@ -8,10 +8,8 @@ import {
   getWorkoutLog as fetchLogService,
   saveWorkoutLog as saveLogService,
   deleteWorkoutLog as deleteLogService,
-  getLastLoggedPerformance as fetchPerformanceEntryService, 
   getLoggedDateStrings as fetchLoggedDateStringsService,
   updatePerformanceEntryOnLogDelete,
-  saveSingleExerciseToLogService,
   getLastNonDeloadPerformance,
 } from '@/services/trainingLogService';
 import { getExercises as fetchAllUserExercises } from '@/services/exerciseService';

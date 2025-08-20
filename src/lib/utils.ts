@@ -1,7 +1,7 @@
 
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
-import type { WarmupTemplate, WarmupStepSpec, Exercise } from '@/types';
+import type { WarmupTemplate, WarmupStepSpec } from '@/types';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -20,7 +20,7 @@ export const slugify = (text: string, context: string = ''): string => {
 
   if (context) {
     const contextSlug = context.toString().toLowerCase().trim()
-      .replace(NC_re, '')
+      .replace(NC_RE, '')
       .replace(WS_RE, S)
       .replace(MULTI_S_RE, S);
     return `${slug}_${contextSlug}`; // Use underscore to differentiate parts if needed
@@ -39,7 +39,8 @@ export function roundToGymHalf(value: number): number {
   const sign = value < 0 ? -1 : 1;
   const abs = Math.abs(value);
   const base = Math.floor(abs);
-  const dec = abs - base;
+  // normalize to 1 decimal to avoid 0.2999999 type artifacts
+  const dec = Math.round((abs - base) * 10) / 10;
 
   let out = abs;
   if (dec === 0.5) {

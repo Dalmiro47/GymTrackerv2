@@ -17,7 +17,6 @@ import {
   doc,
   setDoc,
   getDoc,
-  updateDoc,
   deleteDoc as deleteFirestoreDoc,
   Timestamp,
   collection,
@@ -26,10 +25,9 @@ import {
   where,
   orderBy,
   limit,
-  FieldValue,
   deleteField,
 } from 'firebase/firestore';
-import { format, parseISO, fromUnixTime } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 
 const getUserWorkoutLogsCollectionPath = (userId: string) => `users/${userId}/workoutLogs`;
 const getUserPerformanceEntriesCollectionPath = (userId: string) => `users/${userId}/performanceEntries`;
