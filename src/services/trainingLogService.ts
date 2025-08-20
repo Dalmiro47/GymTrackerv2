@@ -275,30 +275,33 @@ export const getLastNonDeloadPerformance = async (userId: string, exerciseId: st
     const q = query(
         logsColRef,
         where("exerciseIds", "array-contains", exerciseId),
-        where("isDeload", "==", false),
         orderBy("date", "desc"),
-        limit(1)
+        limit(10)
     );
 
     try {
-        const querySnapshot = await getDocs(q);
-        if (!querySnapshot.empty) {
-            const logDoc = querySnapshot.docs[0];
-            const logData = logDoc.data() as WorkoutLog;
-            const exerciseData = logData.exercises.find(ex => ex.exerciseId === exerciseId);
-            if (exerciseData) {
+        const snap = await getDocs(q);
+        const firstNonDeload = snap.docs.find(d => {
+            const data = d.data() as WorkoutLog;
+            return data?.isDeload !== true; // treat missing as non-deload
+        });
+
+        if (firstNonDeload) {
+            const log = firstNonDeload.data() as WorkoutLog;
+            const ex = log.exercises.find(e => e.exerciseId === exerciseId);
+            if (ex) {
                 return {
-                    lastPerformedDate: Timestamp.fromDate(parseISO(logData.date)).toMillis(),
-                    lastPerformedSets: exerciseData.sets,
-                    personalRecord: null // PR is managed separately, this is just for pre-filling sets
+                    lastPerformedDate: Timestamp.fromDate(parseISO(log.date)).toMillis(),
+                    lastPerformedSets: ex.sets,
+                    personalRecord: null,
                 };
             }
         }
-        // Fallback or if no non-deload logs are found
-        return await getLastLoggedPerformance(userId, exerciseId);
 
-    } catch (error) {
-        console.error("Error fetching non-deload performance, falling back to last overall.", error);
+        // If none found, fall back to “last overall” as you do now
+        return await getLastLoggedPerformance(userId, exerciseId);
+    } catch (e) {
+        console.error("Error fetching non-deload performance; falling back.", e);
         return await getLastLoggedPerformance(userId, exerciseId);
     }
 };

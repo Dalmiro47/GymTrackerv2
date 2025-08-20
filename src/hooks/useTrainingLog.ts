@@ -11,10 +11,11 @@ import {
   getLoggedDateStrings as fetchLoggedDateStringsService,
   updatePerformanceEntryOnLogDelete,
   getLastNonDeloadPerformance,
+  getLastLoggedPerformance,
 } from '@/services/trainingLogService';
 import { getExercises as fetchAllUserExercises } from '@/services/exerciseService';
 import { getRoutines as fetchUserRoutines } from '@/services/routineService';
-import { format, parseISO } from 'date-fns';
+import { format } from 'date-fns';
 import { useToast } from './use-toast';
 import { inferWarmupTemplate, roundToGymHalf } from '@/lib/utils';
 
@@ -46,8 +47,6 @@ export const useTrainingLog = (initialDate: Date) => {
 
   const [loggedDayStrings, setLoggedDayStrings] = useState<string[]>([]);
   const [isLoadingLoggedDayStrings, setIsLoadingLoggedDayStrings] = useState(true);
-
-  const [exerciseInsertionIndex, setExerciseInsertionIndex] = useState<number | null>(null);
 
   const [isDeload, setIsDeload] = useState(false);
   const [originalLogState, setOriginalLogState] = useState<WorkoutLog | null>(null);
@@ -234,6 +233,7 @@ export const useTrainingLog = (initialDate: Date) => {
             setCurrentLog(cloneDeep(originalLogState));
         }
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isDeload]);
 
 
