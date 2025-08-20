@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from 'react';
-import type { LoggedExercise, LoggedSet, WarmupConfig, WarmupStep } from '@/types';
+import type { LoggedExercise, LoggedSet, SetStructure, WarmupConfig, WarmupStep } from '@/types';
 import { computeWarmup, WarmupInput } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -14,6 +14,9 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { cn } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
+import { SetStructureBadge } from '../SetStructureBadge';
+import { SetStructurePicker } from '../SetStructurePicker';
+import { Separator } from '../ui/separator';
 
 interface LoggedExerciseCardProps {
   loggedExercise: LoggedExercise;
@@ -23,6 +26,7 @@ interface LoggedExerciseCardProps {
   onReplace: () => void;
   isSavingParentLog: boolean; 
   onMarkAsInteracted: () => void;
+  onUpdateSetStructureOverride: (structure: SetStructure | null) => void;
 }
 
 const WarmupPanel: React.FC<{ loggedExercise: LoggedExercise }> = ({ loggedExercise }) => {
@@ -94,6 +98,7 @@ export function LoggedExerciseCard({
   onReplace,
   isSavingParentLog,
   onMarkAsInteracted,
+  onUpdateSetStructureOverride,
 }: LoggedExerciseCardProps) {
   const {
     attributes,
@@ -118,6 +123,10 @@ export function LoggedExerciseCard({
   useEffect(() => {
     setLocalSets(loggedExercise.sets.map(s => ({...s, isProvisional: loggedExercise.isProvisional }))); 
   }, [loggedExercise.sets, loggedExercise.isProvisional]);
+
+  const effectiveSetStructure = useMemo(() => {
+    return loggedExercise.setStructureOverride ?? loggedExercise.setStructure ?? 'normal';
+  }, [loggedExercise.setStructure, loggedExercise.setStructureOverride]);
 
   const handleSetChange = (index: number, field: keyof Omit<LoggedSet, 'id' | 'isProvisional'>, value: string) => {
     onMarkAsInteracted(); 
@@ -179,7 +188,7 @@ export function LoggedExerciseCard({
         )}
       >
         <CardHeader className="py-3 px-4 border-b">
-          <div className="flex items-center justify-between">
+          <div className="flex items-start justify-between">
             <div className="flex items-center gap-2">
                <button 
                   type="button" 
@@ -190,7 +199,10 @@ export function LoggedExerciseCard({
               >
                 <GripVertical className="h-5 w-5" />
               </button>
-              <CardTitle className="font-headline text-lg">{loggedExercise.name}</CardTitle>
+              <div className="flex flex-col gap-1">
+                 <CardTitle className="font-headline text-lg">{loggedExercise.name}</CardTitle>
+                 <SetStructureBadge value={effectiveSetStructure} />
+              </div>
             </div>
             <div className="flex items-center">
               {loggedExercise.warmupConfig && loggedExercise.warmupConfig.template !== 'NONE' && (
@@ -238,28 +250,50 @@ export function LoggedExerciseCard({
             />
           ))}
           
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={addSet} 
-            className="w-full mt-2 border-dashed hover:border-solid hover:bg-primary/5 hover:text-primary"
-            disabled={isSavingThisExercise || isSavingParentLog}
-          >
-            <PlusCircle className="mr-2 h-4 w-4" /> 
-            {localSets.length === 0 ? "Add First Set" : "Add Another Set"}
-          </Button>
-          
-          <div className="mt-4 flex justify-end">
+          <div className="flex flex-col sm:flex-row gap-2 w-full mt-2">
              <Button 
-              onClick={handleSaveThisExercise} 
-              disabled={isSavingThisExercise || isSavingParentLog} 
-              size="sm"
-              className="bg-primary/90 hover:bg-primary min-w-[140px]" 
+                variant="outline" 
+                size="sm" 
+                onClick={addSet} 
+                className="flex-1 border-dashed hover:border-solid hover:bg-primary/5 hover:text-primary"
+                disabled={isSavingThisExercise || isSavingParentLog}
               >
-              {isSavingThisExercise ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : 
-               justSaved ? <Check className="mr-2 h-4 w-4" /> : <Save className="mr-2 h-4 w-4" />}
-              {isSavingThisExercise ? "Saving..." : justSaved ? "Progress Saved!" : "Save Progress"}
-            </Button>
+                <PlusCircle className="mr-2 h-4 w-4" /> 
+                {localSets.length === 0 ? "Add First Set" : "Add Another Set"}
+              </Button>
+              <Button 
+                onClick={handleSaveThisExercise} 
+                disabled={isSavingThisExercise || isSavingParentLog} 
+                size="sm"
+                className="flex-1 bg-primary/90 hover:bg-primary" 
+              >
+                {isSavingThisExercise ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : 
+                justSaved ? <Check className="mr-2 h-4 w-4" /> : <Save className="mr-2 h-4 w-4" />}
+                {isSavingThisExercise ? "Saving..." : justSaved ? "Progress Saved!" : "Save Progress"}
+              </Button>
+          </div>
+
+          <Separator className="my-4"/>
+          
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-2">
+             <span className="text-xs text-muted-foreground">Session Set Structure</span>
+             <div className="flex items-center gap-2">
+                <SetStructurePicker
+                    value={loggedExercise.setStructureOverride ?? 'normal'}
+                    onChange={(val) => onUpdateSetStructureOverride(val === 'normal' ? null : val)}
+                    disabled={isSavingThisExercise || isSavingParentLog}
+                />
+                {loggedExercise.setStructureOverride && (
+                    <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className="text-xs h-8"
+                        onClick={() => onUpdateSetStructureOverride(null)}
+                    >
+                        Reset
+                    </Button>
+                )}
+             </div>
           </div>
         </CardContent>
       </Card>
