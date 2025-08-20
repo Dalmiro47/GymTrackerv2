@@ -95,7 +95,11 @@ export interface WorkoutLog {
   exerciseIds: string[]; // NEW: Denormalized array of exercise IDs in this log
   duration?: number; 
   notes?: string; // Overall notes for the workout session
-  // userId: string; // Implicitly known by collection path
+  isDeload?: boolean; // True if this log was a deload session
+  deloadParams?: {
+    volumeMultiplier: number;
+    intensityMultiplier: number;
+  };
 }
 
 // For storing the single, latest performance entry per exercise.

@@ -69,6 +69,8 @@ export const saveWorkoutLog = async (userId: string, date: string, workoutLogPay
   if (payloadForFirestore.routineId === undefined || payloadForFirestore.routineId === null) delete (payloadForFirestore as any).routineId;
   if (payloadForFirestore.routineName === undefined || payloadForFirestore.routineName === null) delete (payloadForFirestore as any).routineName;
   if (payloadForFirestore.duration === undefined || payloadForFirestore.duration === null) delete (payloadForFirestore as any).duration;
+  if (payloadForFirestore.isDeload === undefined || payloadForFirestore.isDeload === false) delete (payloadForFirestore as any).isDeload;
+  if (payloadForFirestore.deloadParams === undefined) delete (payloadForFirestore as any).deloadParams;
   payloadForFirestore.notes = payloadForFirestore.notes || '';
 
 
@@ -263,6 +265,41 @@ export const getLastLoggedPerformance = async (userId: string, exerciseId: strin
   }
 };
 
+export const getLastNonDeloadPerformance = async (userId: string, exerciseId: string, routineId?: string): Promise<ExercisePerformanceEntry | null> => {
+    if (!userId || !exerciseId) return null;
+
+    const logsColRef = collection(db, getUserWorkoutLogsCollectionPath(userId));
+    const q = query(
+        logsColRef,
+        where("exerciseIds", "array-contains", exerciseId),
+        where("isDeload", "!=", true),
+        orderBy("date", "desc"),
+        limit(1)
+    );
+
+    try {
+        const querySnapshot = await getDocs(q);
+        if (!querySnapshot.empty) {
+            const logDoc = querySnapshot.docs[0];
+            const logData = logDoc.data() as WorkoutLog;
+            const exerciseData = logData.exercises.find(ex => ex.exerciseId === exerciseId);
+            if (exerciseData) {
+                return {
+                    lastPerformedDate: Timestamp.fromDate(parseISO(logData.date)).toMillis(),
+                    lastPerformedSets: exerciseData.sets,
+                    personalRecord: null // PR is managed separately, this is just for pre-filling sets
+                };
+            }
+        }
+        // Fallback or if no non-deload logs are found
+        return await getLastLoggedPerformance(userId, exerciseId);
+
+    } catch (error) {
+        console.error("Error fetching non-deload performance, falling back to last overall.", error);
+        return await getLastLoggedPerformance(userId, exerciseId);
+    }
+};
+
 
 export const deleteAllPerformanceEntriesForExercise = async (userId: string, exerciseId: string): Promise<void> => {
     if (!userId) throw new Error("User ID is required.");
@@ -359,5 +396,3 @@ export const updatePerformanceEntryOnLogDelete = async (
     }
   }
 };
-
-    

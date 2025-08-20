@@ -28,6 +28,12 @@ export const slugify = (text: string, context: string = ''): string => {
   return slug;
 };
 
+// --- Rounding Logic ---
+export function roundToNearestIncrement(value: number, increment: number): number {
+    if (increment <= 0) return value;
+    const inverse = 1 / increment;
+    return Math.round(value * inverse) / inverse;
+}
 
 // --- WARMUP LOGIC ---
 
@@ -110,22 +116,25 @@ export function computeWarmup(input: WarmupInput): WarmupStep[] {
   const results: WarmupStep[] = [];
   const roundingIncrement = (template === 'HEAVY_DB' || template === 'ISOLATION') ? 2.5 : 5;
 
-  const round = (weight: number) => {
+  const round = (weight: number): number => {
     if (weight <= 0) return 0;
     const base = Math.floor(weight);
     const decimal = weight - base;
 
-    if (decimal === 0.0 || decimal === 0.5) {
-        return weight;
+    // Custom rounding rule
+    if (decimal >= 0.8) { // .8, .9 -> round up to next whole number
+      return base + 1;
     }
-    
-    if (decimal < 0.3) { // .1, .2
-        return base;
-    } else if (decimal < 0.8) { // .3, .4, .5, .6, .7
-        return base + 0.5;
-    } else { // .8, .9
-        return base + 1.0;
+    if (decimal > 0.5) { // .6, .7 -> round down to .5
+      return base + 0.5;
     }
+    if (decimal > 0.2) { // .3, .4 -> round up to .5
+      return base + 0.5;
+    }
+    if (decimal > 0) { // .1, .2 -> round down to whole number
+      return base;
+    }
+    return weight; // .0 and .5 remain unchanged
   };
 
 
