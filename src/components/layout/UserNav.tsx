@@ -1,6 +1,7 @@
+
 "use client";
 
-import React from "react"; // Added React import
+import React from "react"; 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,13 +14,15 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/contexts/AuthContext";
-import { LogOut, User as UserIcon, Loader2 } from "lucide-react";
+import { LogOut, User as UserIcon, Loader2, Download } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { ExportLogsDialog } from "./ExportLogsDialog";
 
 export function UserNav() {
   const { user, logout, isLoading: authIsLoading } = useAuth();
   const router = useRouter();
   const [isLoggingOut, setIsLoggingOut] = React.useState(false);
+  const [isExportDialogOpen, setIsExportDialogOpen] = React.useState(false);
 
 
   const handleLogout = async () => {
@@ -29,7 +32,6 @@ export function UserNav() {
       router.push("/login");
     } catch (error) {
       console.error("Logout failed", error);
-      // Optionally show a toast error
     } finally {
       setIsLoggingOut(false);
     }
@@ -44,10 +46,6 @@ export function UserNav() {
   }
 
   if (!user) {
-    // This case should ideally not be reached if useRequireAuth is used on layouts
-    // Or it means the user is genuinely logged out and on a public page.
-    // For a user nav, it implies the user should be logged in.
-    // However, if on login page, this might be rendered before redirect.
     return null; 
   }
 
@@ -60,6 +58,7 @@ export function UserNav() {
     : user.email ? user.email[0].toUpperCase() : "U";
 
   return (
+    <>
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" className="relative h-9 w-9 rounded-full">
@@ -85,9 +84,11 @@ export function UserNav() {
           <DropdownMenuItem disabled>
             <UserIcon className="mr-2 h-4 w-4" />
             <span>Profile</span>
-            {/* <DropdownMenuShortcut>⇧⌘P</DropdownMenuShortcut> */}
           </DropdownMenuItem>
-          {/* Add more items here if needed, e.g., Settings */}
+           <DropdownMenuItem onClick={() => setIsExportDialogOpen(true)} disabled={isLoggingOut || authIsLoading}>
+            <Download className="mr-2 h-4 w-4" />
+            <span>Export Data</span>
+          </DropdownMenuItem>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={handleLogout} disabled={isLoggingOut}>
@@ -96,5 +97,7 @@ export function UserNav() {
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
+    <ExportLogsDialog isOpen={isExportDialogOpen} setIsOpen={setIsExportDialogOpen} />
+    </>
   );
 }

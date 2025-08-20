@@ -1,17 +1,19 @@
 
 "use client";
 
-import React, { useState, useEffect } from 'react';
-import type { LoggedExercise, LoggedSet } from '@/types';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import React, { useState, useEffect, useMemo } from 'react';
+import type { LoggedExercise, LoggedSet, WarmupConfig, WarmupStep } from '@/types';
+import { computeWarmup, WarmupInput } from '@/lib/utils';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { PlusCircle, Trash2, Save, GripVertical, Loader2, Check, Settings2, ArrowLeftRight } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { PlusCircle, Trash2, Save, GripVertical, Loader2, Check, Settings2, ArrowLeftRight, Flame } from 'lucide-react';
 import { SetInputRow } from './SetInputRow'; 
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { cn } from '@/lib/utils';
-// VolumeChart related imports removed
+import { useRouter } from 'next/navigation';
 
 interface LoggedExerciseCardProps {
   loggedExercise: LoggedExercise;
@@ -22,6 +24,67 @@ interface LoggedExerciseCardProps {
   isSavingParentLog: boolean; 
   onMarkAsInteracted: () => void;
 }
+
+const WarmupPanel: React.FC<{ loggedExercise: LoggedExercise }> = ({ loggedExercise }) => {
+    const router = useRouter();
+    const workingWeight = useMemo(() => {
+        return loggedExercise.sets.reduce((max, set) => Math.max(max, set.weight || 0), 0);
+    }, [loggedExercise.sets]);
+
+    const warmupSteps: WarmupStep[] = useMemo(() => {
+        if (!loggedExercise.warmupConfig || workingWeight <= 0) return [];
+        
+        const input: WarmupInput = {
+            template: loggedExercise.warmupConfig.template,
+            workingWeight: workingWeight,
+            isWeightedBodyweight: loggedExercise.warmupConfig.isWeightedBodyweight,
+            overrideSteps: loggedExercise.warmupConfig.overrideSteps,
+        };
+        return computeWarmup(input);
+    }, [loggedExercise.warmupConfig, workingWeight]);
+
+    if (workingWeight <= 0) {
+        return <div className="p-4 text-sm text-muted-foreground">Enter a working weight to calculate warm-ups.</div>;
+    }
+    if (warmupSteps.length === 0) {
+        return <div className="p-4 text-sm text-muted-foreground">No warm-up sets needed for this exercise.</div>
+    }
+
+    return (
+        <div className="space-y-4">
+            <h4 className="font-medium text-center text-sm px-4">Warm-up Sets</h4>
+            <Table>
+                <TableHeader>
+                    <TableRow>
+                        <TableHead>Set</TableHead>
+                        <TableHead>Weight</TableHead>
+                        <TableHead>Reps</TableHead>
+                        <TableHead>Rest</TableHead>
+                    </TableRow>
+                </TableHeader>
+                <TableBody>
+                    {warmupSteps.map((step, index) => (
+                        <TableRow key={index}>
+                            <TableCell>{step.label}</TableCell>
+                            <TableCell>
+                                {`${step.weightTotal}kg`}
+                            </TableCell>
+                            <TableCell>{step.reps}</TableCell>
+                            <TableCell>{step.rest}</TableCell>
+                        </TableRow>
+                    ))}
+                </TableBody>
+            </Table>
+            <div className="px-4 text-xs text-muted-foreground space-y-1">
+                <p>Rest between sets: Warm-ups: 30–90s • Compounds: 2–3 min • Isolations: 1–2 min</p>
+                <Button variant="link" className="p-0 h-auto" onClick={() => router.push(`/exercises?edit=${loggedExercise.exerciseId}`)}>
+                    Edit warm-up settings
+                </Button>
+            </div>
+        </div>
+    );
+};
+
 
 export function LoggedExerciseCard({
   loggedExercise,
@@ -51,7 +114,6 @@ export function LoggedExerciseCard({
   const [localSets, setLocalSets] = useState<LoggedSet[]>(loggedExercise.sets);
   const [isSavingThisExercise, setIsSavingThisExercise] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
-  // isHistoryDialogOpen state removed
 
   useEffect(() => {
     setLocalSets(loggedExercise.sets.map(s => ({...s, isProvisional: loggedExercise.isProvisional }))); 
@@ -131,10 +193,21 @@ export function LoggedExerciseCard({
               <CardTitle className="font-headline text-lg">{loggedExercise.name}</CardTitle>
             </div>
             <div className="flex items-center">
+              {loggedExercise.warmupConfig && loggedExercise.warmupConfig.template !== 'NONE' && (
+                  <Popover>
+                      <PopoverTrigger asChild>
+                          <Button variant="ghost" size="icon" className="text-orange-500 hover:text-orange-400 h-8 w-8">
+                              <Flame className="h-4 w-4" />
+                          </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-[400px]">
+                          <WarmupPanel loggedExercise={loggedExercise} />
+                      </PopoverContent>
+                  </Popover>
+              )}
               <Button variant="ghost" size="icon" onClick={onReplace} className="text-primary hover:text-primary/80 h-8 w-8" aria-label={`Replace ${loggedExercise.name}`}>
                 <ArrowLeftRight className="h-4 w-4" />
               </Button>
-              {/* History Dialog Button Removed */}
               <Button variant="ghost" size="icon" onClick={onRemove} className="text-destructive hover:text-destructive/90 h-8 w-8" aria-label={`Remove ${loggedExercise.name}`}>
                 <Trash2 className="h-4 w-4" />
               </Button>
@@ -190,8 +263,6 @@ export function LoggedExerciseCard({
           </div>
         </CardContent>
       </Card>
-
-      {/* History Dialog Component Removed */}
     </>
   );
 }

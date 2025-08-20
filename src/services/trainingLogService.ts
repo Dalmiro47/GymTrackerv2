@@ -17,7 +17,6 @@ import {
   doc,
   setDoc,
   getDoc,
-  updateDoc,
   deleteDoc as deleteFirestoreDoc,
   Timestamp,
   collection,
@@ -26,10 +25,9 @@ import {
   where,
   orderBy,
   limit,
-  FieldValue,
   deleteField,
 } from 'firebase/firestore';
-import { format, parseISO, fromUnixTime } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 
 const getUserWorkoutLogsCollectionPath = (userId: string) => `users/${userId}/workoutLogs`;
 const getUserPerformanceEntriesCollectionPath = (userId: string) => `users/${userId}/performanceEntries`;
@@ -69,6 +67,13 @@ export const saveWorkoutLog = async (userId: string, date: string, workoutLogPay
   if (payloadForFirestore.routineId === undefined || payloadForFirestore.routineId === null) delete (payloadForFirestore as any).routineId;
   if (payloadForFirestore.routineName === undefined || payloadForFirestore.routineName === null) delete (payloadForFirestore as any).routineName;
   if (payloadForFirestore.duration === undefined || payloadForFirestore.duration === null) delete (payloadForFirestore as any).duration;
+  
+  // Always set isDeload to a boolean
+  payloadForFirestore.isDeload = !!payloadForFirestore.isDeload;
+  if (!payloadForFirestore.isDeload) {
+    delete (payloadForFirestore as any).deloadParams;
+  }
+
   payloadForFirestore.notes = payloadForFirestore.notes || '';
 
 
@@ -263,6 +268,44 @@ export const getLastLoggedPerformance = async (userId: string, exerciseId: strin
   }
 };
 
+export const getLastNonDeloadPerformance = async (userId: string, exerciseId: string, routineId?: string): Promise<ExercisePerformanceEntry | null> => {
+    if (!userId || !exerciseId) return null;
+
+    const logsColRef = collection(db, getUserWorkoutLogsCollectionPath(userId));
+    const q = query(
+        logsColRef,
+        where("exerciseIds", "array-contains", exerciseId),
+        orderBy("date", "desc"),
+        limit(10)
+    );
+
+    try {
+        const snap = await getDocs(q);
+        const firstNonDeload = snap.docs.find(d => {
+            const data = d.data() as WorkoutLog;
+            return data?.isDeload !== true; // treat missing as non-deload
+        });
+
+        if (firstNonDeload) {
+            const log = firstNonDeload.data() as WorkoutLog;
+            const ex = log.exercises.find(e => e.exerciseId === exerciseId);
+            if (ex) {
+                return {
+                    lastPerformedDate: Timestamp.fromDate(parseISO(log.date)).toMillis(),
+                    lastPerformedSets: ex.sets,
+                    personalRecord: null,
+                };
+            }
+        }
+
+        // If none found, fall back to “last overall” as you do now
+        return await getLastLoggedPerformance(userId, exerciseId);
+    } catch (e) {
+        console.error("Error fetching non-deload performance; falling back.", e);
+        return await getLastLoggedPerformance(userId, exerciseId);
+    }
+};
+
 
 export const deleteAllPerformanceEntriesForExercise = async (userId: string, exerciseId: string): Promise<void> => {
     if (!userId) throw new Error("User ID is required.");
@@ -359,5 +402,3 @@ export const updatePerformanceEntryOnLogDelete = async (
     }
   }
 };
-
-    

@@ -10,7 +10,8 @@ import {
   PlusCircle, 
   Save, 
   Trash2, 
-  AlertTriangle 
+  AlertTriangle,
+  Info
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -55,6 +56,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Separator } from '@/components/ui/separator';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 function TrainingLogPageContent() {
   const { user, isLoading: authIsLoading } = useAuth();
@@ -97,6 +101,8 @@ function TrainingLogPageContent() {
     deleteCurrentLog,
     markExerciseAsInteracted,
     replaceExerciseInLog,
+    isDeload,
+    setIsDeload,
   } = useTrainingLog(initialDate);
 
   const [isAddExerciseDialogOpen, setIsAddExerciseDialogOpen] = useState(false);
@@ -301,6 +307,38 @@ function TrainingLogPageContent() {
               <PlusCircle className="mr-2 h-4 w-4" /> Add Exercise Manually
             </Button>
           </div>
+
+          {currentLog?.routineId && (
+            <div className="flex items-center justify-end space-x-2 pt-2">
+                <Label htmlFor="deload-mode" className="text-muted-foreground">Deload Mode</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-5 w-5 text-muted-foreground">
+                      <Info className="h-4 w-4" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="max-w-xs text-sm">
+                    <p>-50% sets, -10% weight. This day won’t count for progression.</p>
+                  </PopoverContent>
+                </Popover>
+                <Switch
+                    id="deload-mode"
+                    checked={isDeload}
+                    onCheckedChange={setIsDeload}
+                    disabled={isLoadingLog || isSavingLog}
+                />
+            </div>
+          )}
+
+           {isDeload && (
+              <Alert variant="default" className="border-primary/50 bg-primary/5">
+                <AlertTriangle className="h-4 w-4 text-primary" />
+                <AlertTitle className="text-primary">Deload Mode Active</AlertTitle>
+                <AlertDescription>
+                  Sets reduced by 50%, weight by 10%. This log will be excluded from future progression calculations.
+                </AlertDescription>
+              </Alert>
+            )}
           
           {isLoadingLog ? (
             <div className="flex justify-center items-center py-10">
