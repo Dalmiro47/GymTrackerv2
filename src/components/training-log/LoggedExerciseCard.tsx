@@ -270,21 +270,13 @@ export function LoggedExerciseCard({
           <Separator className="my-4"/>
           
           <div className="flex flex-col sm:flex-row items-center justify-between gap-2">
-             <SetStructurePicker
+             <div className="flex items-center gap-2">
+                <SetStructurePicker
                     value={loggedExercise.setStructureOverride ?? (loggedExercise.setStructure ?? 'normal')}
                     onChange={(val) => onUpdateSetStructureOverride(val === 'normal' ? null : val)}
                     disabled={isSavingThisExercise || isSavingParentLog}
                 />
-                {loggedExercise.setStructureOverride && (
-                    <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        className="text-xs h-8"
-                        onClick={() => onUpdateSetStructureOverride(null)}
-                    >
-                        Reset
-                    </Button>
-                )}
+             </div>
             <Button 
               onClick={handleSaveThisExercise} 
               disabled={isSavingThisExercise || isSavingParentLog} 
