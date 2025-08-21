@@ -28,6 +28,7 @@ import {
   deleteField,
 } from 'firebase/firestore';
 import { parseISO } from 'date-fns';
+import { stripUndefinedDeep } from '@/lib/sanitize';
 
 const getUserWorkoutLogsCollectionPath = (userId: string) => `users/${userId}/workoutLogs`;
 const getUserPerformanceEntriesCollectionPath = (userId: string) => `users/${userId}/performanceEntries`;
@@ -58,9 +59,6 @@ export const saveWorkoutLog = async (userId: string, date: string, workoutLogPay
       }
       if (!exerciseToSave.setStructureOverride) {
         delete exerciseToSave.setStructureOverride;
-      }
-      if (exerciseToSave.warmupConfig === undefined) {
-        delete exerciseToSave.warmupConfig;
       }
       
       return {
@@ -93,7 +91,8 @@ export const saveWorkoutLog = async (userId: string, date: string, workoutLogPay
 
   const logDocRef = doc(db, getUserWorkoutLogsCollectionPath(userId), date);
   try {
-    await setDoc(logDocRef, payloadForFirestore, { merge: true }); 
+    const sanitizedPayload = stripUndefinedDeep(payloadForFirestore);
+    await setDoc(logDocRef, sanitizedPayload, { merge: true }); 
   } catch (error: any) {
     console.error(`[SERVICE] Error saving workout log for ${date}, user ${userId}:`, error);
     throw new Error(`Failed to save workout log. ${error.message}`);
