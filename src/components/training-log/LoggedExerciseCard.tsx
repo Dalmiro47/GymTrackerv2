@@ -18,6 +18,7 @@ import { useRouter } from 'next/navigation';
 import { SetStructureBadge } from '../SetStructureBadge';
 import { SetStructurePicker } from '../SetStructurePicker';
 import { Separator } from '../ui/separator';
+import { SET_STRUCTURE_COLORS } from '@/types/setStructure';
 
 interface LoggedExerciseCardProps {
   loggedExercise: LoggedExercise;
@@ -183,9 +184,6 @@ export function LoggedExerciseCard({
         className={cn(
           "shadow-md transition-all border rounded-lg", 
           isDragging && "ring-2 ring-primary",
-          loggedExercise.isProvisional 
-            ? "opacity-60 bg-muted/30 border-dashed border-primary/30" 
-            : "opacity-100 bg-card border-border"
         )}
       >
         <CardHeader className="py-3 px-4 border-b">
@@ -270,13 +268,14 @@ export function LoggedExerciseCard({
           <Separator className="my-4"/>
           
           <div className="flex flex-col sm:flex-row items-center justify-between gap-2">
-             <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">Session Set Structure</span>
                 <SetStructurePicker
                     value={loggedExercise.setStructureOverride ?? (loggedExercise.setStructure ?? 'normal')}
                     onChange={(val) => onUpdateSetStructureOverride(val === 'normal' ? null : val)}
                     disabled={isSavingThisExercise || isSavingParentLog}
                 />
-             </div>
+            </div>
             <Button 
               onClick={handleSaveThisExercise} 
               disabled={isSavingThisExercise || isSavingParentLog} 

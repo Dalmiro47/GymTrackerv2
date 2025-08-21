@@ -249,7 +249,6 @@ export const useTrainingLog = (initialDate: Date) => {
         ...log,
         exercises: log.exercises.map(ex =>
           ex.id === exerciseIdToUpdate
-            // Keep ex.isProvisional as-is; just clear provisional on sets for UI styling.
             ? { ...ex, sets: ex.sets.map(s => ({ ...s, isProvisional: false })) }
             : ex
         ),
@@ -592,12 +591,9 @@ export const useTrainingLog = (initialDate: Date) => {
         logToSave.deloadParams = undefined;
       }
   
-      // ✅ Persist ALL exercises to avoid losing unsaved routine items on reload
       const exercisesForPayload = await Promise.all(
         logToSave.exercises.map(async (ex) => {
           const { isProvisional, ...rest } = ex;
-          // We only need PR text refreshed for UX; no harm refreshing all,
-          // but you can optimize to refresh only for the selected one.
           const perf = await fetchExercisePerformanceData(rest.exerciseId, logToSave.routineId);
           return {
             ...rest,
@@ -614,8 +610,8 @@ export const useTrainingLog = (initialDate: Date) => {
       };
   
       await saveLogService(user.id, payload.id, payload);
+      await fetchLoggedDates();
   
-      // ✅ Update PR only for the selected exercise (skip on deload)
       if (!payload.isDeload) {
         const selected = currentLog.exercises.find(e => e.id === exerciseLogId);
         if (selected) {
@@ -623,7 +619,6 @@ export const useTrainingLog = (initialDate: Date) => {
         }
       }
   
-      // ✅ Locally flip only the selected exercise to non-provisional and refresh its PR label
       const selected = currentLog.exercises.find(e => e.id === exerciseLogId)!;
       const newPerf = await fetchExercisePerformanceData(selected.exerciseId, currentLog.routineId);
       const prText = formatPersonalRecordDisplay(newPerf?.personalRecord || null);
@@ -672,7 +667,7 @@ export const useTrainingLog = (initialDate: Date) => {
 
 
     try {
-      await deleteLogService(user.id, logIdToDelete);
+      await deleteFirestoreDoc(user.id, logIdToDelete);
       
       for (const deletedEx of exercisesInDeletedLog) {
         try {
