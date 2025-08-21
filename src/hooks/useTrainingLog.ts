@@ -11,6 +11,7 @@ import {
   getLoggedDateStrings as fetchLoggedDateStringsService,
   updatePerformanceEntryOnLogDelete,
   getLastNonDeloadPerformance,
+  saveExercisePerformanceEntry, // Re-import the missing service
 } from '@/services/trainingLogService';
 import { getExercises as fetchAllUserExercises } from '@/services/exerciseService';
 import { getRoutines as fetchUserRoutines } from '@/services/routineService';
@@ -25,7 +26,12 @@ const DEFAULT_DELOAD_PARAMS = {
 
 // A safe deep-clone function using JSON stringify/parse, suitable for serializable data.
 const cloneDeep = <T>(obj: T): T => {
-  return JSON.parse(JSON.stringify(obj));
+  try {
+    return JSON.parse(JSON.stringify(obj));
+  } catch (e) {
+    console.error("Deep clone failed:", e);
+    return obj; // Fallback to shallow copy if deep clone fails
+  }
 };
 
 export const useTrainingLog = (initialDate: Date) => {
@@ -531,6 +537,18 @@ export const useTrainingLog = (initialDate: Date) => {
 
       if (shouldSaveMainLogDocument) {
           await saveLogService(user.id, finalLogToSave.id, finalLogToSave);
+          // *** FIX STARTS HERE ***
+          // After saving the log, update performance entries for each non-provisional exercise
+          if (!finalLogToSave.isDeload) {
+            for (const loggedEx of finalLogToSave.exercises) {
+                const originalExerciseInLog = currentLog.exercises.find(ex => ex.id === loggedEx.id);
+                // Only update PRs for exercises that were actually interacted with (not provisional)
+                if (originalExerciseInLog && !originalExerciseInLog.isProvisional) {
+                    await saveExercisePerformanceEntry(user.id, loggedEx.exerciseId, loggedEx.sets, finalLogToSave.id);
+                }
+            }
+          }
+          // *** FIX ENDS HERE ***
           await fetchLoggedDates(); 
           toast({ title: "Log Saved", description: `Workout for ${formattedDateId} saved.` });
       } else {
@@ -547,12 +565,8 @@ export const useTrainingLog = (initialDate: Date) => {
           }
       }
       
-      const savedLog = {
-        ...currentLog,
-        exercises: exercisesWithUpdatedPrs
-      };
-      setCurrentLog(savedLog);
-      setOriginalLogState(cloneDeep(savedLog));
+      // After saving, reload the log to get fresh PR data
+      await loadLogForDate(selectedDate);
 
     } catch (error: any) {
       toast({ title: "Error Saving Log", description: `Could not save log. ${error.message}`, variant: "destructive" });
@@ -647,3 +661,5 @@ export const useTrainingLog = (initialDate: Date) => {
     setIsDeload,
   };
 };
+
+    
