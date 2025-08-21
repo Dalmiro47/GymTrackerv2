@@ -320,7 +320,7 @@ export const useTrainingLog = (initialDate: Date) => {
                 exerciseId: routineEx.id,
                 name: routineEx.name,
                 muscleGroup: routineEx.muscleGroup,
-                exerciseSetup: routineEx.exerciseSetup || '',
+                exerciseSetup: fullExerciseDef?.exerciseSetup || '',
                 sets: initialSets,
                 notes: '',
                 personalRecordDisplay: formatPersonalRecordDisplay(performanceEntry?.personalRecord || null),

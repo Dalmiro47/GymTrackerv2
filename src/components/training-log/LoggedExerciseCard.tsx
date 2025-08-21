@@ -176,122 +176,120 @@ export function LoggedExerciseCard({
   };
 
   return (
-    <>
-      <Card 
-        ref={setNodeRef}  
-        style={style}
-        className={cn(
-          "shadow-md transition-all border rounded-lg", 
-          isDragging && "ring-2 ring-primary",
-          loggedExercise.isProvisional && "opacity-60 bg-muted/30 border-dashed border-primary/30"
-        )}
-      >
-        <CardHeader className="py-3 px-4 border-b">
-          <div className="flex items-start justify-between">
-            <div className="flex items-center gap-2">
-               <button 
-                  type="button" 
-                  {...attributes} 
-                  {...listeners} 
-                  className="cursor-grab p-1 text-muted-foreground hover:text-foreground touch-none"
-                  aria-label={`Drag to reorder ${loggedExercise.name}`}
-              >
-                <GripVertical className="h-5 w-5" />
-              </button>
-              <div className="flex flex-col gap-1 items-start">
-                 <CardTitle className="font-headline text-lg">{loggedExercise.name}</CardTitle>
-                 <SetStructureBadge value={effectiveSetStructure} />
-              </div>
-            </div>
-            <div className="flex items-center">
-              {loggedExercise.warmupConfig && loggedExercise.warmupConfig.template !== 'NONE' && (
-                  <Popover>
-                      <PopoverTrigger asChild>
-                          <Button variant="ghost" size="icon" className="text-orange-500 hover:text-orange-400 h-8 w-8">
-                              <Flame className="h-4 w-4" />
-                          </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-[400px]">
-                          <WarmupPanel loggedExercise={loggedExercise} />
-                      </PopoverContent>
-                  </Popover>
-              )}
-              <Button variant="ghost" size="icon" onClick={onReplace} className="text-primary hover:text-primary/80 h-8 w-8" aria-label={`Replace ${loggedExercise.name}`}>
-                <ArrowLeftRight className="h-4 w-4" />
-              </Button>
-              <Button variant="ghost" size="icon" onClick={onRemove} className="text-destructive hover:text-destructive/90 h-8 w-8" aria-label={`Remove ${loggedExercise.name}`}>
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-          <div className="pl-8 space-y-1">
-              <div className="flex items-center justify-between text-xs text-muted-foreground mt-1">
-                  <span>{loggedExercise.personalRecordDisplay || 'PR: N/A'}</span>
-              </div>
-              {loggedExercise.exerciseSetup && (
-                  <div className="text-xs text-muted-foreground flex items-center">
-                      <Settings2 className="mr-1 h-3 w-3 text-primary" />
-                      Setup: {loggedExercise.exerciseSetup}
-                  </div>
-              )}
-          </div>
-        </CardHeader>
-        <CardContent className="p-4 space-y-3">
-          {localSets.map((set, index) => (
-            <SetInputRow
-              key={set.id} 
-              set={set}
-              index={index}
-              onSetChange={handleSetChange}
-              onRemoveSet={() => removeSet(set.id)}
-              isProvisional={loggedExercise.isProvisional} 
-              onInteract={onMarkAsInteracted} 
-            />
-          ))}
-          
-          <div className="pt-2">
-            <Separator className="mb-4 border-dashed" />
-            <div className="flex justify-center">
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={addSet} 
-                className="border-dashed hover:border-solid hover:bg-muted/50 text-muted-foreground hover:text-foreground"
-                disabled={isSavingThisExercise || isSavingParentLog}
-              >
-                <PlusCircle className="mr-2 h-4 w-4" /> 
-                Add Set Here
-              </Button>
-            </div>
-          </div>
-
-          <Separator className="my-4"/>
-          
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground">Session Set Structure</span>
-                <SetStructurePicker
-                    value={loggedExercise.setStructureOverride ?? (loggedExercise.setStructure ?? 'normal')}
-                    onChange={(val) => {
-                        onMarkAsInteracted();
-                        onUpdateSetStructureOverride(val === 'normal' ? null : val);
-                    }}
-                    disabled={isSavingThisExercise || isSavingParentLog}
-                />
-            </div>
-            <Button 
-              onClick={handleSaveThisExercise} 
-              disabled={isSavingThisExercise || isSavingParentLog} 
-              size="sm"
-              className="bg-primary/90 hover:bg-primary" 
+    <Card 
+      ref={setNodeRef}  
+      style={style}
+      className={cn(
+        "shadow-md transition-all border rounded-lg", 
+        isDragging && "ring-2 ring-primary",
+        loggedExercise.isProvisional && "opacity-60 bg-muted/30 border-dashed border-primary/30"
+      )}
+    >
+      <CardHeader className="py-3 px-4 border-b">
+        <div className="flex items-start justify-between">
+          <div className="flex items-center gap-2">
+              <button 
+                type="button" 
+                {...attributes} 
+                {...listeners} 
+                className="cursor-grab p-1 text-muted-foreground hover:text-foreground touch-none"
+                aria-label={`Drag to reorder ${loggedExercise.name}`}
             >
-              {isSavingThisExercise ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : 
-              justSaved ? <Check className="mr-2 h-4 w-4" /> : <Save className="mr-2 h-4 w-4" />}
-              {isSavingThisExercise ? "Saving..." : justSaved ? "Progress Saved!" : "Save Progress"}
+              <GripVertical className="h-5 w-5" />
+            </button>
+            <div className="flex flex-col gap-1 items-start">
+                <CardTitle className="font-headline text-lg">{loggedExercise.name}</CardTitle>
+                <SetStructureBadge value={effectiveSetStructure} />
+            </div>
+          </div>
+          <div className="flex items-center">
+            {loggedExercise.warmupConfig && loggedExercise.warmupConfig.template !== 'NONE' && (
+                <Popover>
+                    <PopoverTrigger asChild>
+                        <Button variant="ghost" size="icon" className="text-orange-500 hover:text-orange-400 h-8 w-8">
+                            <Flame className="h-4 w-4" />
+                        </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[400px]">
+                        <WarmupPanel loggedExercise={loggedExercise} />
+                    </PopoverContent>
+                </Popover>
+            )}
+            <Button variant="ghost" size="icon" onClick={onReplace} className="text-primary hover:text-primary/80 h-8 w-8" aria-label={`Replace ${loggedExercise.name}`}>
+              <ArrowLeftRight className="h-4 w-4" />
+            </Button>
+            <Button variant="ghost" size="icon" onClick={onRemove} className="text-destructive hover:text-destructive/90 h-8 w-8" aria-label={`Remove ${loggedExercise.name}`}>
+              <Trash2 className="h-4 w-4" />
             </Button>
           </div>
-        </CardContent>
-      </Card>
-    </>
+        </div>
+        <div className="pl-8 space-y-1">
+            <div className="flex items-center justify-between text-xs text-muted-foreground mt-1">
+                <span>{loggedExercise.personalRecordDisplay || 'PR: N/A'}</span>
+            </div>
+            {loggedExercise.exerciseSetup && (
+                <div className="text-xs text-muted-foreground flex items-center">
+                    <Settings2 className="mr-1 h-3 w-3 text-primary" />
+                    Setup: {loggedExercise.exerciseSetup}
+                </div>
+            )}
+        </div>
+      </CardHeader>
+      <CardContent className="p-4 space-y-3">
+        {localSets.map((set, index) => (
+          <SetInputRow
+            key={set.id} 
+            set={set}
+            index={index}
+            onSetChange={handleSetChange}
+            onRemoveSet={() => removeSet(set.id)}
+            isProvisional={set.isProvisional} 
+            onInteract={onMarkAsInteracted} 
+          />
+        ))}
+        
+        <div className="pt-2">
+          <Separator className="mb-4 border-dashed" />
+          <div className="flex justify-center">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={addSet} 
+              className="border-dashed hover:border-solid hover:bg-muted/50 text-muted-foreground hover:text-foreground"
+              disabled={isSavingThisExercise || isSavingParentLog}
+            >
+              <PlusCircle className="mr-2 h-4 w-4" /> 
+              Add Set Here
+            </Button>
+          </div>
+        </div>
+
+        <Separator className="my-4"/>
+        
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">Session Set Structure</span>
+              <SetStructurePicker
+                  value={loggedExercise.setStructureOverride ?? (loggedExercise.setStructure ?? 'normal')}
+                  onChange={(val) => {
+                      onMarkAsInteracted();
+                      onUpdateSetStructureOverride(val === 'normal' ? null : val);
+                  }}
+                  disabled={isSavingThisExercise || isSavingParentLog}
+              />
+          </div>
+          <Button 
+            onClick={handleSaveThisExercise} 
+            disabled={isSavingThisExercise || isSavingParentLog} 
+            size="sm"
+            className="bg-primary/90 hover:bg-primary" 
+          >
+            {isSavingThisExercise ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : 
+            justSaved ? <Check className="mr-2 h-4 w-4" /> : <Save className="mr-2 h-4 w-4" />}
+            {isSavingThisExercise ? "Saving..." : justSaved ? "Progress Saved!" : "Save Progress"}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
