@@ -87,7 +87,16 @@ export function AddEditRoutineDialog({
           name: routineToEdit.name,
           description: routineToEdit.description || '',
         });
-        setSelectedExerciseObjects(routineToEdit.exercises.map(ex => ({ ...ex })));
+        // Now, we cross-reference to flag missing exercises
+        const exerciseIdMap = new Map(allUserExercises.map(ex => [ex.id, ex]));
+        const hydratedExercises = routineToEdit.exercises.map(routineEx => {
+          const fullDef = exerciseIdMap.get(routineEx.id);
+          if (fullDef) {
+            return { ...routineEx, isMissing: false };
+          }
+          return { ...routineEx, isMissing: true };
+        });
+        setSelectedExerciseObjects(hydratedExercises);
       } else {
         reset({ name: '', description: '' });
         setSelectedExerciseObjects([]);
@@ -97,7 +106,7 @@ export function AddEditRoutineDialog({
       setSelectedExerciseObjects([]);
       setIsLoadingExercises(true);
     }
-  }, [routineToEdit, reset, isOpen, fetchExercises]);
+  }, [routineToEdit, reset, isOpen, fetchExercises, allUserExercises]);
 
 
   const handleExerciseSelectionChange = (exerciseId: string, isSelected: boolean) => {
@@ -127,17 +136,20 @@ export function AddEditRoutineDialog({
   };
   
   const onSubmit = async (data: RoutineFormData) => {
-    if (selectedExerciseObjects.length === 0) {
+    // Filter out missing exercises before saving
+    const validExercises = selectedExerciseObjects.filter(ex => !ex.isMissing);
+
+    if (validExercises.length === 0) {
         toast({
-            title: "No Exercises Selected",
-            description: "Please select at least one exercise for the routine.",
+            title: "No Valid Exercises Selected",
+            description: "Please select at least one valid exercise for the routine.",
             variant: "destructive",
         });
         return;
     }
     const routineData: RoutineData = {
       ...data,
-      exercises: selectedExerciseObjects,
+      exercises: validExercises.map(({ isMissing, ...ex }) => ex), // Strip isMissing before saving
     };
     await onSave(routineData, routineToEdit?.id);
   };

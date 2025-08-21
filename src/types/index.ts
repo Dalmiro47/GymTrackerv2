@@ -1,3 +1,4 @@
+
 import type { LucideIcon } from 'lucide-react';
 import type { SetStructure } from './setStructure';
 
@@ -26,6 +27,7 @@ export type WarmupStepSpec = {
   rest: string; // "45s", "60-75s"
   appliesTo?: 'TOTAL' | 'ADDED'; // for BODYWEIGHT; default TOTAL for others
   note?: string; // optional UI note
+  label?: string; // required if type='LABEL'
 };
 
 export interface WarmupConfig {
@@ -51,8 +53,8 @@ export type ExerciseData = Omit<Exercise, 'id'>;
 
 
 export interface RoutineExercise extends Exercise {
-  // order?: number; // To maintain order in the routine
   setStructure?: SetStructure;
+  isMissing?: boolean; // Flag for UI if exercise was deleted from main library
 }
 
 export interface Routine {
