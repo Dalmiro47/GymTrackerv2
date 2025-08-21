@@ -27,7 +27,7 @@ import {
   limit,
   deleteField,
 } from 'firebase/firestore';
-import { format, parseISO } from 'date-fns';
+import { parseISO } from 'date-fns';
 
 const getUserWorkoutLogsCollectionPath = (userId: string) => `users/${userId}/workoutLogs`;
 const getUserPerformanceEntriesCollectionPath = (userId: string) => `users/${userId}/performanceEntries`;
@@ -58,6 +58,9 @@ export const saveWorkoutLog = async (userId: string, date: string, workoutLogPay
       }
       if (!exerciseToSave.setStructureOverride) {
         delete exerciseToSave.setStructureOverride;
+      }
+      if (exerciseToSave.warmupConfig === undefined) {
+        delete exerciseToSave.warmupConfig;
       }
       
       return {
@@ -430,3 +433,5 @@ export const updatePerformanceEntryOnLogDelete = async (
     }
   }
 };
+
+    
