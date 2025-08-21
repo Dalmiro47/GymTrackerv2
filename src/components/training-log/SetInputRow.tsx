@@ -32,6 +32,7 @@ export function SetInputRow({ set, index, onSetChange, onRemoveSet, isProvisiona
         placeholder="Reps"
         value={set.reps === null ? '' : String(set.reps)}
         onChange={(e) => handleInputChange('reps', e.target.value)}
+        onWheel={(e) => (e.currentTarget as HTMLInputElement).blur()}
         className={cn(
             "h-9 text-sm",
             isProvisional && "bg-muted/40 dark:bg-muted/20 placeholder:text-muted-foreground/70 opacity-80"
@@ -44,6 +45,7 @@ export function SetInputRow({ set, index, onSetChange, onRemoveSet, isProvisiona
         placeholder="Weight"
         value={set.weight === null ? '' : String(set.weight)}
         onChange={(e) => handleInputChange('weight', e.target.value)}
+        onWheel={(e) => (e.currentTarget as HTMLInputElement).blur()}
         className={cn(
             "h-9 text-sm",
             isProvisional && "bg-muted/40 dark:bg-muted/20 placeholder:text-muted-foreground/70 opacity-80"
@@ -58,3 +60,5 @@ export function SetInputRow({ set, index, onSetChange, onRemoveSet, isProvisiona
     </div>
   );
 }
+
+    

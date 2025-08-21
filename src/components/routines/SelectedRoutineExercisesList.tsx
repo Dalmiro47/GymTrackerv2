@@ -27,7 +27,6 @@ import { CSS } from '@dnd-kit/utilities';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Card } from '../ui/card';
 import { SetStructurePicker } from '../SetStructurePicker';
-import { cn } from '@/lib/utils';
 
 interface SortableExerciseItemProps {
   exercise: RoutineExercise;
@@ -184,3 +183,5 @@ export function SelectedRoutineExercisesList({
     </div>
   );
 }
+
+    

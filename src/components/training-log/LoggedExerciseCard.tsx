@@ -1,10 +1,9 @@
 
 "use client";
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import type { LoggedExercise, LoggedSet, SetStructure } from '@/types';
-import type { WarmupStep } from '@/lib/utils';
-import { computeWarmup, WarmupInput } from '@/lib/utils';
+import { computeWarmup, WarmupInput, type WarmupStep } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -120,10 +119,21 @@ export function LoggedExerciseCard({
   const [localSets, setLocalSets] = useState<LoggedSet[]>(loggedExercise.sets);
   const [isSavingThisExercise, setIsSavingThisExercise] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
+  const timeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
     setLocalSets(loggedExercise.sets);
   }, [loggedExercise.sets]);
+  
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        window.clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
+
+  const isCardProvisional = loggedExercise.isProvisional && loggedExercise.sets.every(s => s.isProvisional);
 
   const effectiveSetStructure = useMemo(() => {
     return loggedExercise.setStructureOverride ?? loggedExercise.setStructure ?? 'normal';
@@ -167,7 +177,8 @@ export function LoggedExerciseCard({
     try {
       await onSaveProgress(); 
       setJustSaved(true);
-      setTimeout(() => setJustSaved(false), 2000); 
+      if (timeoutRef.current) window.clearTimeout(timeoutRef.current);
+      timeoutRef.current = window.setTimeout(() => setJustSaved(false), 2000); 
     } catch (error) {
       console.error("Error saving exercise progress from card:", error);
     } finally {
@@ -182,7 +193,7 @@ export function LoggedExerciseCard({
       className={cn(
         "shadow-md transition-all border rounded-lg", 
         isDragging && "ring-2 ring-primary",
-        loggedExercise.isProvisional && "opacity-60 bg-muted/30 border-dashed border-primary/30"
+        isCardProvisional && "opacity-60 bg-muted/30 border-dashed border-primary/30"
       )}
     >
       <CardHeader className="py-3 px-4 border-b">
@@ -293,3 +304,5 @@ export function LoggedExerciseCard({
     </Card>
   );
 }
+
+    

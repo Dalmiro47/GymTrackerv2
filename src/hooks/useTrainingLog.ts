@@ -116,6 +116,7 @@ export const useTrainingLog = (initialDate: Date) => {
             const finalExercisesForCurrentLog = await Promise.all(
                 fetchedLog.exercises.map(async (exFromStoredLog) => {
                     const performanceEntry = await fetchExercisePerformanceData(exFromStoredLog.exerciseId, fetchedLog.routineId);
+                    const fullDef = availableExercises.find(e => e.id === exFromStoredLog.exerciseId);
                     
                     const setsWithIds = exFromStoredLog.sets.map((s, idx) => ({
                       ...s,
@@ -124,6 +125,7 @@ export const useTrainingLog = (initialDate: Date) => {
 
                     return {
                         ...exFromStoredLog,
+                        exerciseSetup: fullDef?.exerciseSetup ?? exFromStoredLog.exerciseSetup ?? '',
                         sets: setsWithIds,
                         personalRecordDisplay: formatPersonalRecordDisplay(performanceEntry?.personalRecord || null),
                     };
@@ -166,7 +168,7 @@ export const useTrainingLog = (initialDate: Date) => {
     } finally {
         setIsLoadingLog(false);
     }
-  }, [user?.id, toast, fetchExercisePerformanceData, formatPersonalRecordDisplay]);
+  }, [user?.id, toast, fetchExercisePerformanceData, formatPersonalRecordDisplay, availableExercises]);
 
   useEffect(() => {
     if (user?.id) {
@@ -194,12 +196,16 @@ export const useTrainingLog = (initialDate: Date) => {
   }, [user?.id, toast, fetchLoggedDates]); 
 
   useEffect(() => {
-    if (!authIsLoading) { 
+    if (!authIsLoading && availableExercises.length > 0) { 
       loadLogForDate(selectedDate);
-    } else {
+    } else if (!authIsLoading && user?.id) {
+      // Handles case where user has no exercises yet.
+      loadLogForDate(selectedDate);
+    }
+    else {
       setIsLoadingLog(true); 
     }
-  }, [selectedDate, user?.id, authIsLoading, loadLogForDate]);
+  }, [selectedDate, user?.id, authIsLoading, availableExercises, loadLogForDate]);
 
   const applyDeloadTransform = (log: WorkoutLog | null): WorkoutLog | null => {
     if (!log) return null;
@@ -589,17 +595,12 @@ export const useTrainingLog = (initialDate: Date) => {
   };
 
   const saveSingleExercise = async (exerciseLogId: string) => {
-    if (!user?.id || !currentLog) {
+    const selectedExerciseInState = currentLog?.exercises.find(e => e.id === exerciseLogId);
+    if (!user?.id || !currentLog || !selectedExerciseInState) {
       toast({ title: "Error", description: "No user or log data to save.", variant: "destructive" });
       return;
     }
   
-    const selectedExercise = currentLog.exercises.find(e => e.id === exerciseLogId);
-    if (!selectedExercise) {
-        toast({ title: "Error", description: "Could not find the exercise to save.", variant: "destructive" });
-        return;
-    }
-
     setIsSavingLog(true);
     try {
       const logToSave = { ...currentLog };
@@ -635,13 +636,13 @@ export const useTrainingLog = (initialDate: Date) => {
       if (!payload.isDeload) {
           await saveExercisePerformanceEntry(
             user.id,
-            selectedExercise.exerciseId,
-            normalizeForPR(selectedExercise.sets),
+            selectedExerciseInState.exerciseId,
+            normalizeForPR(selectedExerciseInState.sets),
             payload.id
           );
       }
   
-      const newPerf = await fetchExercisePerformanceData(selectedExercise.exerciseId, currentLog.routineId);
+      const newPerf = await fetchExercisePerformanceData(selectedExerciseInState.exerciseId, currentLog.routineId);
       const prText = formatPersonalRecordDisplay(newPerf?.personalRecord || null);
   
       const updater = (log: WorkoutLog | null): WorkoutLog | null => {
@@ -658,7 +659,7 @@ export const useTrainingLog = (initialDate: Date) => {
       setCurrentLog(updater);
       setOriginalLogState(updater);
   
-      toast({ title: "Exercise Saved", description: `${selectedExercise?.name ?? "Exercise"} saved.` });
+      toast({ title: "Exercise Saved", description: `${selectedExerciseInState?.name ?? "Exercise"} saved.` });
     } catch (error: any) {
       toast({ title: "Error", description: `Could not save exercise. ${error.message}`, variant: "destructive" });
     } finally {
@@ -753,3 +754,6 @@ export const useTrainingLog = (initialDate: Date) => {
     setIsDeload,
   };
 };
+
+
+    
