@@ -255,10 +255,10 @@ export function LoggedExerciseCard({
             <Separator className="mb-4 border-dashed" />
             <div className="flex justify-center">
               <Button 
-                variant="ghost" 
+                variant="outline" 
                 size="sm" 
                 onClick={addSet} 
-                className="w-full sm:w-auto text-muted-foreground hover:text-primary"
+                className="border-dashed hover:border-solid hover:bg-muted/50 text-muted-foreground hover:text-foreground"
                 disabled={isSavingThisExercise || isSavingParentLog}
               >
                 <PlusCircle className="mr-2 h-4 w-4" /> 
