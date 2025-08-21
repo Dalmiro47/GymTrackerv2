@@ -11,7 +11,7 @@ import {
   getLoggedDateStrings as fetchLoggedDateStringsService,
   updatePerformanceEntryOnLogDelete,
   getLastNonDeloadPerformance,
-  saveExercisePerformanceEntry, // Re-import the missing service
+  saveExercisePerformanceEntry,
 } from '@/services/trainingLogService';
 import { getExercises as fetchAllUserExercises } from '@/services/exerciseService';
 import { getRoutines as fetchUserRoutines } from '@/services/routineService';
@@ -537,18 +537,14 @@ export const useTrainingLog = (initialDate: Date) => {
 
       if (shouldSaveMainLogDocument) {
           await saveLogService(user.id, finalLogToSave.id, finalLogToSave);
-          // *** FIX STARTS HERE ***
-          // After saving the log, update performance entries for each non-provisional exercise
           if (!finalLogToSave.isDeload) {
             for (const loggedEx of finalLogToSave.exercises) {
                 const originalExerciseInLog = currentLog.exercises.find(ex => ex.id === loggedEx.id);
-                // Only update PRs for exercises that were actually interacted with (not provisional)
                 if (originalExerciseInLog && !originalExerciseInLog.isProvisional) {
                     await saveExercisePerformanceEntry(user.id, loggedEx.exerciseId, loggedEx.sets, finalLogToSave.id);
                 }
             }
           }
-          // *** FIX ENDS HERE ***
           await fetchLoggedDates(); 
           toast({ title: "Log Saved", description: `Workout for ${formattedDateId} saved.` });
       } else {
@@ -565,11 +561,82 @@ export const useTrainingLog = (initialDate: Date) => {
           }
       }
       
-      // After saving, reload the log to get fresh PR data
       await loadLogForDate(selectedDate);
 
     } catch (error: any) {
       toast({ title: "Error Saving Log", description: `Could not save log. ${error.message}`, variant: "destructive" });
+    } finally {
+      setIsSavingLog(false);
+    }
+  };
+
+  const saveSingleExercise = async (exerciseLogId: string) => {
+    if (!user?.id || !currentLog) {
+      toast({ title: "Error", description: "No user or log data to save.", variant: "destructive" });
+      return;
+    }
+    setIsSavingLog(true);
+    try {
+      const logToSave = { ...currentLog };
+      if (isDeload) {
+        logToSave.isDeload = true;
+        logToSave.deloadParams = DEFAULT_DELOAD_PARAMS;
+      } else {
+        logToSave.isDeload = false;
+        logToSave.deloadParams = undefined;
+      }
+  
+      // Persist only the selected exercise + any already saved ones
+      const toPersist = logToSave.exercises.filter(ex => ex.id === exerciseLogId || !ex.isProvisional);
+  
+      const exercisesWithUpdatedPrs = await Promise.all(
+        toPersist.map(async (ex) => {
+          const { isProvisional, ...rest } = ex;
+          const perf = await fetchExercisePerformanceData(rest.exerciseId, logToSave.routineId);
+          return {
+            ...rest,
+            personalRecordDisplay: formatPersonalRecordDisplay(perf?.personalRecord || null),
+            sets: rest.sets.map(({ isProvisional: _p, ...s }) => s),
+          };
+        })
+      );
+  
+      const payload: WorkoutLog = {
+        ...logToSave,
+        exercises: exercisesWithUpdatedPrs.map(e => ({ ...e, isProvisional: undefined as any })),
+        exerciseIds: exercisesWithUpdatedPrs.map(e => e.exerciseId),
+      };
+  
+      await saveLogService(user.id, payload.id, payload);
+  
+      // Update PR only for the selected exercise (skip on deload)
+      if (!payload.isDeload) {
+        const selected = currentLog.exercises.find(e => e.id === exerciseLogId);
+        if (selected) {
+          await saveExercisePerformanceEntry(user.id, selected.exerciseId, selected.sets, payload.id);
+        }
+      }
+  
+      // Refresh PR display for just this exercise and mark it non-provisional
+      const selected = currentLog.exercises.find(e => e.id === exerciseLogId)!;
+      const newPerf = await fetchExercisePerformanceData(selected.exerciseId, currentLog.routineId);
+      const prText = formatPersonalRecordDisplay(newPerf?.personalRecord || null);
+  
+      const updater = (log: WorkoutLog | null): WorkoutLog | null => {
+        if (!log) return null;
+        return {
+          ...log,
+          exercises: log.exercises.map(ex =>
+            ex.id === exerciseLogId ? { ...ex, isProvisional: false, personalRecordDisplay: prText } : ex
+          ),
+        };
+      };
+      setCurrentLog(updater);
+      setOriginalLogState(updater);
+  
+      toast({ title: "Exercise Saved", description: `${selected?.name ?? "Exercise"} saved.` });
+    } catch (error: any) {
+      toast({ title: "Error", description: `Could not save exercise. ${error.message}`, variant: "destructive" });
     } finally {
       setIsSavingLog(false);
     }
@@ -654,6 +721,7 @@ export const useTrainingLog = (initialDate: Date) => {
     updateExerciseInLog,
     updateExerciseSetStructureOverride,
     saveCurrentLog,
+    saveSingleExercise,
     updateOverallLogNotes,
     deleteCurrentLog,
     markExerciseAsInteracted,
@@ -661,5 +729,3 @@ export const useTrainingLog = (initialDate: Date) => {
     setIsDeload,
   };
 };
-
-    
