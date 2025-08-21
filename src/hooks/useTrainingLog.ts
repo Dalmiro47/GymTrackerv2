@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
-import type { WorkoutLog, LoggedExercise, LoggedSet, Routine, Exercise, ExercisePerformanceEntry, PersonalRecord, WarmupConfig, SetStructure } from '@/types';
+import type { WorkoutLog, LoggedExercise, LoggedSet, Routine, Exercise, ExercisePerformanceEntry, PersonalRecord, SetStructure } from '@/types';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   getWorkoutLog as fetchLogService,
@@ -15,9 +15,10 @@ import {
 } from '@/services/trainingLogService';
 import { getExercises as fetchAllUserExercises } from '@/services/exerciseService';
 import { getRoutines as fetchUserRoutines } from '@/services/routineService';
-import { format, parseISO } from 'date-fns';
+import { format } from 'date-fns';
 import { useToast } from './use-toast';
 import { inferWarmupTemplate, roundToGymHalf } from '@/lib/utils';
+import type { WarmupConfig } from '@/types';
 
 // A safe deep-clone function using JSON stringify/parse, suitable for serializable data.
 const cloneDeep = <T>(obj: T): T => {
@@ -28,6 +29,20 @@ const cloneDeep = <T>(obj: T): T => {
     return obj; // Fallback to shallow copy if deep clone fails
   }
 };
+
+const DEFAULT_DELOAD_PARAMS = {
+    volumeMultiplier: 0.5,
+    intensityMultiplier: 0.9,
+};
+
+const normalizeForPR = (sets: LoggedSet[]) =>
+  sets
+    .filter(s =>
+      s.reps != null && s.weight != null &&
+      Number.isFinite(Number(s.reps)) && Number.isFinite(Number(s.weight))
+    )
+    .map(s => ({ reps: Number(s.reps), weight: Number(s.weight) }));
+
 
 export const useTrainingLog = (initialDate: Date) => {
   const { user, isLoading: authIsLoading } = useAuth();
@@ -101,15 +116,18 @@ export const useTrainingLog = (initialDate: Date) => {
             const finalExercisesForCurrentLog = await Promise.all(
                 fetchedLog.exercises.map(async (exFromStoredLog) => {
                     const performanceEntry = await fetchExercisePerformanceData(exFromStoredLog.exerciseId, fetchedLog.routineId);
+                    const fullDef = availableExercises.find(e => e.id === exFromStoredLog.exerciseId);
                     
                     const setsWithIds = exFromStoredLog.sets.map((s, idx) => ({
                       ...s,
                       id: s.id || `set-${dateId}-${exFromStoredLog.exerciseId}-${idx}-${Date.now()}`,
-                      isProvisional: exFromStoredLog.isProvisional,
                     }));
 
                     return {
                         ...exFromStoredLog,
+                        name: fullDef?.name ?? exFromStoredLog.name,
+                        muscleGroup: fullDef?.muscleGroup ?? exFromStoredLog.muscleGroup,
+                        exerciseSetup: fullDef?.exerciseSetup ?? exFromStoredLog.exerciseSetup ?? '',
                         sets: setsWithIds,
                         personalRecordDisplay: formatPersonalRecordDisplay(performanceEntry?.personalRecord || null),
                     };
@@ -152,7 +170,7 @@ export const useTrainingLog = (initialDate: Date) => {
     } finally {
         setIsLoadingLog(false);
     }
-  }, [user?.id, toast, fetchExercisePerformanceData, formatPersonalRecordDisplay]);
+  }, [user?.id, toast, fetchExercisePerformanceData, formatPersonalRecordDisplay, availableExercises]);
 
   useEffect(() => {
     if (user?.id) {
@@ -180,12 +198,12 @@ export const useTrainingLog = (initialDate: Date) => {
   }, [user?.id, toast, fetchLoggedDates]); 
 
   useEffect(() => {
-    if (!authIsLoading) { 
-      loadLogForDate(selectedDate);
-    } else {
-      setIsLoadingLog(true); 
+    if (authIsLoading) {
+      setIsLoadingLog(true);
+      return;
     }
-  }, [selectedDate, user?.id, authIsLoading, loadLogForDate]);
+    loadLogForDate(selectedDate);
+  }, [selectedDate, authIsLoading, availableExercises, loadLogForDate]);
 
   const applyDeloadTransform = (log: WorkoutLog | null): WorkoutLog | null => {
     if (!log) return null;
@@ -304,9 +322,9 @@ export const useTrainingLog = (initialDate: Date) => {
             return {
                 id: `${routineEx.id}-${dateOfLog}-${index}-${Date.now()}`, 
                 exerciseId: routineEx.id,
-                name: routineEx.name,
-                muscleGroup: routineEx.muscleGroup,
-                exerciseSetup: routineEx.exerciseSetup || '',
+                name: fullExerciseDef?.name ?? routineEx.name,
+                muscleGroup: fullExerciseDef?.muscleGroup ?? routineEx.muscleGroup,
+                exerciseSetup: fullExerciseDef?.exerciseSetup || '',
                 sets: initialSets,
                 notes: '',
                 personalRecordDisplay: formatPersonalRecordDisplay(performanceEntry?.personalRecord || null),
@@ -399,50 +417,42 @@ export const useTrainingLog = (initialDate: Date) => {
 
   const replaceExerciseInLog = async (exerciseIdToReplace: string, newExercise: Exercise) => {
     if (!user?.id || !currentLog) return;
-  
+
     const dateOfLog = format(selectedDate, 'yyyy-MM-dd');
     const performanceEntry = await fetchExercisePerformanceData(newExercise.id, currentLog.routineId);
-  
-    let initialSets: LoggedSet[];
-    if (performanceEntry?.lastPerformedSets && performanceEntry.lastPerformedSets.length > 0) {
-      initialSets = performanceEntry.lastPerformedSets.map((s, i) => ({
-        ...s,
-        id: `set-${dateOfLog}-${newExercise.id}-${i}-${Date.now()}`,
+
+    const initialSets: LoggedSet[] = (performanceEntry?.lastPerformedSets?.length ? performanceEntry.lastPerformedSets : [{ reps: null, weight: null }])
+      .map((s, i) => ({ ...s, id: `set-${dateOfLog}-${newExercise.id}-${i}-${Date.now()}`, isProvisional: true }));
+
+    const updater = (log: WorkoutLog | null): WorkoutLog | null => {
+      if (!log) return null;
+      const idx = log.exercises.findIndex(ex => ex.id === exerciseIdToReplace);
+      if (idx === -1) return log;
+
+      const prev = log.exercises[idx]; // <-- keep structure
+      const updatedExercises = [...log.exercises];
+      updatedExercises[idx] = {
+        id: `${newExercise.id}-${dateOfLog}-${Date.now()}`,
+        exerciseId: newExercise.id,
+        name: newExercise.name,
+        muscleGroup: newExercise.muscleGroup,
+        exerciseSetup: newExercise.exerciseSetup || '',
+        sets: initialSets,
+        notes: '',
+        personalRecordDisplay: formatPersonalRecordDisplay(performanceEntry?.personalRecord || null),
         isProvisional: true,
-      }));
-    } else {
-      initialSets = [{ id: `set-${dateOfLog}-${newExercise.id}-0-${Date.now()}`, reps: null, weight: null, isProvisional: true }];
-    }
-  
-    const newLoggedExercise: LoggedExercise = {
-      id: `${newExercise.id}-${dateOfLog}-${Date.now()}`,
-      exerciseId: newExercise.id,
-      name: newExercise.name,
-      muscleGroup: newExercise.muscleGroup,
-      exerciseSetup: newExercise.exerciseSetup || '',
-      sets: initialSets,
-      notes: '',
-      personalRecordDisplay: formatPersonalRecordDisplay(performanceEntry?.personalRecord || null),
-      isProvisional: true,
-      warmupConfig: getWarmupConfig(newExercise),
-      setStructure: 'normal',
-      setStructureOverride: null,
+        warmupConfig: getWarmupConfig(newExercise),
+        setStructure: prev.setStructure ?? 'normal',
+        setStructureOverride: prev.setStructureOverride ?? null,
+      };
+
+      return {
+        ...log,
+        exercises: updatedExercises,
+        exerciseIds: updatedExercises.map(e => e.exerciseId),
+      };
     };
-  
-    const updater = (log: WorkoutLog | null) => {
-        if (!log) return null;
-        const indexToReplace = log.exercises.findIndex(ex => ex.id === exerciseIdToReplace);
-        if (indexToReplace === -1) return log;
-    
-        const updatedExercises = [...log.exercises];
-        updatedExercises[indexToReplace] = newLoggedExercise;
-    
-        return {
-            ...log,
-            exercises: updatedExercises,
-            exerciseIds: updatedExercises.map(ex => ex.exerciseId),
-        };
-    };
+
     setCurrentLog(updater);
     setOriginalLogState(updater);
   };
@@ -529,7 +539,7 @@ export const useTrainingLog = (initialDate: Date) => {
       const finalLogToSave: WorkoutLog = {
         ...logToSave, 
         exercises: exercisesWithUpdatedPrs,
-        exerciseIds: exercisesWithUpdatedPrs.map(ex => ex.exerciseId),
+        exerciseIds: Array.from(new Set(exercisesWithUpdatedPrs.map(ex => ex.exerciseId))),
       };
 
       const shouldSaveMainLogDocument = finalLogToSave.exercises.length > 0 || (finalLogToSave.notes && finalLogToSave.notes.trim() !== '') || finalLogToSave.routineId;
@@ -540,7 +550,12 @@ export const useTrainingLog = (initialDate: Date) => {
             for (const loggedEx of finalLogToSave.exercises) {
                 const originalExerciseInLog = currentLog.exercises.find(ex => ex.id === loggedEx.id);
                 if (originalExerciseInLog && !originalExerciseInLog.isProvisional) {
-                    await saveExercisePerformanceEntry(user.id, loggedEx.exerciseId, loggedEx.sets, finalLogToSave.id);
+                    await saveExercisePerformanceEntry(
+                      user.id,
+                      loggedEx.exerciseId,
+                      normalizeForPR(loggedEx.sets),
+                      finalLogToSave.id
+                    );
                 }
             }
           }
@@ -570,7 +585,8 @@ export const useTrainingLog = (initialDate: Date) => {
   };
 
   const saveSingleExercise = async (exerciseLogId: string) => {
-    if (!user?.id || !currentLog) {
+    const selectedExerciseFromState = currentLog?.exercises.find(e => e.id === exerciseLogId);
+    if (!user?.id || !currentLog || !selectedExerciseFromState) {
       toast({ title: "Error", description: "No user or log data to save.", variant: "destructive" });
       return;
     }
@@ -601,21 +617,22 @@ export const useTrainingLog = (initialDate: Date) => {
       const payload: WorkoutLog = {
         ...logToSave,
         exercises: exercisesForPayload,
-        exerciseIds: exercisesForPayload.map(e => e.exerciseId),
+        exerciseIds: Array.from(new Set(exercisesForPayload.map(e => e.exerciseId))),
       };
   
       await saveLogService(user.id, payload.id, payload);
       await fetchLoggedDates();
   
       if (!payload.isDeload) {
-        const selected = currentLog.exercises.find(e => e.id === exerciseLogId);
-        if (selected) {
-          await saveExercisePerformanceEntry(user.id, selected.exerciseId, selected.sets, payload.id);
-        }
+          await saveExercisePerformanceEntry(
+            user.id,
+            selectedExerciseFromState.exerciseId,
+            normalizeForPR(selectedExerciseFromState.sets),
+            payload.id
+          );
       }
   
-      const selected = currentLog.exercises.find(e => e.id === exerciseLogId)!;
-      const newPerf = await fetchExercisePerformanceData(selected.exerciseId, currentLog.routineId);
+      const newPerf = await fetchExercisePerformanceData(selectedExerciseFromState.exerciseId, currentLog.routineId);
       const prText = formatPersonalRecordDisplay(newPerf?.personalRecord || null);
   
       const updater = (log: WorkoutLog | null): WorkoutLog | null => {
@@ -632,7 +649,7 @@ export const useTrainingLog = (initialDate: Date) => {
       setCurrentLog(updater);
       setOriginalLogState(updater);
   
-      toast({ title: "Exercise Saved", description: `${selected?.name ?? "Exercise"} saved.` });
+      toast({ title: "Exercise Saved", description: `${selectedExerciseFromState?.name ?? "Exercise"} saved.` });
     } catch (error: any) {
       toast({ title: "Error", description: `Could not save exercise. ${error.message}`, variant: "destructive" });
     } finally {
@@ -727,3 +744,7 @@ export const useTrainingLog = (initialDate: Date) => {
     setIsDeload,
   };
 };
+
+
+    
+    

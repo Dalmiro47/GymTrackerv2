@@ -15,6 +15,7 @@ import {
   useSensors,
   type DragEndEvent,
 } from '@dnd-kit/core';
+import { restrictToVerticalAxis, restrictToParentElement } from '@dnd-kit/modifiers';
 import {
   arrayMove,
   SortableContext,
@@ -62,7 +63,7 @@ function SortableExerciseItem({ exercise, onRemoveExercise, onUpdateSetStructure
             type="button"
             {...attributes}
             {...listeners}
-            className="p-1 cursor-grab mr-2 text-muted-foreground hover:text-foreground"
+            className="p-1 cursor-grab active:cursor-grabbing mr-2 text-muted-foreground hover:text-foreground"
             aria-label={`Drag to reorder ${exercise.name}`}
           >
             <GripVertical className="h-5 w-5" />
@@ -110,12 +111,14 @@ export function SelectedRoutineExercisesList({
   const isMobile = useIsMobile();
   const sensors = useSensors(
     useSensor(PointerSensor, {
-      // This is the key fix: it requires a short delay and some movement
-      // before a drag is initiated, allowing for scrolling.
-      activationConstraint: {
-        delay: 150,
-        tolerance: 5,
-      },
+      // For mobile, require a delay and tolerance to prevent accidental drags while scrolling.
+      // For desktop, no constraint is needed.
+      activationConstraint: isMobile
+        ? {
+            delay: 150,
+            tolerance: 5,
+          }
+        : undefined,
     }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
@@ -153,6 +156,7 @@ export function SelectedRoutineExercisesList({
             sensors={sensors}
             collisionDetection={closestCenter}
             onDragEnd={handleDragEnd}
+            modifiers={[restrictToVerticalAxis, restrictToParentElement]}
           >
             <Card className="h-full w-full bg-muted/30 p-0 border">
                 <ScrollArea className="h-full w-full rounded-md p-4">
@@ -179,3 +183,5 @@ export function SelectedRoutineExercisesList({
     </div>
   );
 }
+
+    
