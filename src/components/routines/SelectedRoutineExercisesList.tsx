@@ -110,12 +110,14 @@ export function SelectedRoutineExercisesList({
   const isMobile = useIsMobile();
   const sensors = useSensors(
     useSensor(PointerSensor, {
-      // This is the key fix: it requires a short delay and some movement
-      // before a drag is initiated, allowing for scrolling.
-      activationConstraint: {
-        delay: 150,
-        tolerance: 5,
-      },
+      // For mobile, require a delay and tolerance to prevent accidental drags while scrolling.
+      // For desktop, no constraint is needed.
+      activationConstraint: isMobile
+        ? {
+            delay: 150,
+            tolerance: 5,
+          }
+        : undefined,
     }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
