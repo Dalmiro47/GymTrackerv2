@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
-import type { WorkoutLog, LoggedExercise, LoggedSet, Routine, Exercise, ExercisePerformanceEntry, PersonalRecord, SetStructure } from '@/types';
+import type { WorkoutLog, LoggedExercise, LoggedSet, Routine, Exercise, ExercisePerformanceEntry, PersonalRecord, SetStructure, WarmupConfig } from '@/types';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   getWorkoutLog as fetchLogService,
@@ -18,7 +18,7 @@ import { getRoutines as fetchUserRoutines } from '@/services/routineService';
 import { format } from 'date-fns';
 import { useToast } from './use-toast';
 import { inferWarmupTemplate, roundToGymHalf } from '@/lib/utils';
-import type { WarmupConfig } from '@/types';
+
 
 // A safe deep-clone function using JSON stringify/parse, suitable for serializable data.
 const cloneDeep = <T>(obj: T): T => {
@@ -195,15 +195,15 @@ export const useTrainingLog = (initialDate: Date) => {
       setIsLoadingExercises(false);
       setIsLoadingLoggedDayStrings(false);
     }
-  }, [user?.id, toast, fetchLoggedDates]); 
+  }, [user?.id, toast, fetchLoggedDates, selectedDate]); // re-fetch on date change to get latest exercises
 
   useEffect(() => {
-    if (authIsLoading) {
+    if (authIsLoading || isLoadingExercises) {
       setIsLoadingLog(true);
       return;
     }
     loadLogForDate(selectedDate);
-  }, [selectedDate, authIsLoading, availableExercises, loadLogForDate]);
+  }, [selectedDate, authIsLoading, isLoadingExercises, loadLogForDate]);
 
   const applyDeloadTransform = (log: WorkoutLog | null): WorkoutLog | null => {
     if (!log) return null;
@@ -324,7 +324,7 @@ export const useTrainingLog = (initialDate: Date) => {
                 exerciseId: routineEx.id,
                 name: fullExerciseDef?.name ?? routineEx.name,
                 muscleGroup: fullExerciseDef?.muscleGroup ?? routineEx.muscleGroup,
-                exerciseSetup: fullExerciseDef?.exerciseSetup || '',
+                exerciseSetup: fullExerciseDef?.exerciseSetup ?? '',
                 sets: initialSets,
                 notes: '',
                 personalRecordDisplay: formatPersonalRecordDisplay(performanceEntry?.personalRecord || null),
@@ -585,8 +585,7 @@ export const useTrainingLog = (initialDate: Date) => {
   };
 
   const saveSingleExercise = async (exerciseLogId: string) => {
-    const selectedExerciseFromState = currentLog?.exercises.find(e => e.id === exerciseLogId);
-    if (!user?.id || !currentLog || !selectedExerciseFromState) {
+    if (!user?.id || !currentLog) {
       toast({ title: "Error", description: "No user or log data to save.", variant: "destructive" });
       return;
     }
@@ -624,14 +623,18 @@ export const useTrainingLog = (initialDate: Date) => {
       await fetchLoggedDates();
   
       if (!payload.isDeload) {
-          await saveExercisePerformanceEntry(
-            user.id,
-            selectedExerciseFromState.exerciseId,
-            normalizeForPR(selectedExerciseFromState.sets),
-            payload.id
-          );
+          const selectedExercise = currentLog.exercises.find(e => e.id === exerciseLogId);
+          if(selectedExercise){
+             await saveExercisePerformanceEntry(
+                user.id,
+                selectedExercise.exerciseId,
+                normalizeForPR(selectedExercise.sets),
+                payload.id
+              );
+          }
       }
   
+      const selectedExerciseFromState = currentLog.exercises.find(e => e.id === exerciseLogId)!;
       const newPerf = await fetchExercisePerformanceData(selectedExerciseFromState.exerciseId, currentLog.routineId);
       const prText = formatPersonalRecordDisplay(newPerf?.personalRecord || null);
   
@@ -747,4 +750,6 @@ export const useTrainingLog = (initialDate: Date) => {
 
 
     
+    
+
     

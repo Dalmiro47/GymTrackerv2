@@ -9,6 +9,7 @@ import { MUSCLE_GROUPS_LIST } from '@/lib/constants';
 import { defaultExercises } from '@/lib/defaultExercises';
 import { useAuth } from '@/contexts/AuthContext';
 import { addExercise, getExercises, updateExercise, deleteExercise, addDefaultExercisesBatch } from '@/services/exerciseService';
+import { inferWarmupTemplate } from '@/lib/utils'; // Import the utility
 
 import { PageHeader } from '@/components/PageHeader';
 import { ExerciseCard } from './ExerciseCard';
@@ -190,6 +191,12 @@ export function ExerciseClientPage() {
         dataAiHint: formData.name.toLowerCase().split(" ").slice(0,2).join(" ") || 'exercise',
         warmup: formData.warmup,
       };
+
+      // If this is a new exercise, ensure it has a default warmup config
+      if (!exerciseToEdit && !exercisePayload.warmup) {
+        const { template, isWeightedBodyweight } = inferWarmupTemplate(formData.name);
+        exercisePayload.warmup = { template, isWeightedBodyweight };
+      }
 
       if (exerciseToEdit) {
         await updateExercise(user.id, exerciseToEdit.id, exercisePayload);
@@ -403,3 +410,5 @@ export function ExerciseClientPage() {
     </>
   );
 }
+
+    
