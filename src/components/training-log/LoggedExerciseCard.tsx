@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from 'react';
-import type { LoggedExercise, LoggedSet, SetStructure, WarmupConfig } from '@/types';
+import type { LoggedExercise, LoggedSet, SetStructure } from '@/types';
 import type { WarmupStep } from '@/lib/utils';
 import { computeWarmup, WarmupInput } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -18,7 +18,6 @@ import { useRouter } from 'next/navigation';
 import { SetStructureBadge } from '../SetStructureBadge';
 import { SetStructurePicker } from '../SetStructurePicker';
 import { Separator } from '../ui/separator';
-import { SET_STRUCTURE_COLORS } from '@/types/setStructure';
 
 interface LoggedExerciseCardProps {
   loggedExercise: LoggedExercise;
@@ -133,9 +132,9 @@ export function LoggedExerciseCard({
   const handleSetChange = (index: number, field: keyof Omit<LoggedSet, 'id' | 'isProvisional'>, value: string) => {
     onMarkAsInteracted(); 
     const newSets = [...localSets];
-    const numericValue = value === '' ? null : parseFloat(value); 
+    const n = value === '' ? null : Number(value);
     if (newSets[index]) {
-       newSets[index] = { ...newSets[index], [field]: numericValue, isProvisional: false };
+       newSets[index] = { ...newSets[index], [field]: (Number.isFinite(n) ? n : null), isProvisional: false };
        setLocalSets(newSets); 
        onUpdateSets(newSets); 
     }

@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import type { WorkoutLog, LoggedExercise, LoggedSet, Routine, Exercise, ExercisePerformanceEntry, PersonalRecord, WarmupConfig, SetStructure } from '@/types';
 import { useAuth } from '@/contexts/AuthContext';
 import {
@@ -15,14 +15,9 @@ import {
 } from '@/services/trainingLogService';
 import { getExercises as fetchAllUserExercises } from '@/services/exerciseService';
 import { getRoutines as fetchUserRoutines } from '@/services/routineService';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { useToast } from './use-toast';
 import { inferWarmupTemplate, roundToGymHalf } from '@/lib/utils';
-
-const DEFAULT_DELOAD_PARAMS = {
-  volumeMultiplier: 0.5,
-  intensityMultiplier: 0.9,
-};
 
 // A safe deep-clone function using JSON stringify/parse, suitable for serializable data.
 const cloneDeep = <T>(obj: T): T => {
@@ -667,7 +662,7 @@ export const useTrainingLog = (initialDate: Date) => {
 
 
     try {
-      await deleteFirestoreDoc(user.id, logIdToDelete);
+      await deleteLogService(user.id, logIdToDelete);
       
       for (const deletedEx of exercisesInDeletedLog) {
         try {
