@@ -3,12 +3,14 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import type { Exercise, MuscleGroup, ExerciseData } from '@/types';
+import type { Exercise, MuscleGroup, ExerciseData, Routine } from '@/types';
 import type { ExerciseFormData } from './AddExerciseDialog';
 import { MUSCLE_GROUPS_LIST } from '@/lib/constants';
 import { defaultExercises } from '@/lib/defaultExercises';
 import { useAuth } from '@/contexts/AuthContext';
-import { addExercise, getExercises, updateExercise, deleteExercise, addDefaultExercisesBatch } from '@/services/exerciseService';
+import { addExercise, getExercises, updateExercise, deleteExercise as deleteExerciseService, addDefaultExercisesBatch } from '@/services/exerciseService';
+import { getRoutines, updateRoutine } from '@/services/routineService';
+import { inferWarmupTemplate } from '@/lib/utils';
 
 import { PageHeader } from '@/components/PageHeader';
 import { ExerciseCard } from './ExerciseCard';
@@ -16,7 +18,7 @@ import { AddExerciseDialog } from './AddExerciseDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { PlusCircle, Search, Filter, Loader2 } from 'lucide-react';
+import { PlusCircle, Search, Filter, Loader2, AlertTriangle } from 'lucide-react';
 import {
   Accordion,
   AccordionContent,
@@ -34,6 +36,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from '@/hooks/use-toast';
+import { ScrollArea } from '../ui/scroll-area';
 
 const groupExercisesByMuscle = (exercises: Exercise[], muscleOrder: readonly MuscleGroup[]): { muscleGroup: MuscleGroup; exercises: Exercise[] }[] => {
   const grouped = new Map<MuscleGroup, Exercise[]>();
@@ -68,6 +71,8 @@ export function ExerciseClientPage() {
 
   const [exerciseToEdit, setExerciseToEdit] = useState<Exercise | null>(null);
   const [exerciseToDeleteId, setExerciseToDeleteId] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [affectedRoutines, setAffectedRoutines] = useState<Routine[]>([]);
 
   const [isLoading, setIsLoading] = useState(true); 
   const [isDialogSaving, setIsDialogSaving] = useState(false);
@@ -191,6 +196,11 @@ export function ExerciseClientPage() {
         warmup: formData.warmup,
       };
 
+      if (!exerciseToEdit && !exercisePayload.warmup) {
+        const { template, isWeightedBodyweight } = inferWarmupTemplate(formData.name);
+        exercisePayload.warmup = { template, isWeightedBodyweight };
+      }
+
       if (exerciseToEdit) {
         await updateExercise(user.id, exerciseToEdit.id, exercisePayload);
         toast({ title: "Exercise Updated", description: `${formData.name} has been successfully updated.` });
@@ -216,8 +226,24 @@ export function ExerciseClientPage() {
     }
   };
 
-  const openDeleteConfirmation = (exerciseId: string) => {
+  const openDeleteConfirmation = async (exerciseId: string) => {
+    if (!user?.id) return;
     setExerciseToDeleteId(exerciseId);
+    setIsDeleting(true);
+    try {
+      const routines = await getRoutines(user.id);
+      const affected = routines.filter(r => r.exercises.some(e => e.id === exerciseId));
+      setAffectedRoutines(affected);
+    } catch (e) {
+      toast({ title: "Error checking routines", description: "Could not verify if exercise is in use.", variant: "destructive" });
+    } finally {
+      setIsDeleting(false); // To enable dialog buttons
+    }
+  };
+
+  const closeDeleteDialog = () => {
+    setExerciseToDeleteId(null);
+    setAffectedRoutines([]);
   };
 
   const handleDeleteExercise = async () => {
@@ -226,19 +252,31 @@ export function ExerciseClientPage() {
       return;
     }
 
+    setIsDeleting(true);
     const exerciseName = exercises.find(ex => ex.id === exerciseToDeleteId)?.name || "The exercise";
+
     try {
-      await deleteExercise(user.id, exerciseToDeleteId);
-      toast({ title: "Exercise Deleted", description: `${exerciseName} has been removed.` });
+      // If there are affected routines, remove the exercise from them first
+      if (affectedRoutines.length > 0) {
+        for (const routine of affectedRoutines) {
+          const updatedExercises = routine.exercises.filter(e => e.id !== exerciseToDeleteId);
+          await updateRoutine(user.id, routine.id, { exercises: updatedExercises });
+        }
+        toast({ title: "Routines Updated", description: `${exerciseName} removed from ${affectedRoutines.length} routine(s).` });
+      }
+
+      // Now, delete the exercise itself
+      await deleteExerciseService(user.id, exerciseToDeleteId);
+      toast({ title: "Exercise Deleted", description: `${exerciseName} has been removed from your library.` });
       
       const updatedExercisesList = await fetchUserExercises(user.id);
       setExercises(updatedExercisesList);
-
     } catch (error: any) {
-      console.error("Failed to delete exercise:", error);
+      console.error("Failed to delete exercise and update routines:", error);
       toast({ title: "Delete Error", description: `Could not delete ${exerciseName}. ${error.message}`, variant: "destructive" });
     } finally {
-      setExerciseToDeleteId(null);
+      setIsDeleting(false);
+      closeDeleteDialog();
     }
   };
  
@@ -382,20 +420,45 @@ export function ExerciseClientPage() {
         )
       : null }
 
-
-      <AlertDialog open={!!exerciseToDeleteId} onOpenChange={(open) => !open && setExerciseToDeleteId(null)}>
+      {/* Delete confirmation dialogs */}
+      <AlertDialog open={!!exerciseToDeleteId} onOpenChange={(open) => !open && closeDeleteDialog()}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogTitle className="flex items-center">
+              <AlertTriangle className="mr-2 text-destructive"/>
+              Confirm Deletion
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete the exercise
-              "{exercises.find(ex => ex.id === exerciseToDeleteId)?.name}".
+              {isDeleting ? (
+                <div className="flex items-center justify-center py-4">
+                  <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Checking routines...
+                </div>
+              ) : affectedRoutines.length > 0 ? (
+                <div>
+                  <p className="mb-2 font-semibold text-foreground">This exercise is used in {affectedRoutines.length} routine(s):</p>
+                  <ScrollArea className="max-h-32 w-full rounded-md border p-2">
+                    <ul className="list-disc pl-5 text-sm">
+                      {affectedRoutines.map(r => <li key={r.id}>{r.name}</li>)}
+                    </ul>
+                  </ScrollArea>
+                  <p className="mt-3">Deleting this exercise will also <span className="font-bold">remove it from these routines</span>. This action cannot be undone.</p>
+                  <p className="mt-1">Are you sure you want to proceed?</p>
+                </div>
+              ) : (
+                `This will permanently delete the exercise "${exercises.find(ex => ex.id === exerciseToDeleteId)?.name}". This action cannot be undone.`
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setExerciseToDeleteId(null)}>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteExercise} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">
-              Delete
+            <AlertDialogCancel onClick={closeDeleteDialog} disabled={isDeleting}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleDeleteExercise} 
+              className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+              disabled={isDeleting}
+            >
+              {isDeleting ? <Loader2 className="h-4 w-4 animate-spin"/> : (affectedRoutines.length > 0 ? "Delete Anyway" : "Delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
-import type { WorkoutLog, LoggedExercise, LoggedSet, Routine, Exercise, ExercisePerformanceEntry, PersonalRecord, SetStructure } from '@/types';
+import type { WorkoutLog, LoggedExercise, LoggedSet, Routine, Exercise, ExercisePerformanceEntry, PersonalRecord, SetStructure, WarmupConfig } from '@/types';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   getWorkoutLog as fetchLogService,
@@ -18,7 +18,7 @@ import { getRoutines as fetchUserRoutines } from '@/services/routineService';
 import { format } from 'date-fns';
 import { useToast } from './use-toast';
 import { inferWarmupTemplate, roundToGymHalf } from '@/lib/utils';
-import type { WarmupConfig } from '@/types';
+
 
 // A safe deep-clone function using JSON stringify/parse, suitable for serializable data.
 const cloneDeep = <T>(obj: T): T => {
@@ -99,6 +99,13 @@ export const useTrainingLog = (initialDate: Date) => {
     return await getLastNonDeloadPerformance(user.id, exerciseId, routineId);
   }, [user?.id]);
 
+  const getWarmupConfig = (exercise: Exercise): WarmupConfig => {
+    if (exercise.warmup) {
+      return exercise.warmup;
+    }
+    const { template, isWeightedBodyweight } = inferWarmupTemplate(exercise.name);
+    return { template, isWeightedBodyweight };
+  };
 
   const loadLogForDate = useCallback(async (dateToLoad: Date) => {
     const dateId = format(dateToLoad, 'yyyy-MM-dd');
@@ -128,6 +135,8 @@ export const useTrainingLog = (initialDate: Date) => {
                         name: fullDef?.name ?? exFromStoredLog.name,
                         muscleGroup: fullDef?.muscleGroup ?? exFromStoredLog.muscleGroup,
                         exerciseSetup: fullDef?.exerciseSetup ?? exFromStoredLog.exerciseSetup ?? '',
+                        warmupConfig: exFromStoredLog.warmupConfig
+                          ?? (fullDef ? getWarmupConfig(fullDef) : undefined),
                         sets: setsWithIds,
                         personalRecordDisplay: formatPersonalRecordDisplay(performanceEntry?.personalRecord || null),
                     };
@@ -195,15 +204,15 @@ export const useTrainingLog = (initialDate: Date) => {
       setIsLoadingExercises(false);
       setIsLoadingLoggedDayStrings(false);
     }
-  }, [user?.id, toast, fetchLoggedDates]); 
+  }, [user?.id, toast, fetchLoggedDates, selectedDate]); 
 
   useEffect(() => {
-    if (authIsLoading) {
+    if (authIsLoading || isLoadingExercises) {
       setIsLoadingLog(true);
       return;
     }
     loadLogForDate(selectedDate);
-  }, [selectedDate, authIsLoading, availableExercises, loadLogForDate]);
+  }, [selectedDate, authIsLoading, isLoadingExercises, loadLogForDate]);
 
   const applyDeloadTransform = (log: WorkoutLog | null): WorkoutLog | null => {
     if (!log) return null;
@@ -271,13 +280,6 @@ export const useTrainingLog = (initialDate: Date) => {
     setOriginalLogState(updater);
   };
   
-  const getWarmupConfig = (exercise: Exercise): WarmupConfig => {
-    if (exercise.warmup) {
-      return exercise.warmup;
-    }
-    const { template, isWeightedBodyweight } = inferWarmupTemplate(exercise.name);
-    return { template, isWeightedBodyweight };
-  };
 
   const handleSelectRoutine = async (routineId: string) => {
     if (!user?.id) return;
@@ -324,7 +326,7 @@ export const useTrainingLog = (initialDate: Date) => {
                 exerciseId: routineEx.id,
                 name: fullExerciseDef?.name ?? routineEx.name,
                 muscleGroup: fullExerciseDef?.muscleGroup ?? routineEx.muscleGroup,
-                exerciseSetup: fullExerciseDef?.exerciseSetup || '',
+                exerciseSetup: fullExerciseDef?.exerciseSetup ?? '',
                 sets: initialSets,
                 notes: '',
                 personalRecordDisplay: formatPersonalRecordDisplay(performanceEntry?.personalRecord || null),
@@ -585,12 +587,17 @@ export const useTrainingLog = (initialDate: Date) => {
   };
 
   const saveSingleExercise = async (exerciseLogId: string) => {
-    const selectedExerciseFromState = currentLog?.exercises.find(e => e.id === exerciseLogId);
-    if (!user?.id || !currentLog || !selectedExerciseFromState) {
+    if (!user?.id || !currentLog) {
       toast({ title: "Error", description: "No user or log data to save.", variant: "destructive" });
       return;
     }
   
+    const selectedExercise = currentLog.exercises.find(e => e.id === exerciseLogId);
+    if (!selectedExercise) {
+        toast({ title: "Error", description: "Could not find the exercise to save.", variant: "destructive" });
+        return;
+    }
+
     setIsSavingLog(true);
     try {
       const logToSave = { ...currentLog };
@@ -626,13 +633,13 @@ export const useTrainingLog = (initialDate: Date) => {
       if (!payload.isDeload) {
           await saveExercisePerformanceEntry(
             user.id,
-            selectedExerciseFromState.exerciseId,
-            normalizeForPR(selectedExerciseFromState.sets),
+            selectedExercise.exerciseId,
+            normalizeForPR(selectedExercise.sets),
             payload.id
           );
       }
   
-      const newPerf = await fetchExercisePerformanceData(selectedExerciseFromState.exerciseId, currentLog.routineId);
+      const newPerf = await fetchExercisePerformanceData(selectedExercise.exerciseId, currentLog.routineId);
       const prText = formatPersonalRecordDisplay(newPerf?.personalRecord || null);
   
       const updater = (log: WorkoutLog | null): WorkoutLog | null => {
@@ -649,7 +656,7 @@ export const useTrainingLog = (initialDate: Date) => {
       setCurrentLog(updater);
       setOriginalLogState(updater);
   
-      toast({ title: "Exercise Saved", description: `${selectedExerciseFromState?.name ?? "Exercise"} saved.` });
+      toast({ title: "Exercise Saved", description: `${selectedExercise?.name ?? "Exercise"} saved.` });
     } catch (error: any) {
       toast({ title: "Error", description: `Could not save exercise. ${error.message}`, variant: "destructive" });
     } finally {
@@ -747,4 +754,6 @@ export const useTrainingLog = (initialDate: Date) => {
 
 
     
+    
+
     

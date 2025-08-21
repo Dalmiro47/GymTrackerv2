@@ -4,7 +4,7 @@
 import type { RoutineExercise, SetStructure } from '@/types';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Trash2, ListChecks, GripVertical } from 'lucide-react';
+import { Trash2, ListChecks, GripVertical, AlertTriangle } from 'lucide-react';
 import React from 'react';
 import {
   DndContext,
@@ -27,6 +27,8 @@ import { CSS } from '@dnd-kit/utilities';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Card } from '../ui/card';
 import { SetStructurePicker } from '../SetStructurePicker';
+import { cn } from '@/lib/utils';
+import { Badge } from '../ui/badge';
 
 interface SortableExerciseItemProps {
   exercise: RoutineExercise;
@@ -55,7 +57,10 @@ function SortableExerciseItem({ exercise, onRemoveExercise, onUpdateSetStructure
     <li
       ref={setNodeRef}
       style={style}
-      className="p-2.5 rounded-md border bg-card shadow-sm touch-none"
+      className={cn(
+        "p-2.5 rounded-md border bg-card shadow-sm touch-none",
+        exercise.isMissing && "border-destructive/50 bg-destructive/5"
+        )}
     >
       <div className="flex items-center justify-between">
         <div className="flex items-center flex-1">
@@ -65,6 +70,7 @@ function SortableExerciseItem({ exercise, onRemoveExercise, onUpdateSetStructure
             {...listeners}
             className="p-1 cursor-grab active:cursor-grabbing mr-2 text-muted-foreground hover:text-foreground"
             aria-label={`Drag to reorder ${exercise.name}`}
+            disabled={exercise.isMissing}
           >
             <GripVertical className="h-5 w-5" />
           </button>
@@ -84,12 +90,21 @@ function SortableExerciseItem({ exercise, onRemoveExercise, onUpdateSetStructure
           <Trash2 className="h-4 w-4" />
         </Button>
       </div>
-       <div className="pl-8 pt-2">
+       {!exercise.isMissing ? (
+        <div className="pl-8 pt-2">
            <SetStructurePicker
               value={exercise.setStructure ?? 'normal'}
               onChange={(value) => onUpdateSetStructure(exercise.id, value)}
             />
         </div>
+       ) : (
+        <div className="pl-8 pt-2">
+            <Badge variant="destructive" className="items-center gap-1">
+                <AlertTriangle className="h-3 w-3"/>
+                Missing Exercise
+            </Badge>
+        </div>
+       )}
     </li>
   );
 }
@@ -111,8 +126,6 @@ export function SelectedRoutineExercisesList({
   const isMobile = useIsMobile();
   const sensors = useSensors(
     useSensor(PointerSensor, {
-      // For mobile, require a delay and tolerance to prevent accidental drags while scrolling.
-      // For desktop, no constraint is needed.
       activationConstraint: isMobile
         ? {
             delay: 150,
@@ -183,5 +196,3 @@ export function SelectedRoutineExercisesList({
     </div>
   );
 }
-
-    
