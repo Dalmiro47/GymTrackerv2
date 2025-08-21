@@ -419,50 +419,42 @@ export const useTrainingLog = (initialDate: Date) => {
 
   const replaceExerciseInLog = async (exerciseIdToReplace: string, newExercise: Exercise) => {
     if (!user?.id || !currentLog) return;
-  
+
     const dateOfLog = format(selectedDate, 'yyyy-MM-dd');
     const performanceEntry = await fetchExercisePerformanceData(newExercise.id, currentLog.routineId);
-  
-    let initialSets: LoggedSet[];
-    if (performanceEntry?.lastPerformedSets && performanceEntry.lastPerformedSets.length > 0) {
-      initialSets = performanceEntry.lastPerformedSets.map((s, i) => ({
-        ...s,
-        id: `set-${dateOfLog}-${newExercise.id}-${i}-${Date.now()}`,
+
+    const initialSets: LoggedSet[] = (performanceEntry?.lastPerformedSets?.length ? performanceEntry.lastPerformedSets : [{ reps: null, weight: null }])
+      .map((s, i) => ({ ...s, id: `set-${dateOfLog}-${newExercise.id}-${i}-${Date.now()}`, isProvisional: true }));
+
+    const updater = (log: WorkoutLog | null): WorkoutLog | null => {
+      if (!log) return null;
+      const idx = log.exercises.findIndex(ex => ex.id === exerciseIdToReplace);
+      if (idx === -1) return log;
+
+      const prev = log.exercises[idx]; // <-- keep structure
+      const updatedExercises = [...log.exercises];
+      updatedExercises[idx] = {
+        id: `${newExercise.id}-${dateOfLog}-${Date.now()}`,
+        exerciseId: newExercise.id,
+        name: newExercise.name,
+        muscleGroup: newExercise.muscleGroup,
+        exerciseSetup: newExercise.exerciseSetup || '',
+        sets: initialSets,
+        notes: '',
+        personalRecordDisplay: formatPersonalRecordDisplay(performanceEntry?.personalRecord || null),
         isProvisional: true,
-      }));
-    } else {
-      initialSets = [{ id: `set-${dateOfLog}-${newExercise.id}-0-${Date.now()}`, reps: null, weight: null, isProvisional: true }];
-    }
-  
-    const newLoggedExercise: LoggedExercise = {
-      id: `${newExercise.id}-${dateOfLog}-${Date.now()}`,
-      exerciseId: newExercise.id,
-      name: newExercise.name,
-      muscleGroup: newExercise.muscleGroup,
-      exerciseSetup: newExercise.exerciseSetup || '',
-      sets: initialSets,
-      notes: '',
-      personalRecordDisplay: formatPersonalRecordDisplay(performanceEntry?.personalRecord || null),
-      isProvisional: true,
-      warmupConfig: getWarmupConfig(newExercise),
-      setStructure: 'normal',
-      setStructureOverride: null,
+        warmupConfig: getWarmupConfig(newExercise),
+        setStructure: prev.setStructure ?? 'normal',
+        setStructureOverride: prev.setStructureOverride ?? null,
+      };
+
+      return {
+        ...log,
+        exercises: updatedExercises,
+        exerciseIds: updatedExercises.map(e => e.exerciseId),
+      };
     };
-  
-    const updater = (log: WorkoutLog | null) => {
-        if (!log) return null;
-        const indexToReplace = log.exercises.findIndex(ex => ex.id === exerciseIdToReplace);
-        if (indexToReplace === -1) return log;
-    
-        const updatedExercises = [...log.exercises];
-        updatedExercises[indexToReplace] = newLoggedExercise;
-    
-        return {
-            ...log,
-            exercises: updatedExercises,
-            exerciseIds: updatedExercises.map(ex => ex.exerciseId),
-        };
-    };
+
     setCurrentLog(updater);
     setOriginalLogState(updater);
   };
@@ -756,4 +748,5 @@ export const useTrainingLog = (initialDate: Date) => {
 };
 
 
+    
     
