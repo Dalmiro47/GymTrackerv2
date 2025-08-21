@@ -35,6 +35,15 @@ const DEFAULT_DELOAD_PARAMS = {
     intensityMultiplier: 0.9,
 };
 
+const normalizeForPR = (sets: LoggedSet[]) =>
+  sets
+    .filter(s =>
+      s.reps != null && s.weight != null &&
+      Number.isFinite(Number(s.reps)) && Number.isFinite(Number(s.weight))
+    )
+    .map(s => ({ reps: Number(s.reps), weight: Number(s.weight) }));
+
+
 export const useTrainingLog = (initialDate: Date) => {
   const { user, isLoading: authIsLoading } = useAuth();
   const { toast } = useToast();
@@ -534,7 +543,7 @@ export const useTrainingLog = (initialDate: Date) => {
       const finalLogToSave: WorkoutLog = {
         ...logToSave, 
         exercises: exercisesWithUpdatedPrs,
-        exerciseIds: exercisesWithUpdatedPrs.map(ex => ex.exerciseId),
+        exerciseIds: Array.from(new Set(exercisesWithUpdatedPrs.map(ex => ex.exerciseId))),
       };
 
       const shouldSaveMainLogDocument = finalLogToSave.exercises.length > 0 || (finalLogToSave.notes && finalLogToSave.notes.trim() !== '') || finalLogToSave.routineId;
@@ -545,8 +554,12 @@ export const useTrainingLog = (initialDate: Date) => {
             for (const loggedEx of finalLogToSave.exercises) {
                 const originalExerciseInLog = currentLog.exercises.find(ex => ex.id === loggedEx.id);
                 if (originalExerciseInLog && !originalExerciseInLog.isProvisional) {
-                    const plainSets = loggedEx.sets.map(({ reps, weight }) => ({ reps: Number(reps), weight: Number(weight) }));
-                    await saveExercisePerformanceEntry(user.id, loggedEx.exerciseId, plainSets, finalLogToSave.id);
+                    await saveExercisePerformanceEntry(
+                      user.id,
+                      loggedEx.exerciseId,
+                      normalizeForPR(loggedEx.sets),
+                      finalLogToSave.id
+                    );
                 }
             }
           }
@@ -581,6 +594,12 @@ export const useTrainingLog = (initialDate: Date) => {
       return;
     }
   
+    const selectedExercise = currentLog.exercises.find(e => e.id === exerciseLogId);
+    if (!selectedExercise) {
+        toast({ title: "Error", description: "Could not find the exercise to save.", variant: "destructive" });
+        return;
+    }
+
     setIsSavingLog(true);
     try {
       const logToSave = { ...currentLog };
@@ -607,22 +626,22 @@ export const useTrainingLog = (initialDate: Date) => {
       const payload: WorkoutLog = {
         ...logToSave,
         exercises: exercisesForPayload,
-        exerciseIds: exercisesForPayload.map(e => e.exerciseId),
+        exerciseIds: Array.from(new Set(exercisesForPayload.map(e => e.exerciseId))),
       };
   
       await saveLogService(user.id, payload.id, payload);
       await fetchLoggedDates();
   
       if (!payload.isDeload) {
-        const selected = currentLog.exercises.find(e => e.id === exerciseLogId);
-        if (selected) {
-          const plainSets = selected.sets.map(({ reps, weight }) => ({ reps: Number(reps), weight: Number(weight) }));
-          await saveExercisePerformanceEntry(user.id, selected.exerciseId, plainSets, payload.id);
-        }
+          await saveExercisePerformanceEntry(
+            user.id,
+            selectedExercise.exerciseId,
+            normalizeForPR(selectedExercise.sets),
+            payload.id
+          );
       }
   
-      const selected = currentLog.exercises.find(e => e.id === exerciseLogId)!;
-      const newPerf = await fetchExercisePerformanceData(selected.exerciseId, currentLog.routineId);
+      const newPerf = await fetchExercisePerformanceData(selectedExercise.exerciseId, currentLog.routineId);
       const prText = formatPersonalRecordDisplay(newPerf?.personalRecord || null);
   
       const updater = (log: WorkoutLog | null): WorkoutLog | null => {
@@ -639,7 +658,7 @@ export const useTrainingLog = (initialDate: Date) => {
       setCurrentLog(updater);
       setOriginalLogState(updater);
   
-      toast({ title: "Exercise Saved", description: `${selected?.name ?? "Exercise"} saved.` });
+      toast({ title: "Exercise Saved", description: `${selectedExercise?.name ?? "Exercise"} saved.` });
     } catch (error: any) {
       toast({ title: "Error", description: `Could not save exercise. ${error.message}`, variant: "destructive" });
     } finally {

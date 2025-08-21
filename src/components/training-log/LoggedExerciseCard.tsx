@@ -272,7 +272,10 @@ export function LoggedExerciseCard({
                 <span className="text-xs text-muted-foreground">Session Set Structure</span>
                 <SetStructurePicker
                     value={loggedExercise.setStructureOverride ?? (loggedExercise.setStructure ?? 'normal')}
-                    onChange={(val) => onUpdateSetStructureOverride(val === 'normal' ? null : val)}
+                    onChange={(val) => {
+                        onMarkAsInteracted();
+                        onUpdateSetStructureOverride(val === 'normal' ? null : val);
+                    }}
                     disabled={isSavingThisExercise || isSavingParentLog}
                 />
             </div>
