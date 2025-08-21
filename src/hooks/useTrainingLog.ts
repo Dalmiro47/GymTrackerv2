@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
-import type { WorkoutLog, LoggedExercise, LoggedSet, Routine, Exercise, ExercisePerformanceEntry, PersonalRecord, WarmupConfig, SetStructure } from '@/types';
+import type { WorkoutLog, LoggedExercise, LoggedSet, Routine, Exercise, ExercisePerformanceEntry, PersonalRecord, SetStructure } from '@/types';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   getWorkoutLog as fetchLogService,
@@ -15,9 +15,10 @@ import {
 } from '@/services/trainingLogService';
 import { getExercises as fetchAllUserExercises } from '@/services/exerciseService';
 import { getRoutines as fetchUserRoutines } from '@/services/routineService';
-import { format, parseISO } from 'date-fns';
+import { format } from 'date-fns';
 import { useToast } from './use-toast';
 import { inferWarmupTemplate, roundToGymHalf } from '@/lib/utils';
+import type { WarmupConfig } from '@/types';
 
 // A safe deep-clone function using JSON stringify/parse, suitable for serializable data.
 const cloneDeep = <T>(obj: T): T => {
@@ -27,6 +28,11 @@ const cloneDeep = <T>(obj: T): T => {
     console.error("Deep clone failed:", e);
     return obj; // Fallback to shallow copy if deep clone fails
   }
+};
+
+const DEFAULT_DELOAD_PARAMS = {
+    volumeMultiplier: 0.5,
+    intensityMultiplier: 0.9,
 };
 
 export const useTrainingLog = (initialDate: Date) => {
@@ -105,7 +111,6 @@ export const useTrainingLog = (initialDate: Date) => {
                     const setsWithIds = exFromStoredLog.sets.map((s, idx) => ({
                       ...s,
                       id: s.id || `set-${dateId}-${exFromStoredLog.exerciseId}-${idx}-${Date.now()}`,
-                      isProvisional: exFromStoredLog.isProvisional,
                     }));
 
                     return {
@@ -540,7 +545,8 @@ export const useTrainingLog = (initialDate: Date) => {
             for (const loggedEx of finalLogToSave.exercises) {
                 const originalExerciseInLog = currentLog.exercises.find(ex => ex.id === loggedEx.id);
                 if (originalExerciseInLog && !originalExerciseInLog.isProvisional) {
-                    await saveExercisePerformanceEntry(user.id, loggedEx.exerciseId, loggedEx.sets, finalLogToSave.id);
+                    const plainSets = loggedEx.sets.map(({ reps, weight }) => ({ reps: Number(reps), weight: Number(weight) }));
+                    await saveExercisePerformanceEntry(user.id, loggedEx.exerciseId, plainSets, finalLogToSave.id);
                 }
             }
           }
@@ -610,7 +616,8 @@ export const useTrainingLog = (initialDate: Date) => {
       if (!payload.isDeload) {
         const selected = currentLog.exercises.find(e => e.id === exerciseLogId);
         if (selected) {
-          await saveExercisePerformanceEntry(user.id, selected.exerciseId, selected.sets, payload.id);
+          const plainSets = selected.sets.map(({ reps, weight }) => ({ reps: Number(reps), weight: Number(weight) }));
+          await saveExercisePerformanceEntry(user.id, selected.exerciseId, plainSets, payload.id);
         }
       }
   

@@ -183,6 +183,7 @@ export function LoggedExerciseCard({
         className={cn(
           "shadow-md transition-all border rounded-lg", 
           isDragging && "ring-2 ring-primary",
+          loggedExercise.isProvisional && "opacity-60 bg-muted/30 border-dashed border-primary/30"
         )}
       >
         <CardHeader className="py-3 px-4 border-b">
