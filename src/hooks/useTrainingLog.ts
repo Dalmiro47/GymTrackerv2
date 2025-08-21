@@ -469,7 +469,6 @@ export const useTrainingLog = (initialDate: Date) => {
   const updateExerciseInLog = (updated: LoggedExercise) => {
     const finalUpdated: LoggedExercise = {
       ...updated,
-      // preserve the flag; don't force to false while editing
       isProvisional: updated.isProvisional,
       sets: updated.sets.map(s => ({ ...s, isProvisional: s.isProvisional ?? false })),
     };
@@ -491,7 +490,7 @@ export const useTrainingLog = (initialDate: Date) => {
         ...log,
         exercises: log.exercises.map(ex =>
           ex.id === exerciseId
-            ? { ...ex, setStructureOverride: structure, isProvisional: false }
+            ? { ...ex, setStructureOverride: structure }
             : ex
         )
       };
@@ -535,7 +534,7 @@ export const useTrainingLog = (initialDate: Date) => {
       
       const finalLogToSave: WorkoutLog = {
         ...logToSave, 
-        exercises: exercisesWithUpdatedPrs.map(ex => ({ ...ex, isProvisional: undefined })),
+        exercises: exercisesWithUpdatedPrs,
         exerciseIds: exercisesWithUpdatedPrs.map(ex => ex.exerciseId),
       };
 
@@ -610,7 +609,7 @@ export const useTrainingLog = (initialDate: Date) => {
   
       const payload: WorkoutLog = {
         ...logToSave,
-        exercises: exercisesForPayload.map(e => ({ ...e, isProvisional: undefined as any })), // stripped by service anyway
+        exercises: exercisesForPayload,
         exerciseIds: exercisesForPayload.map(e => e.exerciseId),
       };
   

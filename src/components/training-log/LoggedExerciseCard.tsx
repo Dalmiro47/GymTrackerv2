@@ -122,8 +122,8 @@ export function LoggedExerciseCard({
   const [justSaved, setJustSaved] = useState(false);
 
   useEffect(() => {
-    setLocalSets(loggedExercise.sets.map(s => ({...s, isProvisional: loggedExercise.isProvisional }))); 
-  }, [loggedExercise.sets, loggedExercise.isProvisional]);
+    setLocalSets(loggedExercise.sets);
+  }, [loggedExercise.sets]);
 
   const effectiveSetStructure = useMemo(() => {
     return loggedExercise.setStructureOverride ?? loggedExercise.setStructure ?? 'normal';
