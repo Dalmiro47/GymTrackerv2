@@ -262,7 +262,7 @@ export function LoggedExerciseCard({
                 disabled={isSavingThisExercise || isSavingParentLog}
               >
                 <PlusCircle className="mr-2 h-4 w-4" /> 
-                Add Another Set
+                Add Set Here
               </Button>
             </div>
           </div>
