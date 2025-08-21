@@ -134,8 +134,8 @@ function TrainingLogPageContent() {
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: isMobile
-        ? { delay: 200, tolerance: 8 }
-        : undefined,
+        ? { delay: 200, tolerance: 8 } // Delay for touch devices
+        : undefined, // No delay for mouse
     }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );

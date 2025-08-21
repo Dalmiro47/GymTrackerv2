@@ -15,6 +15,7 @@ import {
   useSensors,
   type DragEndEvent,
 } from '@dnd-kit/core';
+import { restrictToVerticalAxis, restrictToParentElement } from '@dnd-kit/modifiers';
 import {
   arrayMove,
   SortableContext,
@@ -26,6 +27,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Card } from '../ui/card';
 import { SetStructurePicker } from '../SetStructurePicker';
+import { cn } from '@/lib/utils';
 
 interface SortableExerciseItemProps {
   exercise: RoutineExercise;
@@ -62,7 +64,7 @@ function SortableExerciseItem({ exercise, onRemoveExercise, onUpdateSetStructure
             type="button"
             {...attributes}
             {...listeners}
-            className="p-1 cursor-grab mr-2 text-muted-foreground hover:text-foreground"
+            className="p-1 cursor-grab active:cursor-grabbing mr-2 text-muted-foreground hover:text-foreground"
             aria-label={`Drag to reorder ${exercise.name}`}
           >
             <GripVertical className="h-5 w-5" />
@@ -155,6 +157,7 @@ export function SelectedRoutineExercisesList({
             sensors={sensors}
             collisionDetection={closestCenter}
             onDragEnd={handleDragEnd}
+            modifiers={[restrictToVerticalAxis, restrictToParentElement]}
           >
             <Card className="h-full w-full bg-muted/30 p-0 border">
                 <ScrollArea className="h-full w-full rounded-md p-4">
