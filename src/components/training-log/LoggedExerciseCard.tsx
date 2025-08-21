@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from 'react';
-import type { LoggedExercise, LoggedSet, SetStructure, WarmupConfig } from '@/types';
+import type { LoggedExercise, LoggedSet, SetStructure } from '@/types';
 import type { WarmupStep } from '@/lib/utils';
 import { computeWarmup, WarmupInput } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -122,8 +122,8 @@ export function LoggedExerciseCard({
   const [justSaved, setJustSaved] = useState(false);
 
   useEffect(() => {
-    setLocalSets(loggedExercise.sets.map(s => ({...s, isProvisional: loggedExercise.isProvisional }))); 
-  }, [loggedExercise.sets, loggedExercise.isProvisional]);
+    setLocalSets(loggedExercise.sets);
+  }, [loggedExercise.sets]);
 
   const effectiveSetStructure = useMemo(() => {
     return loggedExercise.setStructureOverride ?? loggedExercise.setStructure ?? 'normal';
@@ -132,9 +132,9 @@ export function LoggedExerciseCard({
   const handleSetChange = (index: number, field: keyof Omit<LoggedSet, 'id' | 'isProvisional'>, value: string) => {
     onMarkAsInteracted(); 
     const newSets = [...localSets];
-    const numericValue = value === '' ? null : parseFloat(value); 
+    const n = value === '' ? null : Number(value);
     if (newSets[index]) {
-       newSets[index] = { ...newSets[index], [field]: numericValue, isProvisional: false };
+       newSets[index] = { ...newSets[index], [field]: (Number.isFinite(n) ? n : null), isProvisional: false };
        setLocalSets(newSets); 
        onUpdateSets(newSets); 
     }
@@ -183,9 +183,6 @@ export function LoggedExerciseCard({
         className={cn(
           "shadow-md transition-all border rounded-lg", 
           isDragging && "ring-2 ring-primary",
-          loggedExercise.isProvisional 
-            ? "opacity-60 bg-muted/30 border-dashed border-primary/30" 
-            : "opacity-100 bg-card border-border"
         )}
       >
         <CardHeader className="py-3 px-4 border-b">
@@ -255,14 +252,14 @@ export function LoggedExerciseCard({
             <Separator className="mb-4 border-dashed" />
             <div className="flex justify-center">
               <Button 
-                variant="ghost" 
+                variant="outline" 
                 size="sm" 
                 onClick={addSet} 
-                className="w-full sm:w-auto text-muted-foreground hover:text-primary"
+                className="border-dashed hover:border-solid hover:bg-muted/50 text-muted-foreground hover:text-foreground"
                 disabled={isSavingThisExercise || isSavingParentLog}
               >
                 <PlusCircle className="mr-2 h-4 w-4" /> 
-                Add Another Set
+                Add Set Here
               </Button>
             </div>
           </div>
@@ -270,21 +267,14 @@ export function LoggedExerciseCard({
           <Separator className="my-4"/>
           
           <div className="flex flex-col sm:flex-row items-center justify-between gap-2">
-             <SetStructurePicker
+            <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">Session Set Structure</span>
+                <SetStructurePicker
                     value={loggedExercise.setStructureOverride ?? (loggedExercise.setStructure ?? 'normal')}
                     onChange={(val) => onUpdateSetStructureOverride(val === 'normal' ? null : val)}
                     disabled={isSavingThisExercise || isSavingParentLog}
                 />
-                {loggedExercise.setStructureOverride && (
-                    <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        className="text-xs h-8"
-                        onClick={() => onUpdateSetStructureOverride(null)}
-                    >
-                        Reset
-                    </Button>
-                )}
+            </div>
             <Button 
               onClick={handleSaveThisExercise} 
               disabled={isSavingThisExercise || isSavingParentLog} 

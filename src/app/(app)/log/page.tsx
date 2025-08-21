@@ -97,6 +97,7 @@ function TrainingLogPageContent() {
     reorderExercisesInLog,
     updateExerciseInLog,
     saveCurrentLog,
+    saveSingleExercise,
     updateOverallLogNotes,
     deleteCurrentLog,
     markExerciseAsInteracted,
@@ -356,7 +357,7 @@ function TrainingLogPageContent() {
                         <LoggedExerciseCard
                           loggedExercise={loggedEx}
                           onUpdateSets={(sets) => updateExerciseInLog({ ...loggedEx, sets })}
-                          onSaveProgress={() => saveCurrentLog()}
+                          onSaveProgress={() => saveSingleExercise(loggedEx.id)}
                           onRemove={() => removeExerciseFromLog(loggedEx.id)}
                           onReplace={() => handleOpenReplaceDialog(loggedEx.id, loggedEx.muscleGroup)}
                           isSavingParentLog={isSavingLog}
