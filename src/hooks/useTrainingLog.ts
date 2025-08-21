@@ -125,6 +125,8 @@ export const useTrainingLog = (initialDate: Date) => {
 
                     return {
                         ...exFromStoredLog,
+                        name: fullDef?.name ?? exFromStoredLog.name,
+                        muscleGroup: fullDef?.muscleGroup ?? exFromStoredLog.muscleGroup,
                         exerciseSetup: fullDef?.exerciseSetup ?? exFromStoredLog.exerciseSetup ?? '',
                         sets: setsWithIds,
                         personalRecordDisplay: formatPersonalRecordDisplay(performanceEntry?.personalRecord || null),
@@ -196,16 +198,12 @@ export const useTrainingLog = (initialDate: Date) => {
   }, [user?.id, toast, fetchLoggedDates]); 
 
   useEffect(() => {
-    if (!authIsLoading && availableExercises.length > 0) { 
-      loadLogForDate(selectedDate);
-    } else if (!authIsLoading && user?.id) {
-      // Handles case where user has no exercises yet.
-      loadLogForDate(selectedDate);
+    if (authIsLoading) {
+      setIsLoadingLog(true);
+      return;
     }
-    else {
-      setIsLoadingLog(true); 
-    }
-  }, [selectedDate, user?.id, authIsLoading, availableExercises, loadLogForDate]);
+    loadLogForDate(selectedDate);
+  }, [selectedDate, authIsLoading, availableExercises, loadLogForDate]);
 
   const applyDeloadTransform = (log: WorkoutLog | null): WorkoutLog | null => {
     if (!log) return null;
@@ -324,8 +322,8 @@ export const useTrainingLog = (initialDate: Date) => {
             return {
                 id: `${routineEx.id}-${dateOfLog}-${index}-${Date.now()}`, 
                 exerciseId: routineEx.id,
-                name: routineEx.name,
-                muscleGroup: routineEx.muscleGroup,
+                name: fullExerciseDef?.name ?? routineEx.name,
+                muscleGroup: fullExerciseDef?.muscleGroup ?? routineEx.muscleGroup,
                 exerciseSetup: fullExerciseDef?.exerciseSetup || '',
                 sets: initialSets,
                 notes: '',
@@ -587,8 +585,8 @@ export const useTrainingLog = (initialDate: Date) => {
   };
 
   const saveSingleExercise = async (exerciseLogId: string) => {
-    const selectedExerciseInState = currentLog?.exercises.find(e => e.id === exerciseLogId);
-    if (!user?.id || !currentLog || !selectedExerciseInState) {
+    const selectedExerciseFromState = currentLog?.exercises.find(e => e.id === exerciseLogId);
+    if (!user?.id || !currentLog || !selectedExerciseFromState) {
       toast({ title: "Error", description: "No user or log data to save.", variant: "destructive" });
       return;
     }
@@ -628,13 +626,13 @@ export const useTrainingLog = (initialDate: Date) => {
       if (!payload.isDeload) {
           await saveExercisePerformanceEntry(
             user.id,
-            selectedExerciseInState.exerciseId,
-            normalizeForPR(selectedExerciseInState.sets),
+            selectedExerciseFromState.exerciseId,
+            normalizeForPR(selectedExerciseFromState.sets),
             payload.id
           );
       }
   
-      const newPerf = await fetchExercisePerformanceData(selectedExerciseInState.exerciseId, currentLog.routineId);
+      const newPerf = await fetchExercisePerformanceData(selectedExerciseFromState.exerciseId, currentLog.routineId);
       const prText = formatPersonalRecordDisplay(newPerf?.personalRecord || null);
   
       const updater = (log: WorkoutLog | null): WorkoutLog | null => {
@@ -651,7 +649,7 @@ export const useTrainingLog = (initialDate: Date) => {
       setCurrentLog(updater);
       setOriginalLogState(updater);
   
-      toast({ title: "Exercise Saved", description: `${selectedExerciseInState?.name ?? "Exercise"} saved.` });
+      toast({ title: "Exercise Saved", description: `${selectedExerciseFromState?.name ?? "Exercise"} saved.` });
     } catch (error: any) {
       toast({ title: "Error", description: `Could not save exercise. ${error.message}`, variant: "destructive" });
     } finally {
