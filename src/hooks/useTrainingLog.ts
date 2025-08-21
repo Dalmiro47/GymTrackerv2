@@ -249,9 +249,10 @@ export const useTrainingLog = (initialDate: Date) => {
         ...log,
         exercises: log.exercises.map(ex =>
           ex.id === exerciseIdToUpdate
-          ? { ...ex, isProvisional: false, sets: ex.sets.map(s => ({...s, isProvisional: false})) }
-          : ex
-        )
+            // Keep ex.isProvisional as-is; just clear provisional on sets for UI styling.
+            ? { ...ex, sets: ex.sets.map(s => ({ ...s, isProvisional: false })) }
+            : ex
+        ),
       };
     };
     setCurrentLog(updater);
@@ -465,14 +466,19 @@ export const useTrainingLog = (initialDate: Date) => {
     setOriginalLogState(updater);
   };
 
-  const updateExerciseInLog = (updatedExercise: LoggedExercise) => {
-    const finalUpdatedExercise = { ...updatedExercise, isProvisional: false, sets: updatedExercise.sets.map(s => ({...s, isProvisional: false})) };
+  const updateExerciseInLog = (updated: LoggedExercise) => {
+    const finalUpdated: LoggedExercise = {
+      ...updated,
+      // preserve the flag; don't force to false while editing
+      isProvisional: updated.isProvisional,
+      sets: updated.sets.map(s => ({ ...s, isProvisional: s.isProvisional ?? false })),
+    };
     const updater = (log: WorkoutLog | null) => {
-        if (!log) return null;
-        return {
-            ...log,
-            exercises: log.exercises.map(ex => ex.id === finalUpdatedExercise.id ? finalUpdatedExercise : ex)
-        };
+      if (!log) return null;
+      return {
+        ...log,
+        exercises: log.exercises.map(ex => (ex.id === finalUpdated.id ? finalUpdated : ex)),
+      };
     };
     setCurrentLog(updater);
     setOriginalLogState(updater);
@@ -575,6 +581,7 @@ export const useTrainingLog = (initialDate: Date) => {
       toast({ title: "Error", description: "No user or log data to save.", variant: "destructive" });
       return;
     }
+  
     setIsSavingLog(true);
     try {
       const logToSave = { ...currentLog };
@@ -586,12 +593,12 @@ export const useTrainingLog = (initialDate: Date) => {
         logToSave.deloadParams = undefined;
       }
   
-      // Persist only the selected exercise + any already saved ones
-      const toPersist = logToSave.exercises.filter(ex => ex.id === exerciseLogId || !ex.isProvisional);
-  
-      const exercisesWithUpdatedPrs = await Promise.all(
-        toPersist.map(async (ex) => {
+      // ✅ Persist ALL exercises to avoid losing unsaved routine items on reload
+      const exercisesForPayload = await Promise.all(
+        logToSave.exercises.map(async (ex) => {
           const { isProvisional, ...rest } = ex;
+          // We only need PR text refreshed for UX; no harm refreshing all,
+          // but you can optimize to refresh only for the selected one.
           const perf = await fetchExercisePerformanceData(rest.exerciseId, logToSave.routineId);
           return {
             ...rest,
@@ -603,13 +610,13 @@ export const useTrainingLog = (initialDate: Date) => {
   
       const payload: WorkoutLog = {
         ...logToSave,
-        exercises: exercisesWithUpdatedPrs.map(e => ({ ...e, isProvisional: undefined as any })),
-        exerciseIds: exercisesWithUpdatedPrs.map(e => e.exerciseId),
+        exercises: exercisesForPayload.map(e => ({ ...e, isProvisional: undefined as any })), // stripped by service anyway
+        exerciseIds: exercisesForPayload.map(e => e.exerciseId),
       };
   
       await saveLogService(user.id, payload.id, payload);
   
-      // Update PR only for the selected exercise (skip on deload)
+      // ✅ Update PR only for the selected exercise (skip on deload)
       if (!payload.isDeload) {
         const selected = currentLog.exercises.find(e => e.id === exerciseLogId);
         if (selected) {
@@ -617,7 +624,7 @@ export const useTrainingLog = (initialDate: Date) => {
         }
       }
   
-      // Refresh PR display for just this exercise and mark it non-provisional
+      // ✅ Locally flip only the selected exercise to non-provisional and refresh its PR label
       const selected = currentLog.exercises.find(e => e.id === exerciseLogId)!;
       const newPerf = await fetchExercisePerformanceData(selected.exerciseId, currentLog.routineId);
       const prText = formatPersonalRecordDisplay(newPerf?.personalRecord || null);
@@ -627,7 +634,9 @@ export const useTrainingLog = (initialDate: Date) => {
         return {
           ...log,
           exercises: log.exercises.map(ex =>
-            ex.id === exerciseLogId ? { ...ex, isProvisional: false, personalRecordDisplay: prText } : ex
+            ex.id === exerciseLogId
+              ? { ...ex, isProvisional: false, personalRecordDisplay: prText }
+              : ex
           ),
         };
       };
