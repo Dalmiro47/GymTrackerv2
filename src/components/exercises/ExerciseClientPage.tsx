@@ -260,9 +260,9 @@ export function ExerciseClientPage() {
       if (affectedRoutines.length > 0) {
         await Promise.all(
           affectedRoutines.map(async (routine) => {
-            const updatedExercises = routine.exercises.filter(e => e.id !== exerciseToDeleteId);
+            const updatedExercises = { exercises: routine.exercises.filter(e => e.id !== exerciseToDeleteId) };
             try {
-              await updateRoutine(user.id, routine.id, { exercises: updatedExercises });
+              await updateRoutine(user.id, routine.id, updatedExercises);
             } catch(err) {
               console.error(`Failed to update routine ${routine.name}`, err);
               // We can decide to throw or just log. For now, we'll log and continue.
@@ -443,14 +443,14 @@ export function ExerciseClientPage() {
                 </div>
               ) : affectedRoutines.length > 0 ? (
                 <div>
-                  <p className="mb-2 font-semibold text-foreground">This exercise is used in {affectedRoutines.length} routine(s):</p>
+                  <div className="mb-2 font-semibold text-foreground">This exercise is used in {affectedRoutines.length} routine(s):</div>
                   <ScrollArea className="max-h-32 w-full rounded-md border p-2">
                     <ul className="list-disc pl-5 text-sm">
                       {affectedRoutines.map(r => <li key={r.id}>{r.name}</li>)}
                     </ul>
                   </ScrollArea>
-                  <p className="mt-3">Deleting this exercise will also <span className="font-bold">remove it from these routines</span>. This action cannot be undone.</p>
-                  <p className="mt-1">Are you sure you want to proceed?</p>
+                  <div className="mt-3">Deleting this exercise will also <span className="font-bold">remove it from these routines</span>. This action cannot be undone.</div>
+                  <div className="mt-1">Are you sure you want to proceed?</div>
                 </div>
               ) : (
                 `This will permanently delete the exercise "${exercises.find(ex => ex.id === exerciseToDeleteId)?.name}". This action cannot be undone.`
