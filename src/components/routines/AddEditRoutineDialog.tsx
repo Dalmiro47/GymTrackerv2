@@ -82,31 +82,46 @@ export function AddEditRoutineDialog({
   useEffect(() => {
     if (isOpen) {
       fetchExercises();
-      if (routineToEdit) {
-        reset({
-          name: routineToEdit.name,
-          description: routineToEdit.description || '',
-        });
-        // Now, we cross-reference to flag missing exercises
-        const exerciseIdMap = new Map(allUserExercises.map(ex => [ex.id, ex]));
-        const hydratedExercises = routineToEdit.exercises.map(routineEx => {
-          const fullDef = exerciseIdMap.get(routineEx.id);
-          if (fullDef) {
-            return { ...routineEx, isMissing: false };
-          }
-          return { ...routineEx, isMissing: true };
-        });
-        setSelectedExerciseObjects(hydratedExercises);
-      } else {
-        reset({ name: '', description: '' });
-        setSelectedExerciseObjects([]);
-      }
-    } else {
+    }
+  }, [isOpen, fetchExercises]);
+
+  useEffect(() => {
+    if (!isOpen) {
       setAllUserExercises([]);
       setSelectedExerciseObjects([]);
       setIsLoadingExercises(true);
+      return;
     }
-  }, [routineToEdit, reset, isOpen, fetchExercises, allUserExercises]);
+  
+    if (!routineToEdit) {
+      reset({ name: '', description: '' });
+      setSelectedExerciseObjects([]);
+      return;
+    }
+  
+    reset({
+      name: routineToEdit.name,
+      description: routineToEdit.description || '',
+    });
+  
+    // Guard against running this logic before exercises are loaded to prevent UI flash
+    if (isLoadingExercises) {
+      // Temporarily set a placeholder state, or just wait.
+      // For now, we wait, and the selector will show a loading state.
+      return;
+    }
+  
+    const exerciseIdMap = new Map(allUserExercises.map(ex => [ex.id, ex]));
+    const hydratedExercises = routineToEdit.exercises.map(routineEx => {
+      const fullDef = exerciseIdMap.get(routineEx.id);
+      if (fullDef) {
+        return { ...routineEx, isMissing: false };
+      }
+      return { ...routineEx, isMissing: true };
+    });
+    setSelectedExerciseObjects(hydratedExercises);
+  
+  }, [routineToEdit, reset, isOpen, fetchExercises, allUserExercises, isLoadingExercises]);
 
 
   const handleExerciseSelectionChange = (exerciseId: string, isSelected: boolean) => {

@@ -71,7 +71,7 @@ export function ExerciseClientPage() {
 
   const [exerciseToEdit, setExerciseToEdit] = useState<Exercise | null>(null);
   const [exerciseToDeleteId, setExerciseToDeleteId] = useState<string | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
+  const [isBusyDeleting, setIsBusyDeleting] = useState(false);
   const [affectedRoutines, setAffectedRoutines] = useState<Routine[]>([]);
 
   const [isLoading, setIsLoading] = useState(true); 
@@ -229,7 +229,7 @@ export function ExerciseClientPage() {
   const openDeleteConfirmation = async (exerciseId: string) => {
     if (!user?.id) return;
     setExerciseToDeleteId(exerciseId);
-    setIsDeleting(true);
+    setIsBusyDeleting(true);
     try {
       const routines = await getRoutines(user.id);
       const affected = routines.filter(r => r.exercises.some(e => e.id === exerciseId));
@@ -237,7 +237,7 @@ export function ExerciseClientPage() {
     } catch (e) {
       toast({ title: "Error checking routines", description: "Could not verify if exercise is in use.", variant: "destructive" });
     } finally {
-      setIsDeleting(false); // To enable dialog buttons
+      setIsBusyDeleting(false); // To enable dialog buttons
     }
   };
 
@@ -252,16 +252,24 @@ export function ExerciseClientPage() {
       return;
     }
 
-    setIsDeleting(true);
+    setIsBusyDeleting(true);
     const exerciseName = exercises.find(ex => ex.id === exerciseToDeleteId)?.name || "The exercise";
 
     try {
       // If there are affected routines, remove the exercise from them first
       if (affectedRoutines.length > 0) {
-        for (const routine of affectedRoutines) {
-          const updatedExercises = routine.exercises.filter(e => e.id !== exerciseToDeleteId);
-          await updateRoutine(user.id, routine.id, { exercises: updatedExercises });
-        }
+        await Promise.all(
+          affectedRoutines.map(async (routine) => {
+            const updatedExercises = routine.exercises.filter(e => e.id !== exerciseToDeleteId);
+            try {
+              await updateRoutine(user.id, routine.id, { exercises: updatedExercises });
+            } catch(err) {
+              console.error(`Failed to update routine ${routine.name}`, err);
+              // We can decide to throw or just log. For now, we'll log and continue.
+              toast({ title: `Warning: Failed to update routine ${routine.name}`, variant: "destructive"})
+            }
+          })
+        );
         toast({ title: "Routines Updated", description: `${exerciseName} removed from ${affectedRoutines.length} routine(s).` });
       }
 
@@ -275,7 +283,7 @@ export function ExerciseClientPage() {
       console.error("Failed to delete exercise and update routines:", error);
       toast({ title: "Delete Error", description: `Could not delete ${exerciseName}. ${error.message}`, variant: "destructive" });
     } finally {
-      setIsDeleting(false);
+      setIsBusyDeleting(false);
       closeDeleteDialog();
     }
   };
@@ -429,7 +437,7 @@ export function ExerciseClientPage() {
               Confirm Deletion
             </AlertDialogTitle>
             <AlertDialogDescription>
-              {isDeleting ? (
+              {isBusyDeleting ? (
                 <div className="flex items-center justify-center py-4">
                   <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Checking routines...
                 </div>
@@ -450,15 +458,15 @@ export function ExerciseClientPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={closeDeleteDialog} disabled={isDeleting}>
+            <AlertDialogCancel onClick={closeDeleteDialog} disabled={isBusyDeleting}>
               Cancel
             </AlertDialogCancel>
             <AlertDialogAction 
               onClick={handleDeleteExercise} 
               className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
-              disabled={isDeleting}
+              disabled={isBusyDeleting}
             >
-              {isDeleting ? <Loader2 className="h-4 w-4 animate-spin"/> : (affectedRoutines.length > 0 ? "Delete Anyway" : "Delete")}
+              {isBusyDeleting ? <Loader2 className="h-4 w-4 animate-spin"/> : (affectedRoutines.length > 0 ? "Delete Anyway" : "Delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
