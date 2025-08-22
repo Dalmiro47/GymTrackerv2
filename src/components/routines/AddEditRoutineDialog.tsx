@@ -1,13 +1,13 @@
 
 "use client";
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import type { Exercise, Routine, RoutineData, RoutineExercise, SetStructure } from '@/types';
-import { useAuth } from '@/contexts/AuthContext';
-import { getExercises as fetchAllUserExercises } from '@/services/exerciseService'; 
+import { useToast } from '@/hooks/use-toast';
+import { Loader2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -20,8 +20,6 @@ import {
 } from '@/components/ui/dialog';
 import { AvailableExercisesSelector } from './AvailableExercisesSelector';
 import { SelectedRoutineExercisesList } from './SelectedRoutineExercisesList';
-import { useToast } from '@/hooks/use-toast';
-import { Loader2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -35,10 +33,12 @@ type RoutineFormData = z.infer<typeof routineFormSchema>;
 
 interface AddEditRoutineDialogProps {
   routineToEdit?: Routine | null;
-  onSave: (data: RoutineData, routineId?: string) => Promise<void>;
+  onSave: (data: Omit<RoutineData, 'order'>, routineId?: string) => Promise<void>;
   isOpen: boolean;
   setIsOpen: (open: boolean) => void;
   isSaving: boolean;
+  allUserExercises: Exercise[];
+  isLoadingExercises: boolean;
 }
 
 export function AddEditRoutineDialog({
@@ -47,8 +47,9 @@ export function AddEditRoutineDialog({
   isOpen,
   setIsOpen,
   isSaving,
+  allUserExercises,
+  isLoadingExercises,
 }: AddEditRoutineDialogProps) {
-  const { user } = useAuth();
   const { toast } = useToast();
   const { control, register, handleSubmit, reset, formState: { errors } } = useForm<RoutineFormData>({
     resolver: zodResolver(routineFormSchema),
@@ -58,55 +59,43 @@ export function AddEditRoutineDialog({
     },
   });
 
-  const [allUserExercises, setAllUserExercises] = useState<Exercise[]>([]);
   const [selectedExerciseObjects, setSelectedExerciseObjects] = useState<RoutineExercise[]>([]);
-  const [isLoadingExercises, setIsLoadingExercises] = useState(true);
-
-  const fetchExercises = useCallback(async () => {
-    if (!user?.id || !isOpen) return;
-    setIsLoadingExercises(true);
-    try {
-      const exercises = await fetchAllUserExercises(user.id);
-      setAllUserExercises(exercises);
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: `Could not load your exercises: ${error.message}`,
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoadingExercises(false);
-    }
-  }, [user?.id, toast, isOpen]);
+  
+  const exerciseIdMap = useMemo(
+    () => new Map(allUserExercises.map(ex => [ex.id, ex])),
+    [allUserExercises]
+  );
 
   useEffect(() => {
-    if (isOpen) {
-      fetchExercises();
-      if (routineToEdit) {
-        reset({
-          name: routineToEdit.name,
-          description: routineToEdit.description || '',
-        });
-        // Now, we cross-reference to flag missing exercises
-        const exerciseIdMap = new Map(allUserExercises.map(ex => [ex.id, ex]));
-        const hydratedExercises = routineToEdit.exercises.map(routineEx => {
-          const fullDef = exerciseIdMap.get(routineEx.id);
-          if (fullDef) {
-            return { ...routineEx, isMissing: false };
-          }
-          return { ...routineEx, isMissing: true };
-        });
-        setSelectedExerciseObjects(hydratedExercises);
-      } else {
-        reset({ name: '', description: '' });
-        setSelectedExerciseObjects([]);
-      }
-    } else {
-      setAllUserExercises([]);
-      setSelectedExerciseObjects([]);
-      setIsLoadingExercises(true);
+    if (!isOpen) {
+      return;
     }
-  }, [routineToEdit, reset, isOpen, fetchExercises, allUserExercises]);
+  
+    if (!routineToEdit) {
+      reset({ name: '', description: '' });
+      setSelectedExerciseObjects([]);
+      return;
+    }
+  
+    reset({
+      name: routineToEdit.name,
+      description: routineToEdit.description || '',
+    });
+  
+    if (isLoadingExercises) {
+      return;
+    }
+  
+    const hydratedExercises = routineToEdit.exercises.map(routineEx => {
+      const fullDef = exerciseIdMap.get(routineEx.id);
+      if (fullDef) {
+        return { ...routineEx, isMissing: false };
+      }
+      return { ...routineEx, isMissing: true };
+    });
+    setSelectedExerciseObjects(hydratedExercises);
+  
+  }, [routineToEdit, reset, isOpen, isLoadingExercises, exerciseIdMap]);
 
 
   const handleExerciseSelectionChange = (exerciseId: string, isSelected: boolean) => {
@@ -136,7 +125,6 @@ export function AddEditRoutineDialog({
   };
   
   const onSubmit = async (data: RoutineFormData) => {
-    // Filter out missing exercises before saving
     const validExercises = selectedExerciseObjects.filter(ex => !ex.isMissing);
 
     if (validExercises.length === 0) {
@@ -147,9 +135,9 @@ export function AddEditRoutineDialog({
         });
         return;
     }
-    const routineData: RoutineData = {
+    const routineData: Omit<RoutineData, 'order'> = {
       ...data,
-      exercises: validExercises.map(({ isMissing, ...ex }) => ex), // Strip isMissing before saving
+      exercises: validExercises.map(({ isMissing, ...ex }) => ex), 
     };
     await onSave(routineData, routineToEdit?.id);
   };

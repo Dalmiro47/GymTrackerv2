@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import type { Routine, RoutineData } from '@/types';
+import type { Routine, RoutineData, Exercise } from '@/types';
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
 import { PlusCircle, Loader2, ListChecks, GripVertical, Save } from 'lucide-react';
@@ -27,6 +27,7 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { RoutineCard } from '@/components/routines/RoutineCard';
 import { AddEditRoutineDialog } from '@/components/routines/AddEditRoutineDialog';
+import { getExercises as fetchAllUserExercises } from '@/services/exerciseService';
 import { 
   addRoutine, 
   getRoutines, 
@@ -62,10 +63,12 @@ export default function RoutinesPage() {
   const isMobile = useIsMobile();
 
   const [routines, setRoutines] = useState<Routine[]>([]);
+  const [allUserExercises, setAllUserExercises] = useState<Exercise[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingExercises, setIsLoadingExercises] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isDialogSaving, setIsDialogSaving] = useState(false);
-  const [isOrderSaving, setIsOrderSaving] = useState(false); // For saving order changes
+  const [isOrderSaving, setIsOrderSaving] = useState(false);
   const [routineToEdit, setRoutineToEdit] = useState<Routine | null>(null);
   const [routineToDeleteId, setRoutineToDeleteId] = useState<string | null>(null);
 
@@ -86,14 +89,33 @@ export default function RoutinesPage() {
     }
   }, [toast]);
 
+  const fetchExercises = useCallback(async (currentUserId: string) => {
+    setIsLoadingExercises(true);
+    try {
+      const exercises = await fetchAllUserExercises(currentUserId);
+      setAllUserExercises(exercises);
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: `Could not load your exercises: ${error.message}`,
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoadingExercises(false);
+    }
+  }, [toast]);
+
   useEffect(() => {
     if (user?.id) {
       fetchUserRoutines(user.id);
+      fetchExercises(user.id);
     } else if (!authContext.isLoading && !user) {
       setIsLoading(false);
+      setIsLoadingExercises(false);
       setRoutines([]); 
+      setAllUserExercises([]);
     }
-  }, [user, authContext.isLoading, fetchUserRoutines]);
+  }, [user, authContext.isLoading, fetchUserRoutines, fetchExercises]);
 
   const handleOpenAddDialog = () => {
     setRoutineToEdit(null);
@@ -143,22 +165,12 @@ export default function RoutinesPage() {
       return;
     }
     const routineName = routines.find(r => r.id === routineToDeleteId)?.name || "The routine";
-    setIsLoading(true); // Indicate loading while deleting and re-fetching
+    setIsLoading(true);
     try {
       await deleteRoutineService(user.id, routineToDeleteId);
       toast({ title: "Routine Deleted", description: `${routineName} has been removed.` });
-      // After deleting, re-fetch to get potentially re-ordered or updated list
-      // If order needs to be compacted, a more complex re-ordering logic would be needed here.
-      // For now, getRoutines will fetch based on existing 'order' values.
       const updatedRoutines = await getRoutines(user.id);
-      
-      // Optional: If strict contiguous order is desired after delete, re-save all orders
-      // const remainingRoutineIds = updatedRoutines.map(r => r.id);
-      // await updateRoutinesOrder(user.id, remainingRoutineIds);
-      // const finalRoutines = await getRoutines(user.id);
-      // setRoutines(finalRoutines);
-
-      setRoutines(updatedRoutines); // Or just set directly if compaction isn't critical
+      setRoutines(updatedRoutines);
     } catch (error: any) {
       toast({ title: "Delete Error", description: `Could not delete ${routineName}. ${error.message}`, variant: "destructive" });
     } finally {
@@ -190,9 +202,6 @@ export default function RoutinesPage() {
       const orderedIds = reorderedRoutines.map(r => r.id);
       try {
         await updateRoutinesOrder(user.id, orderedIds);
-        // Optionally re-fetch to confirm order from DB, or trust optimistic update.
-        // For simplicity, we'll assume optimistic update is fine for now.
-        // fetchUserRoutines(user.id); 
         toast({ title: "Order Saved", description: "Routine order has been updated." });
       } catch (error: any) {
         toast({
@@ -200,7 +209,6 @@ export default function RoutinesPage() {
           description: `Could not save the new routine order. ${error.message || 'Please try again.'}`,
           variant: "destructive",
         });
-        // Revert to original order if save fails (or re-fetch)
         fetchUserRoutines(user.id);
       } finally {
         setIsOrderSaving(false);
@@ -241,7 +249,7 @@ export default function RoutinesPage() {
                 variant="default" 
                 className="bg-accent hover:bg-accent/90 text-accent-foreground"
                 onClick={handleOpenAddDialog}
-                disabled={isLoading || isOrderSaving}
+                disabled={isLoading || isOrderSaving || isLoadingExercises}
             >
             <PlusCircle className="mr-2 h-4 w-4" /> Create Routine
             </Button>
@@ -254,6 +262,8 @@ export default function RoutinesPage() {
         onSave={handleSaveRoutine}
         routineToEdit={routineToEdit}
         isSaving={isDialogSaving}
+        allUserExercises={allUserExercises}
+        isLoadingExercises={isLoadingExercises}
       />
 
       {isLoading && user ? (
