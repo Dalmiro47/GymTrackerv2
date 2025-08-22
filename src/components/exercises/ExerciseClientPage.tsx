@@ -437,26 +437,31 @@ export function ExerciseClientPage() {
               Confirm Deletion
             </AlertDialogTitle>
             <AlertDialogDescription>
-              {isBusyDeleting ? (
-                <div className="flex items-center justify-center py-4">
-                  <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Checking routines...
-                </div>
-              ) : affectedRoutines.length > 0 ? (
-                <div>
-                  <div className="mb-2 font-semibold text-foreground">This exercise is used in {affectedRoutines.length} routine(s):</div>
-                  <ScrollArea className="max-h-32 w-full rounded-md border p-2">
-                    <ul className="list-disc pl-5 text-sm">
-                      {affectedRoutines.map(r => <li key={r.id}>{r.name}</li>)}
-                    </ul>
-                  </ScrollArea>
-                  <div className="mt-3">Deleting this exercise will also <span className="font-bold">remove it from these routines</span>. This action cannot be undone.</div>
-                  <div className="mt-1">Are you sure you want to proceed?</div>
-                </div>
-              ) : (
-                `This will permanently delete the exercise "${exercises.find(ex => ex.id === exerciseToDeleteId)?.name}". This action cannot be undone.`
-              )}
+              This action might affect your saved routines. Are you sure?
             </AlertDialogDescription>
           </AlertDialogHeader>
+          <div className="text-sm text-muted-foreground">
+            {isBusyDeleting ? (
+              <div className="flex items-center justify-center py-4">
+                <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Checking routines...
+              </div>
+            ) : affectedRoutines.length > 0 ? (
+              <div>
+                <div className="mb-2 font-semibold text-foreground">This exercise is used in {affectedRoutines.length} routine(s):</div>
+                <ScrollArea className="max-h-32 w-full rounded-md border p-2">
+                  <ul className="list-disc pl-5 text-sm">
+                    {affectedRoutines.map(r => <li key={r.id}>{r.name}</li>)}
+                  </ul>
+                </ScrollArea>
+                <div className="mt-3">Deleting this exercise will also <span className="font-bold">remove it from these routines</span>. This action cannot be undone.</div>
+                <div className="mt-1">Are you sure you want to proceed?</div>
+              </div>
+            ) : (
+              <div>
+                This will permanently delete the exercise "{exercises.find(ex => ex.id === exerciseToDeleteId)?.name}". This action cannot be undone.
+              </div>
+            )}
+          </div>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={closeDeleteDialog} disabled={isBusyDeleting}>
               Cancel
