@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -33,7 +33,7 @@ type RoutineFormData = z.infer<typeof routineFormSchema>;
 
 interface AddEditRoutineDialogProps {
   routineToEdit?: Routine | null;
-  onSave: (data: RoutineData, routineId?: string) => Promise<void>;
+  onSave: (data: Omit<RoutineData, 'order'>, routineId?: string) => Promise<void>;
   isOpen: boolean;
   setIsOpen: (open: boolean) => void;
   isSaving: boolean;
@@ -60,6 +60,11 @@ export function AddEditRoutineDialog({
   });
 
   const [selectedExerciseObjects, setSelectedExerciseObjects] = useState<RoutineExercise[]>([]);
+  
+  const exerciseIdMap = useMemo(
+    () => new Map(allUserExercises.map(ex => [ex.id, ex])),
+    [allUserExercises]
+  );
 
   useEffect(() => {
     if (!isOpen) {
@@ -81,7 +86,6 @@ export function AddEditRoutineDialog({
       return;
     }
   
-    const exerciseIdMap = new Map(allUserExercises.map(ex => [ex.id, ex]));
     const hydratedExercises = routineToEdit.exercises.map(routineEx => {
       const fullDef = exerciseIdMap.get(routineEx.id);
       if (fullDef) {
@@ -91,7 +95,7 @@ export function AddEditRoutineDialog({
     });
     setSelectedExerciseObjects(hydratedExercises);
   
-  }, [routineToEdit, reset, isOpen, allUserExercises, isLoadingExercises]);
+  }, [routineToEdit, reset, isOpen, isLoadingExercises, exerciseIdMap]);
 
 
   const handleExerciseSelectionChange = (exerciseId: string, isSelected: boolean) => {
@@ -131,7 +135,7 @@ export function AddEditRoutineDialog({
         });
         return;
     }
-    const routineData: RoutineData = {
+    const routineData: Omit<RoutineData, 'order'> = {
       ...data,
       exercises: validExercises.map(({ isMissing, ...ex }) => ex), 
     };
@@ -194,5 +198,3 @@ export function AddEditRoutineDialog({
     </Dialog>
   );
 }
-
-    

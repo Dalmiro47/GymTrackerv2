@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import type { Routine, RoutineData, Exercise } from '@/types';
 import { PageHeader } from '@/components/PageHeader';
@@ -327,5 +327,3 @@ export default function RoutinesPage() {
     </div>
   );
 }
-
-    
