@@ -8,9 +8,12 @@ import {
   doc, 
   deleteDoc, 
   writeBatch, 
-  setDoc
+  setDoc,
+  query,
+  orderBy,
 } from 'firebase/firestore';
 import { deleteAllPerformanceEntriesForExercise } from './trainingLogService'; 
+import { stripUndefinedDeep } from '@/lib/sanitize';
 
 const getUserExercisesCollectionPath = (userId: string) => `users/${userId}/exercises`;
 
@@ -19,11 +22,8 @@ export const addExercise = async (userId: string, exerciseData: ExerciseData): P
   try {
     const userExercisesColRef = collection(db, getUserExercisesCollectionPath(userId));
     
-    // Explicitly remove undefined fields before saving
-    const dataToSave: { [key: string]: any } = { ...exerciseData };
-    if (dataToSave.warmup === undefined) {
-      delete dataToSave.warmup;
-    }
+    // Sanitize the object to remove any `undefined` values before sending to Firestore
+    const dataToSave = stripUndefinedDeep(exerciseData);
 
     const docRef = await addDoc(userExercisesColRef, dataToSave); 
     return { id: docRef.id, ...dataToSave as ExerciseData };
@@ -48,10 +48,7 @@ export const addDefaultExercisesBatch = async (userId: string, defaultExercisesW
         return;
       }
       
-      const dataToSave: { [key: string]: any } = { ...exercisePayload };
-      if (dataToSave.warmup === undefined) {
-        delete dataToSave.warmup;
-      }
+      const dataToSave = stripUndefinedDeep(exercisePayload);
       
       const exerciseDocRef = doc(userExercisesColRef, id); 
       batch.set(exerciseDocRef, dataToSave); 
@@ -70,7 +67,8 @@ export const getExercises = async (userId: string): Promise<Exercise[]> => {
   if (!userId) throw new Error("User ID is required to get exercises.");
   try {
     const userExercisesColRef = collection(db, getUserExercisesCollectionPath(userId));
-    const querySnapshot = await getDocs(userExercisesColRef);
+    const q = query(userExercisesColRef, orderBy('name'));
+    const querySnapshot = await getDocs(q);
     const exercises: Exercise[] = [];
     querySnapshot.forEach((doc) => {
       exercises.push({ id: doc.id, ...(doc.data() as ExerciseData) });
@@ -88,11 +86,8 @@ export const updateExercise = async (userId: string, exerciseId: string, exercis
   try {
     const exerciseDocRef = doc(db, getUserExercisesCollectionPath(userId), exerciseId);
     
-    // Explicitly remove undefined fields before updating
-    const dataToUpdate: { [key: string]: any } = { ...exerciseData };
-    if (dataToUpdate.warmup === undefined) {
-      delete dataToUpdate.warmup;
-    }
+    // Sanitize the object to remove any `undefined` values before sending to Firestore
+    const dataToUpdate = stripUndefinedDeep(exerciseData);
     
     await setDoc(exerciseDocRef, dataToUpdate, { merge: true });
   } catch (error: any) {

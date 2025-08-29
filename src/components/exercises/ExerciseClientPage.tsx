@@ -10,8 +10,8 @@ import { defaultExercises } from '@/lib/defaultExercises';
 import { useAuth } from '@/contexts/AuthContext';
 import { addExercise, getExercises, updateExercise, deleteExercise as deleteExerciseService, addDefaultExercisesBatch } from '@/services/exerciseService';
 import { getRoutines, updateRoutine } from '@/services/routineService';
-import { inferWarmupTemplate } from '@/lib/utils';
 import { stripUndefinedDeep } from '@/lib/sanitize';
+import { assertMuscleGroup } from '@/lib/muscleGroup';
 
 import { PageHeader } from '@/components/PageHeader';
 import { ExerciseCard } from './ExerciseCard';
@@ -146,6 +146,28 @@ export function ExerciseClientPage() {
         }
     };
   }, [user, fetchUserExercises, toast, authContext.isLoading, hasAttemptedSeedForCurrentUser]);
+  
+  const canonicalExercises = useMemo(() => {
+      return exercises.map(e => ({...e, muscleGroup: assertMuscleGroup(e.muscleGroup as any)}));
+  }, [exercises]);
+
+  const availableMuscleGroups = useMemo(() => {
+    const groups = new Set(canonicalExercises.map(ex => ex.muscleGroup));
+    return MUSCLE_GROUPS_LIST.filter(group => groups.has(group));
+  }, [canonicalExercises]);
+
+  const muscleGroupCounts = useMemo(() => {
+    return availableMuscleGroups.reduce((acc, group) => {
+      acc[group] = canonicalExercises.filter(ex => ex.muscleGroup === group).length;
+      return acc;
+    }, {} as Record<MuscleGroup, number>);
+  }, [canonicalExercises, availableMuscleGroups]);
+
+  useEffect(() => {
+    if (selectedMuscleGroup !== 'All' && !availableMuscleGroups.includes(selectedMuscleGroup)) {
+      setSelectedMuscleGroup('All');
+    }
+  }, [availableMuscleGroups, selectedMuscleGroup]);
 
 
   const isFilteringOrSearching = useMemo(() => {
@@ -155,7 +177,7 @@ export function ExerciseClientPage() {
   const displayedExercises = useMemo(() => {
     if (!isFilteringOrSearching) return [];
 
-    let tempExercises = [...exercises];
+    let tempExercises = [...canonicalExercises];
     if (searchTerm.trim() !== '') {
       tempExercises = tempExercises.filter(ex => ex.name.toLowerCase().includes(searchTerm.toLowerCase().trim()));
     }
@@ -163,12 +185,12 @@ export function ExerciseClientPage() {
       tempExercises = tempExercises.filter(ex => ex.muscleGroup === selectedMuscleGroup);
     }
     return tempExercises;
-  }, [exercises, searchTerm, selectedMuscleGroup, isFilteringOrSearching]);
+  }, [canonicalExercises, searchTerm, selectedMuscleGroup, isFilteringOrSearching]);
 
   const exercisesGroupedByMuscle = useMemo(() => {
     if (isFilteringOrSearching) return [];
-    return groupExercisesByMuscle(exercises, MUSCLE_GROUPS_LIST);
-  }, [exercises, isFilteringOrSearching]);
+    return groupExercisesByMuscle(canonicalExercises, MUSCLE_GROUPS_LIST);
+  }, [canonicalExercises, isFilteringOrSearching]);
 
   const handleOpenAddDialog = () => {
     setExerciseToEdit(null);
@@ -196,11 +218,6 @@ export function ExerciseClientPage() {
         dataAiHint: formData.name.toLowerCase().split(" ").slice(0,2).join(" ") || 'exercise',
         warmup: formData.warmup,
       };
-
-      if (!exercisePayload.warmup) {
-        const { template, isWeightedBodyweight } = inferWarmupTemplate(formData.name);
-        exercisePayload.warmup = { template, isWeightedBodyweight };
-      }
 
       if (exerciseToEdit) {
         await updateExercise(user.id, exerciseToEdit.id, exercisePayload);
@@ -275,7 +292,6 @@ export function ExerciseClientPage() {
     const exerciseName = exercises.find(ex => ex.id === exerciseToDeleteId)?.name || "The exercise";
   
     try {
-      // If there are affected routines, remove the exercise from them first
       if (affectedRoutines.length > 0) {
         await Promise.all(
           affectedRoutines.map(async (routine) => {
@@ -288,7 +304,6 @@ export function ExerciseClientPage() {
               }));
             } catch(err) {
               console.error(`Failed to update routine ${routine.name}`, err);
-              // We can decide to throw or just log. For now, we'll log and continue.
               toast({ title: `Warning: Failed to update routine ${routine.name}`, variant: "destructive"})
             }
           })
@@ -296,7 +311,6 @@ export function ExerciseClientPage() {
         toast({ title: "Routines Updated", description: `${exerciseName} removed from ${affectedRoutines.length} routine(s).` });
       }
   
-      // Now, delete the exercise itself
       await deleteExerciseService(user.id, exerciseToDeleteId);
       toast({ title: "Exercise Deleted", description: `${exerciseName} has been removed from your library.` });
       
@@ -388,8 +402,10 @@ export function ExerciseClientPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="All">All Muscle Groups</SelectItem>
-              {MUSCLE_GROUPS_LIST.map(group => (
-                <SelectItem key={group} value={group}>{group}</SelectItem>
+              {availableMuscleGroups.map(group => (
+                <SelectItem key={group} value={group}>
+                  {group} ({muscleGroupCounts[group] || 0})
+                </SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -451,7 +467,6 @@ export function ExerciseClientPage() {
         )
       : null }
 
-      {/* Delete confirmation dialogs */}
       <AlertDialog open={!!exerciseToDeleteId} onOpenChange={(open) => !open && closeDeleteDialog()}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -460,27 +475,29 @@ export function ExerciseClientPage() {
               Confirm Deletion
             </AlertDialogTitle>
           </AlertDialogHeader>
-          <AlertDialogDescription>
-            {isBusyDeleting ? (
-              <div className="flex items-center justify-center py-4">
-                <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Checking routines...
-              </div>
-            ) : affectedRoutines.length > 0 ? (
-              <>
-                <div className="mb-2 font-semibold text-foreground">This exercise is used in {affectedRoutines.length} routine(s):</div>
-                <ScrollArea className="max-h-32 w-full rounded-md border p-2">
-                  <ul className="list-disc pl-5 text-sm">
-                    {affectedRoutines.map(r => <li key={r.id}>{r.name}</li>)}
-                  </ul>
-                </ScrollArea>
-                <div className="mt-3">Deleting this exercise will also <span className="font-bold">remove it from these routines</span>. This action cannot be undone.</div>
-                <div className="mt-1">Are you sure you want to proceed?</div>
-              </>
-            ) : (
+          <AlertDialogDescription asChild>
               <div>
-                This will permanently delete the exercise "{exercises.find(ex => ex.id === exerciseToDeleteId)?.name}". This action cannot be undone.
+                {isBusyDeleting ? (
+                  <div className="flex items-center justify-center py-4">
+                    <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Checking routines...
+                  </div>
+                ) : affectedRoutines.length > 0 ? (
+                    <div className='space-y-3'>
+                      <div className="font-semibold text-foreground">This exercise is used in {affectedRoutines.length} routine(s):</div>
+                      <ScrollArea className="max-h-32 w-full rounded-md border p-2">
+                        <ul className="list-disc pl-5 text-sm text-muted-foreground">
+                          {affectedRoutines.map(r => <li key={r.id}>{r.name}</li>)}
+                        </ul>
+                      </ScrollArea>
+                      <div>Deleting this exercise will also <span className="font-bold">remove it from these routines</span>.</div>
+                      <div>Are you sure you want to proceed?</div>
+                    </div>
+                ) : (
+                  <div>
+                    This will permanently delete the exercise "{exercises.find(ex => ex.id === exerciseToDeleteId)?.name}".
+                  </div>
+                )}
               </div>
-            )}
           </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={closeDeleteDialog} disabled={isBusyDeleting}>
@@ -499,5 +516,3 @@ export function ExerciseClientPage() {
     </>
   );
 }
-
-    
