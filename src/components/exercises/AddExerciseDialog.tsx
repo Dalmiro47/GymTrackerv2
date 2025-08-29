@@ -94,7 +94,7 @@ export function AddExerciseDialog({
     if (exerciseToEdit) {
       reset({
         name: exerciseToEdit.name,
-        muscleGroup: exerciseToEdit.muscleGroup,
+        muscleGroup: assertMuscleGroup(exerciseToEdit.muscleGroup as any),
         targetNotes: exerciseToEdit.targetNotes ?? '',
         exerciseSetup: exerciseToEdit.exerciseSetup ?? '',
         warmup: exerciseToEdit.warmup,
