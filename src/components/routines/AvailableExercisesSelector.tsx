@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import type { Exercise, MuscleGroup } from '@/types';
 import { MUSCLE_GROUPS_LIST } from '@/lib/constants';
 import { Input } from '@/components/ui/input';
@@ -29,9 +29,22 @@ export function AvailableExercisesSelector({
 
   const availableMuscleGroups = useMemo(() => {
     const groups = new Set(allExercises.map(ex => ex.muscleGroup));
-    // Order the groups based on the main constant list for consistency
     return MUSCLE_GROUPS_LIST.filter(group => groups.has(group));
   }, [allExercises]);
+  
+  const muscleGroupCounts = useMemo(() => {
+    return availableMuscleGroups.reduce((acc, group) => {
+      acc[group] = allExercises.filter(ex => ex.muscleGroup === group).length;
+      return acc;
+    }, {} as Record<MuscleGroup, number>);
+  }, [allExercises, availableMuscleGroups]);
+
+  useEffect(() => {
+    if (selectedMuscleGroup !== 'All' && !availableMuscleGroups.includes(selectedMuscleGroup)) {
+      setSelectedMuscleGroup('All');
+    }
+  }, [availableMuscleGroups, selectedMuscleGroup]);
+
 
   const filteredExercises = useMemo(() => {
     let tempExercises = [...allExercises];
@@ -65,13 +78,15 @@ export function AvailableExercisesSelector({
             value={selectedMuscleGroup}
             onValueChange={(value) => setSelectedMuscleGroup(value as MuscleGroup | 'All')}
           >
-            <SelectTrigger className="w-full pl-9">
+            <SelectTrigger className="w-full pl-9" aria-label="Filter by muscle group">
               <SelectValue placeholder="Filter by muscle group" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="All">All Muscle Groups</SelectItem>
               {availableMuscleGroups.map(group => (
-                <SelectItem key={group} value={group}>{group}</SelectItem>
+                <SelectItem key={group} value={group}>
+                  {group} ({muscleGroupCounts[group] || 0})
+                </SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -84,6 +99,7 @@ export function AvailableExercisesSelector({
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-9"
+            aria-label="Search exercises"
           />
         </div>
       </div>

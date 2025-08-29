@@ -152,6 +152,20 @@ export function ExerciseClientPage() {
     return MUSCLE_GROUPS_LIST.filter(group => groups.has(group));
   }, [exercises]);
 
+  const muscleGroupCounts = useMemo(() => {
+    return availableMuscleGroups.reduce((acc, group) => {
+      acc[group] = exercises.filter(ex => ex.muscleGroup === group).length;
+      return acc;
+    }, {} as Record<MuscleGroup, number>);
+  }, [exercises, availableMuscleGroups]);
+
+  useEffect(() => {
+    if (selectedMuscleGroup !== 'All' && !availableMuscleGroups.includes(selectedMuscleGroup)) {
+      setSelectedMuscleGroup('All');
+    }
+  }, [availableMuscleGroups, selectedMuscleGroup]);
+
+
   const isFilteringOrSearching = useMemo(() => {
     return searchTerm.trim() !== '' || selectedMuscleGroup !== 'All';
   }, [searchTerm, selectedMuscleGroup]);
@@ -279,7 +293,6 @@ export function ExerciseClientPage() {
     const exerciseName = exercises.find(ex => ex.id === exerciseToDeleteId)?.name || "The exercise";
   
     try {
-      // If there are affected routines, remove the exercise from them first
       if (affectedRoutines.length > 0) {
         await Promise.all(
           affectedRoutines.map(async (routine) => {
@@ -292,7 +305,6 @@ export function ExerciseClientPage() {
               }));
             } catch(err) {
               console.error(`Failed to update routine ${routine.name}`, err);
-              // We can decide to throw or just log. For now, we'll log and continue.
               toast({ title: `Warning: Failed to update routine ${routine.name}`, variant: "destructive"})
             }
           })
@@ -300,7 +312,6 @@ export function ExerciseClientPage() {
         toast({ title: "Routines Updated", description: `${exerciseName} removed from ${affectedRoutines.length} routine(s).` });
       }
   
-      // Now, delete the exercise itself
       await deleteExerciseService(user.id, exerciseToDeleteId);
       toast({ title: "Exercise Deleted", description: `${exerciseName} has been removed from your library.` });
       
@@ -393,7 +404,9 @@ export function ExerciseClientPage() {
             <SelectContent>
               <SelectItem value="All">All Muscle Groups</SelectItem>
               {availableMuscleGroups.map(group => (
-                <SelectItem key={group} value={group}>{group}</SelectItem>
+                <SelectItem key={group} value={group}>
+                  {group} ({muscleGroupCounts[group] || 0})
+                </SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -463,28 +476,31 @@ export function ExerciseClientPage() {
               Confirm Deletion
             </AlertDialogTitle>
           </AlertDialogHeader>
-          <AlertDialogDescription>
-            This action cannot be undone.
-          </AlertDialogDescription>
           {isBusyDeleting ? (
             <div className="flex items-center justify-center py-4">
               <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Checking routines...
             </div>
-          ) : affectedRoutines.length > 0 ? (
-            <div className='text-sm text-muted-foreground'>
-              <div className="mb-2 font-semibold text-foreground">This exercise is used in {affectedRoutines.length} routine(s):</div>
-              <ScrollArea className="max-h-32 w-full rounded-md border p-2">
-                <ul className="list-disc pl-5 text-sm">
-                  {affectedRoutines.map(r => <li key={r.id}>{r.name}</li>)}
-                </ul>
-              </ScrollArea>
-              <div className="mt-3">Deleting this exercise will also <span className="font-bold">remove it from these routines</span>.</div>
-              <div className="mt-1">Are you sure you want to proceed?</div>
-            </div>
           ) : (
-            <div className='text-sm text-muted-foreground'>
-              This will permanently delete the exercise "{exercises.find(ex => ex.id === exerciseToDeleteId)?.name}".
-            </div>
+            <AlertDialogDescription asChild>
+              <div>
+                {affectedRoutines.length > 0 ? (
+                  <div className='text-sm text-muted-foreground space-y-3'>
+                    <div className="font-semibold text-foreground">This exercise is used in {affectedRoutines.length} routine(s):</div>
+                    <ScrollArea className="max-h-32 w-full rounded-md border p-2">
+                      <ul className="list-disc pl-5 text-sm">
+                        {affectedRoutines.map(r => <li key={r.id}>{r.name}</li>)}
+                      </ul>
+                    </ScrollArea>
+                    <div>Deleting this exercise will also <span className="font-bold">remove it from these routines</span>.</div>
+                    <div>Are you sure you want to proceed?</div>
+                  </div>
+                ) : (
+                  <div>
+                    This will permanently delete the exercise "{exercises.find(ex => ex.id === exerciseToDeleteId)?.name}".
+                  </div>
+                )}
+              </div>
+            </AlertDialogDescription>
           )}
           <AlertDialogFooter>
             <AlertDialogCancel onClick={closeDeleteDialog} disabled={isBusyDeleting}>

@@ -1,6 +1,7 @@
+
 "use client";
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import type { Exercise, MuscleGroup } from '@/types';
 import { MUSCLE_GROUPS_LIST } from '@/lib/constants';
 import { Button } from '@/components/ui/button';
@@ -13,7 +14,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Search, Filter, Loader2 } from 'lucide-react';
@@ -38,9 +38,28 @@ export function AddExerciseDialog({
 
   const availableMuscleGroups = useMemo(() => {
     const groups = new Set(availableExercises.map(ex => ex.muscleGroup));
-    // Order the groups based on the main constant list for consistency
     return MUSCLE_GROUPS_LIST.filter(group => groups.has(group));
   }, [availableExercises]);
+
+  const muscleGroupCounts = useMemo(() => {
+    return availableMuscleGroups.reduce((acc, group) => {
+      acc[group] = availableExercises.filter(ex => ex.muscleGroup === group).length;
+      return acc;
+    }, {} as Record<MuscleGroup, number>);
+  }, [availableExercises, availableMuscleGroups]);
+
+  useEffect(() => {
+    if (selectedMuscleGroup !== 'All' && !availableMuscleGroups.includes(selectedMuscleGroup)) {
+      setSelectedMuscleGroup('All');
+    }
+  }, [availableMuscleGroups, selectedMuscleGroup]);
+  
+  useEffect(() => {
+    if (!isOpen) {
+      setSearchTerm('');
+      setSelectedMuscleGroup('All');
+    }
+  }, [isOpen]);
 
   const filteredExercises = useMemo(() => {
     let tempExercises = [...availableExercises];
@@ -57,10 +76,7 @@ export function AddExerciseDialog({
 
   const handleSelectExercise = (exercise: Exercise) => {
     onAddExercise(exercise);
-    setIsOpen(false); // Close dialog after selection
-    // Reset filters for next time
-    setSearchTerm('');
-    setSelectedMuscleGroup('All');
+    setIsOpen(false);
   };
 
   return (
@@ -79,13 +95,15 @@ export function AddExerciseDialog({
                 onValueChange={(value) => setSelectedMuscleGroup(value as MuscleGroup | 'All')}
                 disabled={isLoadingExercises}
               >
-                <SelectTrigger className="w-full pl-9">
+                <SelectTrigger className="w-full pl-9" aria-label="Filter by muscle group">
                   <SelectValue placeholder="Filter by muscle group" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="All">All Muscle Groups</SelectItem>
                   {availableMuscleGroups.map(group => (
-                    <SelectItem key={group} value={group}>{group}</SelectItem>
+                    <SelectItem key={group} value={group}>
+                      {group} ({muscleGroupCounts[group] || 0})
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -99,6 +117,7 @@ export function AddExerciseDialog({
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full pl-9"
                 disabled={isLoadingExercises}
+                aria-label="Search exercises"
               />
             </div>
           </div>
