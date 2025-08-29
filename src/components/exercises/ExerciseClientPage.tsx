@@ -212,7 +212,9 @@ export function ExerciseClientPage() {
           );
           await Promise.all(affected.map(r =>
             updateRoutine(user.id!, r.id, {
-              ...r,
+              name: r.name,
+              description: r.description,
+              order: r.order,
               exercises: r.exercises.map(e =>
                 e.id === exerciseToEdit.id ? { ...e, name: formData.name } : e
               ),
@@ -276,11 +278,11 @@ export function ExerciseClientPage() {
       if (affectedRoutines.length > 0) {
         await Promise.all(
           affectedRoutines.map(async (routine) => {
-            const updatedExercises = { exercises: routine.exercises.filter(e => e.id !== exerciseToDeleteId) };
             try {
-              // Pass the entire routine object for the update to ensure no data is lost
               await updateRoutine(user.id!, routine.id, {
-                ...routine,
+                name: routine.name,
+                description: routine.description,
+                order: routine.order,
                 exercises: routine.exercises.filter(e => e.id !== exerciseToDeleteId),
               });
             } catch(err) {
