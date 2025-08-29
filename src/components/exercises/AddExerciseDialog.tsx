@@ -292,5 +292,3 @@ export function AddExerciseDialog({
     </Dialog>
   );
 }
-
-    
