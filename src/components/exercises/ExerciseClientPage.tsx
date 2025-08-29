@@ -147,6 +147,10 @@ export function ExerciseClientPage() {
     };
   }, [user, fetchUserExercises, toast, authContext.isLoading, hasAttemptedSeedForCurrentUser]);
 
+  const availableMuscleGroups = useMemo(() => {
+    const groups = new Set(exercises.map(ex => ex.muscleGroup));
+    return MUSCLE_GROUPS_LIST.filter(group => groups.has(group));
+  }, [exercises]);
 
   const isFilteringOrSearching = useMemo(() => {
     return searchTerm.trim() !== '' || selectedMuscleGroup !== 'All';
@@ -388,7 +392,7 @@ export function ExerciseClientPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="All">All Muscle Groups</SelectItem>
-              {MUSCLE_GROUPS_LIST.map(group => (
+              {availableMuscleGroups.map(group => (
                 <SelectItem key={group} value={group}>{group}</SelectItem>
               ))}
             </SelectContent>
@@ -451,7 +455,6 @@ export function ExerciseClientPage() {
         )
       : null }
 
-      {/* Delete confirmation dialogs */}
       <AlertDialog open={!!exerciseToDeleteId} onOpenChange={(open) => !open && closeDeleteDialog()}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -461,27 +464,28 @@ export function ExerciseClientPage() {
             </AlertDialogTitle>
           </AlertDialogHeader>
           <AlertDialogDescription>
-            {isBusyDeleting ? (
-              <div className="flex items-center justify-center py-4">
-                <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Checking routines...
-              </div>
-            ) : affectedRoutines.length > 0 ? (
-              <>
-                <div className="mb-2 font-semibold text-foreground">This exercise is used in {affectedRoutines.length} routine(s):</div>
-                <ScrollArea className="max-h-32 w-full rounded-md border p-2">
-                  <ul className="list-disc pl-5 text-sm">
-                    {affectedRoutines.map(r => <li key={r.id}>{r.name}</li>)}
-                  </ul>
-                </ScrollArea>
-                <div className="mt-3">Deleting this exercise will also <span className="font-bold">remove it from these routines</span>. This action cannot be undone.</div>
-                <div className="mt-1">Are you sure you want to proceed?</div>
-              </>
-            ) : (
-              <div>
-                This will permanently delete the exercise "{exercises.find(ex => ex.id === exerciseToDeleteId)?.name}". This action cannot be undone.
-              </div>
-            )}
+            This action cannot be undone.
           </AlertDialogDescription>
+          {isBusyDeleting ? (
+            <div className="flex items-center justify-center py-4">
+              <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Checking routines...
+            </div>
+          ) : affectedRoutines.length > 0 ? (
+            <div className='text-sm text-muted-foreground'>
+              <div className="mb-2 font-semibold text-foreground">This exercise is used in {affectedRoutines.length} routine(s):</div>
+              <ScrollArea className="max-h-32 w-full rounded-md border p-2">
+                <ul className="list-disc pl-5 text-sm">
+                  {affectedRoutines.map(r => <li key={r.id}>{r.name}</li>)}
+                </ul>
+              </ScrollArea>
+              <div className="mt-3">Deleting this exercise will also <span className="font-bold">remove it from these routines</span>.</div>
+              <div className="mt-1">Are you sure you want to proceed?</div>
+            </div>
+          ) : (
+            <div className='text-sm text-muted-foreground'>
+              This will permanently delete the exercise "{exercises.find(ex => ex.id === exerciseToDeleteId)?.name}".
+            </div>
+          )}
           <AlertDialogFooter>
             <AlertDialogCancel onClick={closeDeleteDialog} disabled={isBusyDeleting}>
               Cancel
@@ -499,5 +503,3 @@ export function ExerciseClientPage() {
     </>
   );
 }
-
-    
