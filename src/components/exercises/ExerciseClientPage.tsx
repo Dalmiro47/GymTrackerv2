@@ -213,7 +213,7 @@ export function ExerciseClientPage() {
           await Promise.all(affected.map(r =>
             updateRoutine(user.id!, r.id, {
               name: r.name,
-              description: r.description,
+              description: r.description ?? '',
               order: r.order,
               exercises: r.exercises.map(e =>
                 e.id === exerciseToEdit.id ? { ...e, name: formData.name } : e
@@ -281,7 +281,7 @@ export function ExerciseClientPage() {
             try {
               await updateRoutine(user.id!, routine.id, {
                 name: routine.name,
-                description: routine.description,
+                description: routine.description ?? '',
                 order: routine.order,
                 exercises: routine.exercises.filter(e => e.id !== exerciseToDeleteId),
               });
@@ -498,3 +498,5 @@ export function ExerciseClientPage() {
     </>
   );
 }
+
+    

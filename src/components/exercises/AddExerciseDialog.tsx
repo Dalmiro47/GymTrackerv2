@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect } from 'react';
@@ -6,7 +7,6 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import type { Exercise, MuscleGroup, WarmupTemplate } from '@/types';
 import { MUSCLE_GROUPS_LIST, WARMUP_TEMPLATES } from '@/lib/constants';
-import { inferWarmupTemplate } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -239,7 +239,17 @@ export function AddExerciseDialog({
                     />
                     </div>
                     <div className="flex items-center space-x-2">
-                    <Controller name="warmup.isWeightedBodyweight" control={control} render={({ field }) => <Checkbox id="warmup.isWeightedBodyweight" checked={field.value} onCheckedChange={field.onChange} />} />
+                    <Controller
+                        name="warmup.isWeightedBodyweight"
+                        control={control}
+                        render={({ field }) => (
+                            <Checkbox
+                            id="warmup.isWeightedBodyweight"
+                            checked={!!field.value}
+                            onCheckedChange={(v) => field.onChange(!!v)}
+                            />
+                        )}
+                        />
                     <Label htmlFor="warmup.isWeightedBodyweight">Weighted bodyweight</Label>
                     </div>
 
@@ -282,3 +292,5 @@ export function AddExerciseDialog({
     </Dialog>
   );
 }
+
+    
