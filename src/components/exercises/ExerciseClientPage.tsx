@@ -196,7 +196,7 @@ export function ExerciseClientPage() {
         warmup: formData.warmup,
       };
 
-      if (!exerciseToEdit && !exercisePayload.warmup) {
+      if (!exercisePayload.warmup) {
         const { template, isWeightedBodyweight } = inferWarmupTemplate(formData.name);
         exercisePayload.warmup = { template, isWeightedBodyweight };
       }
@@ -204,6 +204,22 @@ export function ExerciseClientPage() {
       if (exerciseToEdit) {
         await updateExercise(user.id, exerciseToEdit.id, exercisePayload);
         toast({ title: "Exercise Updated", description: `${formData.name} has been successfully updated.` });
+
+        if (exerciseToEdit.name !== formData.name) {
+          const routines = await getRoutines(user.id);
+          const affected = routines.filter(r =>
+            r.exercises.some(e => e.id === exerciseToEdit.id && e.name !== formData.name)
+          );
+          await Promise.all(affected.map(r =>
+            updateRoutine(user.id!, r.id, {
+              ...r,
+              exercises: r.exercises.map(e =>
+                e.id === exerciseToEdit.id ? { ...e, name: formData.name } : e
+              ),
+            })
+          ));
+        }
+
       } else {
         await addExercise(user.id, exercisePayload);
         toast({ title: "Exercise Added", description: `${formData.name} has been successfully added.` });
