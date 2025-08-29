@@ -10,6 +10,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Search, Filter, Loader2 } from 'lucide-react';
+import { assertMuscleGroup } from '@/lib/muscleGroup';
 
 interface AvailableExercisesSelectorProps {
   allExercises: Exercise[];
@@ -26,18 +27,22 @@ export function AvailableExercisesSelector({
 }: AvailableExercisesSelectorProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedMuscleGroup, setSelectedMuscleGroup] = useState<MuscleGroup | 'All'>('All');
+  
+  const canonicalExercises = useMemo(() => {
+      return allExercises.map(e => ({...e, muscleGroup: assertMuscleGroup(e.muscleGroup as any)}));
+  }, [allExercises]);
 
   const availableMuscleGroups = useMemo(() => {
-    const groups = new Set(allExercises.map(ex => ex.muscleGroup));
+    const groups = new Set(canonicalExercises.map(ex => ex.muscleGroup));
     return MUSCLE_GROUPS_LIST.filter(group => groups.has(group));
-  }, [allExercises]);
+  }, [canonicalExercises]);
   
   const muscleGroupCounts = useMemo(() => {
     return availableMuscleGroups.reduce((acc, group) => {
-      acc[group] = allExercises.filter(ex => ex.muscleGroup === group).length;
+      acc[group] = canonicalExercises.filter(ex => ex.muscleGroup === group).length;
       return acc;
     }, {} as Record<MuscleGroup, number>);
-  }, [allExercises, availableMuscleGroups]);
+  }, [canonicalExercises, availableMuscleGroups]);
 
   useEffect(() => {
     if (selectedMuscleGroup !== 'All' && !availableMuscleGroups.includes(selectedMuscleGroup)) {
@@ -47,7 +52,7 @@ export function AvailableExercisesSelector({
 
 
   const filteredExercises = useMemo(() => {
-    let tempExercises = [...allExercises];
+    let tempExercises = [...canonicalExercises];
     if (searchTerm.trim() !== '') {
       tempExercises = tempExercises.filter(ex =>
         ex.name.toLowerCase().includes(searchTerm.toLowerCase().trim())
@@ -57,7 +62,7 @@ export function AvailableExercisesSelector({
       tempExercises = tempExercises.filter(ex => ex.muscleGroup === selectedMuscleGroup);
     }
     return tempExercises;
-  }, [allExercises, searchTerm, selectedMuscleGroup]);
+  }, [canonicalExercises, searchTerm, selectedMuscleGroup]);
 
   if (isLoadingExercises) {
     return (

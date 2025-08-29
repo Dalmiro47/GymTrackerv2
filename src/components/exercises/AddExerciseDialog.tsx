@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect } from 'react';
-import { useForm, Controller, useFieldArray } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import type { Exercise, MuscleGroup, WarmupTemplate } from '@/types';
@@ -26,6 +26,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { Trash2, PlusCircle, Info } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useFormField, Form, FormItem, FormLabel, FormControl, FormMessage, FormField } from '@/components/ui/form';
+import { assertMuscleGroup } from '@/lib/muscleGroup';
 
 
 const warmupStepSchema = z.object({
@@ -37,9 +38,14 @@ const warmupStepSchema = z.object({
   note: z.string().optional(),
 });
 
+const muscleGroupSchema = z.preprocess(
+  (v) => (typeof v === 'string' ? assertMuscleGroup(v) : v),
+  z.enum(MUSCLE_GROUPS_LIST, { message: 'Please select a muscle group' })
+);
+
 const exerciseFormSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
-  muscleGroup: z.enum(MUSCLE_GROUPS_LIST, { message: "Please select a muscle group" }),
+  muscleGroup: muscleGroupSchema,
   targetNotes: z.string().optional(),
   exerciseSetup: z.string().optional(),
   warmup: z.object({
@@ -80,12 +86,7 @@ export function AddExerciseDialog({
         },
     });
 
-  const { control, register, handleSubmit, reset, formState: { errors } } = form;
-
-  const { fields, append, remove } = useFieldArray({
-    control,
-    name: "warmup.overrideSteps"
-  });
+  const { control, handleSubmit, reset } = form;
 
   useEffect(() => {
     if (!isOpen) return;
@@ -252,28 +253,6 @@ export function AddExerciseDialog({
                         />
                     <Label htmlFor="warmup.isWeightedBodyweight">Weighted bodyweight</Label>
                     </div>
-
-                    <Accordion type="single" collapsible className="w-full">
-                    <AccordionItem value="override-steps">
-                        <AccordionTrigger>Customize Steps (Advanced)</AccordionTrigger>
-                        <AccordionContent className="space-y-2">
-                        {fields.map((field, index) => (
-                            <div key={field.id} className="grid grid-cols-4 gap-2 border p-2 rounded-md">
-                            <Input {...register(`warmup.overrideSteps.${index}.reps`)} placeholder="Reps" />
-                            <Input {...register(`warmup.overrideSteps.${index}.rest`)} placeholder="Rest" />
-                            <Input {...register(`warmup.overrideSteps.${index}.percent`, { valueAsNumber: true })} placeholder="Percent (0.5)" type="number" step="0.01" />
-                            <Button type="button" variant="ghost" size="icon" onClick={() => remove(index)}>
-                                <Trash2 className="h-4 w-4" />
-                            </Button>
-                            </div>
-                        ))}
-                        <Button type="button" variant="outline" size="sm" onClick={() => append({ type: 'PERCENT', reps: '8', rest: '60s', percent: 0.5 })}>
-                            <PlusCircle className="mr-2 h-4 w-4"/> Add Step
-                        </Button>
-                        </AccordionContent>
-                    </AccordionItem>
-                    </Accordion>
-
                 </AccordionContent>
                 </AccordionItem>
             </Accordion>

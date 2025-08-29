@@ -10,8 +10,8 @@ import { defaultExercises } from '@/lib/defaultExercises';
 import { useAuth } from '@/contexts/AuthContext';
 import { addExercise, getExercises, updateExercise, deleteExercise as deleteExerciseService, addDefaultExercisesBatch } from '@/services/exerciseService';
 import { getRoutines, updateRoutine } from '@/services/routineService';
-import { inferWarmupTemplate } from '@/lib/utils';
 import { stripUndefinedDeep } from '@/lib/sanitize';
+import { assertMuscleGroup } from '@/lib/muscleGroup';
 
 import { PageHeader } from '@/components/PageHeader';
 import { ExerciseCard } from './ExerciseCard';
@@ -146,18 +146,22 @@ export function ExerciseClientPage() {
         }
     };
   }, [user, fetchUserExercises, toast, authContext.isLoading, hasAttemptedSeedForCurrentUser]);
+  
+  const canonicalExercises = useMemo(() => {
+      return exercises.map(e => ({...e, muscleGroup: assertMuscleGroup(e.muscleGroup as any)}));
+  }, [exercises]);
 
   const availableMuscleGroups = useMemo(() => {
-    const groups = new Set(exercises.map(ex => ex.muscleGroup));
+    const groups = new Set(canonicalExercises.map(ex => ex.muscleGroup));
     return MUSCLE_GROUPS_LIST.filter(group => groups.has(group));
-  }, [exercises]);
+  }, [canonicalExercises]);
 
   const muscleGroupCounts = useMemo(() => {
     return availableMuscleGroups.reduce((acc, group) => {
-      acc[group] = exercises.filter(ex => ex.muscleGroup === group).length;
+      acc[group] = canonicalExercises.filter(ex => ex.muscleGroup === group).length;
       return acc;
     }, {} as Record<MuscleGroup, number>);
-  }, [exercises, availableMuscleGroups]);
+  }, [canonicalExercises, availableMuscleGroups]);
 
   useEffect(() => {
     if (selectedMuscleGroup !== 'All' && !availableMuscleGroups.includes(selectedMuscleGroup)) {
@@ -173,7 +177,7 @@ export function ExerciseClientPage() {
   const displayedExercises = useMemo(() => {
     if (!isFilteringOrSearching) return [];
 
-    let tempExercises = [...exercises];
+    let tempExercises = [...canonicalExercises];
     if (searchTerm.trim() !== '') {
       tempExercises = tempExercises.filter(ex => ex.name.toLowerCase().includes(searchTerm.toLowerCase().trim()));
     }
@@ -181,12 +185,12 @@ export function ExerciseClientPage() {
       tempExercises = tempExercises.filter(ex => ex.muscleGroup === selectedMuscleGroup);
     }
     return tempExercises;
-  }, [exercises, searchTerm, selectedMuscleGroup, isFilteringOrSearching]);
+  }, [canonicalExercises, searchTerm, selectedMuscleGroup, isFilteringOrSearching]);
 
   const exercisesGroupedByMuscle = useMemo(() => {
     if (isFilteringOrSearching) return [];
-    return groupExercisesByMuscle(exercises, MUSCLE_GROUPS_LIST);
-  }, [exercises, isFilteringOrSearching]);
+    return groupExercisesByMuscle(canonicalExercises, MUSCLE_GROUPS_LIST);
+  }, [canonicalExercises, isFilteringOrSearching]);
 
   const handleOpenAddDialog = () => {
     setExerciseToEdit(null);
@@ -214,11 +218,6 @@ export function ExerciseClientPage() {
         dataAiHint: formData.name.toLowerCase().split(" ").slice(0,2).join(" ") || 'exercise',
         warmup: formData.warmup,
       };
-
-      if (!exercisePayload.warmup) {
-        const { template, isWeightedBodyweight } = inferWarmupTemplate(formData.name);
-        exercisePayload.warmup = { template, isWeightedBodyweight };
-      }
 
       if (exerciseToEdit) {
         await updateExercise(user.id, exerciseToEdit.id, exercisePayload);
@@ -476,32 +475,30 @@ export function ExerciseClientPage() {
               Confirm Deletion
             </AlertDialogTitle>
           </AlertDialogHeader>
-          {isBusyDeleting ? (
-            <div className="flex items-center justify-center py-4">
-              <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Checking routines...
-            </div>
-          ) : (
-            <AlertDialogDescription asChild>
+          <AlertDialogDescription asChild>
               <div>
-                {affectedRoutines.length > 0 ? (
-                  <div className='text-sm text-muted-foreground space-y-3'>
-                    <div className="font-semibold text-foreground">This exercise is used in {affectedRoutines.length} routine(s):</div>
-                    <ScrollArea className="max-h-32 w-full rounded-md border p-2">
-                      <ul className="list-disc pl-5 text-sm">
-                        {affectedRoutines.map(r => <li key={r.id}>{r.name}</li>)}
-                      </ul>
-                    </ScrollArea>
-                    <div>Deleting this exercise will also <span className="font-bold">remove it from these routines</span>.</div>
-                    <div>Are you sure you want to proceed?</div>
+                {isBusyDeleting ? (
+                  <div className="flex items-center justify-center py-4">
+                    <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Checking routines...
                   </div>
+                ) : affectedRoutines.length > 0 ? (
+                    <div className='space-y-3'>
+                      <div className="font-semibold text-foreground">This exercise is used in {affectedRoutines.length} routine(s):</div>
+                      <ScrollArea className="max-h-32 w-full rounded-md border p-2">
+                        <ul className="list-disc pl-5 text-sm text-muted-foreground">
+                          {affectedRoutines.map(r => <li key={r.id}>{r.name}</li>)}
+                        </ul>
+                      </ScrollArea>
+                      <div>Deleting this exercise will also <span className="font-bold">remove it from these routines</span>.</div>
+                      <div>Are you sure you want to proceed?</div>
+                    </div>
                 ) : (
                   <div>
                     This will permanently delete the exercise "{exercises.find(ex => ex.id === exerciseToDeleteId)?.name}".
                   </div>
                 )}
               </div>
-            </AlertDialogDescription>
-          )}
+          </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={closeDeleteDialog} disabled={isBusyDeleting}>
               Cancel

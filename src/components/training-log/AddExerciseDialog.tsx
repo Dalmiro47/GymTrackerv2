@@ -17,6 +17,7 @@ import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Search, Filter, Loader2 } from 'lucide-react';
+import { assertMuscleGroup } from '@/lib/muscleGroup';
 
 interface AddExerciseDialogProps {
   isOpen: boolean;
@@ -35,18 +36,22 @@ export function AddExerciseDialog({
 }: AddExerciseDialogProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedMuscleGroup, setSelectedMuscleGroup] = useState<MuscleGroup | 'All'>('All');
+  
+  const canonicalExercises = useMemo(() => {
+      return availableExercises.map(e => ({...e, muscleGroup: assertMuscleGroup(e.muscleGroup as any)}));
+  }, [availableExercises]);
 
   const availableMuscleGroups = useMemo(() => {
-    const groups = new Set(availableExercises.map(ex => ex.muscleGroup));
+    const groups = new Set(canonicalExercises.map(ex => ex.muscleGroup));
     return MUSCLE_GROUPS_LIST.filter(group => groups.has(group));
-  }, [availableExercises]);
+  }, [canonicalExercises]);
 
   const muscleGroupCounts = useMemo(() => {
     return availableMuscleGroups.reduce((acc, group) => {
-      acc[group] = availableExercises.filter(ex => ex.muscleGroup === group).length;
+      acc[group] = canonicalExercises.filter(ex => ex.muscleGroup === group).length;
       return acc;
     }, {} as Record<MuscleGroup, number>);
-  }, [availableExercises, availableMuscleGroups]);
+  }, [canonicalExercises, availableMuscleGroups]);
 
   useEffect(() => {
     if (selectedMuscleGroup !== 'All' && !availableMuscleGroups.includes(selectedMuscleGroup)) {
@@ -62,7 +67,7 @@ export function AddExerciseDialog({
   }, [isOpen]);
 
   const filteredExercises = useMemo(() => {
-    let tempExercises = [...availableExercises];
+    let tempExercises = [...canonicalExercises];
     if (searchTerm.trim() !== '') {
       tempExercises = tempExercises.filter(ex =>
         ex.name.toLowerCase().includes(searchTerm.toLowerCase().trim())
@@ -72,7 +77,7 @@ export function AddExerciseDialog({
       tempExercises = tempExercises.filter(ex => ex.muscleGroup === selectedMuscleGroup);
     }
     return tempExercises;
-  }, [availableExercises, searchTerm, selectedMuscleGroup]);
+  }, [canonicalExercises, searchTerm, selectedMuscleGroup]);
 
   const handleSelectExercise = (exercise: Exercise) => {
     onAddExercise(exercise);
