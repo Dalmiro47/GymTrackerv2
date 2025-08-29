@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useMemo } from 'react';
@@ -36,6 +35,12 @@ export function AddExerciseDialog({
 }: AddExerciseDialogProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedMuscleGroup, setSelectedMuscleGroup] = useState<MuscleGroup | 'All'>('All');
+
+  const availableMuscleGroups = useMemo(() => {
+    const groups = new Set(availableExercises.map(ex => ex.muscleGroup));
+    // Order the groups based on the main constant list for consistency
+    return MUSCLE_GROUPS_LIST.filter(group => groups.has(group));
+  }, [availableExercises]);
 
   const filteredExercises = useMemo(() => {
     let tempExercises = [...availableExercises];
@@ -79,7 +84,7 @@ export function AddExerciseDialog({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="All">All Muscle Groups</SelectItem>
-                  {MUSCLE_GROUPS_LIST.map(group => (
+                  {availableMuscleGroups.map(group => (
                     <SelectItem key={group} value={group}>{group}</SelectItem>
                   ))}
                 </SelectContent>
