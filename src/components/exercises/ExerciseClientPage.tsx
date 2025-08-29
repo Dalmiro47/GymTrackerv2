@@ -11,6 +11,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { addExercise, getExercises, updateExercise, deleteExercise as deleteExerciseService, addDefaultExercisesBatch } from '@/services/exerciseService';
 import { getRoutines, updateRoutine } from '@/services/routineService';
 import { inferWarmupTemplate } from '@/lib/utils';
+import { stripUndefinedDeep } from '@/lib/sanitize';
 
 import { PageHeader } from '@/components/PageHeader';
 import { ExerciseCard } from './ExerciseCard';
@@ -196,7 +197,7 @@ export function ExerciseClientPage() {
         warmup: formData.warmup,
       };
 
-      if (!exerciseToEdit && !exercisePayload.warmup) {
+      if (!exercisePayload.warmup) {
         const { template, isWeightedBodyweight } = inferWarmupTemplate(formData.name);
         exercisePayload.warmup = { template, isWeightedBodyweight };
       }
@@ -204,6 +205,24 @@ export function ExerciseClientPage() {
       if (exerciseToEdit) {
         await updateExercise(user.id, exerciseToEdit.id, exercisePayload);
         toast({ title: "Exercise Updated", description: `${formData.name} has been successfully updated.` });
+
+        if (exerciseToEdit.name !== formData.name) {
+          const routines = await getRoutines(user.id);
+          const affected = routines.filter(r =>
+            r.exercises.some(e => e.id === exerciseToEdit.id && e.name !== formData.name)
+          );
+          await Promise.all(affected.map(r =>
+            updateRoutine(user.id!, r.id, stripUndefinedDeep({
+              name: r.name,
+              description: r.description ?? '',
+              order: r.order,
+              exercises: r.exercises.map(e =>
+                e.id === exerciseToEdit.id ? { ...e, name: formData.name } : e
+              ),
+            }))
+          ));
+        }
+
       } else {
         await addExercise(user.id, exercisePayload);
         toast({ title: "Exercise Added", description: `${formData.name} has been successfully added.` });
@@ -251,18 +270,22 @@ export function ExerciseClientPage() {
       toast({ title: "Error", description: "Could not delete exercise. User or Exercise ID missing.", variant: "destructive" });
       return;
     }
-
+  
     setIsBusyDeleting(true);
     const exerciseName = exercises.find(ex => ex.id === exerciseToDeleteId)?.name || "The exercise";
-
+  
     try {
       // If there are affected routines, remove the exercise from them first
       if (affectedRoutines.length > 0) {
         await Promise.all(
           affectedRoutines.map(async (routine) => {
-            const updatedExercises = { exercises: routine.exercises.filter(e => e.id !== exerciseToDeleteId) };
             try {
-              await updateRoutine(user.id, routine.id, updatedExercises);
+              await updateRoutine(user.id!, routine.id, stripUndefinedDeep({
+                name: routine.name,
+                description: routine.description ?? '',
+                order: routine.order,
+                exercises: routine.exercises.filter(e => e.id !== exerciseToDeleteId),
+              }));
             } catch(err) {
               console.error(`Failed to update routine ${routine.name}`, err);
               // We can decide to throw or just log. For now, we'll log and continue.
@@ -272,7 +295,7 @@ export function ExerciseClientPage() {
         );
         toast({ title: "Routines Updated", description: `${exerciseName} removed from ${affectedRoutines.length} routine(s).` });
       }
-
+  
       // Now, delete the exercise itself
       await deleteExerciseService(user.id, exerciseToDeleteId);
       toast({ title: "Exercise Deleted", description: `${exerciseName} has been removed from your library.` });
@@ -436,17 +459,14 @@ export function ExerciseClientPage() {
               <AlertTriangle className="mr-2 text-destructive"/>
               Confirm Deletion
             </AlertDialogTitle>
-            <AlertDialogDescription>
-              This action might affect your saved routines. Are you sure?
-            </AlertDialogDescription>
           </AlertDialogHeader>
-          <div className="text-sm text-muted-foreground">
+          <AlertDialogDescription>
             {isBusyDeleting ? (
               <div className="flex items-center justify-center py-4">
                 <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Checking routines...
               </div>
             ) : affectedRoutines.length > 0 ? (
-              <div>
+              <>
                 <div className="mb-2 font-semibold text-foreground">This exercise is used in {affectedRoutines.length} routine(s):</div>
                 <ScrollArea className="max-h-32 w-full rounded-md border p-2">
                   <ul className="list-disc pl-5 text-sm">
@@ -455,13 +475,13 @@ export function ExerciseClientPage() {
                 </ScrollArea>
                 <div className="mt-3">Deleting this exercise will also <span className="font-bold">remove it from these routines</span>. This action cannot be undone.</div>
                 <div className="mt-1">Are you sure you want to proceed?</div>
-              </div>
+              </>
             ) : (
               <div>
                 This will permanently delete the exercise "{exercises.find(ex => ex.id === exerciseToDeleteId)?.name}". This action cannot be undone.
               </div>
             )}
-          </div>
+          </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={closeDeleteDialog} disabled={isBusyDeleting}>
               Cancel
@@ -479,3 +499,5 @@ export function ExerciseClientPage() {
     </>
   );
 }
+
+    
