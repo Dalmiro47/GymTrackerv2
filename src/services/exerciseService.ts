@@ -6,12 +6,8 @@ import {
   addDoc, 
   getDocs, 
   doc, 
-  updateDoc, 
   deleteDoc, 
-  query, 
-  where,
   writeBatch, 
-  Timestamp,
   setDoc
 } from 'firebase/firestore';
 import { deleteAllPerformanceEntriesForExercise } from './trainingLogService'; 

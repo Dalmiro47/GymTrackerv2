@@ -251,10 +251,10 @@ export function ExerciseClientPage() {
       toast({ title: "Error", description: "Could not delete exercise. User or Exercise ID missing.", variant: "destructive" });
       return;
     }
-
+  
     setIsBusyDeleting(true);
     const exerciseName = exercises.find(ex => ex.id === exerciseToDeleteId)?.name || "The exercise";
-
+  
     try {
       // If there are affected routines, remove the exercise from them first
       if (affectedRoutines.length > 0) {
@@ -262,7 +262,11 @@ export function ExerciseClientPage() {
           affectedRoutines.map(async (routine) => {
             const updatedExercises = { exercises: routine.exercises.filter(e => e.id !== exerciseToDeleteId) };
             try {
-              await updateRoutine(user.id, routine.id, updatedExercises);
+              // Pass the entire routine object for the update to ensure no data is lost
+              await updateRoutine(user.id!, routine.id, {
+                ...routine,
+                exercises: routine.exercises.filter(e => e.id !== exerciseToDeleteId),
+              });
             } catch(err) {
               console.error(`Failed to update routine ${routine.name}`, err);
               // We can decide to throw or just log. For now, we'll log and continue.
@@ -272,7 +276,7 @@ export function ExerciseClientPage() {
         );
         toast({ title: "Routines Updated", description: `${exerciseName} removed from ${affectedRoutines.length} routine(s).` });
       }
-
+  
       // Now, delete the exercise itself
       await deleteExerciseService(user.id, exerciseToDeleteId);
       toast({ title: "Exercise Deleted", description: `${exerciseName} has been removed from your library.` });
@@ -436,9 +440,6 @@ export function ExerciseClientPage() {
               <AlertTriangle className="mr-2 text-destructive"/>
               Confirm Deletion
             </AlertDialogTitle>
-            <AlertDialogDescription>
-              This action might affect your saved routines. Are you sure?
-            </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="text-sm text-muted-foreground">
             {isBusyDeleting ? (
