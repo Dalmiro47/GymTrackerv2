@@ -11,7 +11,8 @@ import {
   query, 
   where,
   writeBatch, 
-  Timestamp 
+  Timestamp,
+  setDoc
 } from 'firebase/firestore';
 import { deleteAllPerformanceEntriesForExercise } from './trainingLogService'; 
 
@@ -97,7 +98,7 @@ export const updateExercise = async (userId: string, exerciseId: string, exercis
       delete dataToUpdate.warmup;
     }
     
-    await updateDoc(exerciseDocRef, dataToUpdate);
+    await setDoc(exerciseDocRef, dataToUpdate, { merge: true });
   } catch (error: any) {
     console.error("Error updating exercise in Firestore: ", error);
     throw new Error("Failed to update exercise.");
