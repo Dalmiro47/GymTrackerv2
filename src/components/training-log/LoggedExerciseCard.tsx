@@ -17,6 +17,7 @@ import { useRouter } from 'next/navigation';
 import { SetStructureBadge } from '../SetStructureBadge';
 import { SetStructurePicker } from '../SetStructurePicker';
 import { Separator } from '../ui/separator';
+import { SET_STRUCTURE_COLORS } from '@/types/setStructure';
 
 interface LoggedExerciseCardProps {
   loggedExercise: LoggedExercise;
@@ -109,13 +110,22 @@ export function LoggedExerciseCard({
     isDragging,
   } = useSortable({ id: loggedExercise.id });
 
+  const isCardProvisional = loggedExercise.isProvisional && loggedExercise.sets.every(s => s.isProvisional);
+
+  const effectiveSetStructure = useMemo(() => {
+    return loggedExercise.setStructureOverride ?? loggedExercise.setStructure ?? 'normal';
+  }, [loggedExercise.setStructure, loggedExercise.setStructureOverride]);
+
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.7 : 1,
     zIndex: isDragging ? 10 : 'auto',
-  };
-
+    '--card-border-color': effectiveSetStructure !== 'normal' 
+      ? SET_STRUCTURE_COLORS[effectiveSetStructure].border
+      : 'hsl(var(--border))',
+  } as React.CSSProperties;
+  
   const [localSets, setLocalSets] = useState<LoggedSet[]>(loggedExercise.sets);
   const [isSavingThisExercise, setIsSavingThisExercise] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
@@ -133,11 +143,6 @@ export function LoggedExerciseCard({
     };
   }, []);
 
-  const isCardProvisional = loggedExercise.isProvisional && loggedExercise.sets.every(s => s.isProvisional);
-
-  const effectiveSetStructure = useMemo(() => {
-    return loggedExercise.setStructureOverride ?? loggedExercise.setStructure ?? 'normal';
-  }, [loggedExercise.setStructure, loggedExercise.setStructureOverride]);
 
   const handleSetChange = (index: number, field: keyof Omit<LoggedSet, 'id' | 'isProvisional'>, value: string) => {
     onMarkAsInteracted(); 
@@ -191,7 +196,9 @@ export function LoggedExerciseCard({
       ref={setNodeRef}  
       style={style}
       className={cn(
-        "shadow-md transition-all border rounded-lg", 
+        "shadow-md transition-all rounded-lg border", 
+        "border-[var(--card-border-color)]",
+        effectiveSetStructure !== 'normal' && "border-2",
         isDragging && "ring-2 ring-primary",
         isCardProvisional && "opacity-60 bg-muted/30 border-dashed border-primary/30"
       )}
