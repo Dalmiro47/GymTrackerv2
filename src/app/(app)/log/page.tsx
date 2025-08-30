@@ -19,7 +19,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea"; 
 import { useTrainingLog } from '@/hooks/useTrainingLog';
-import type { LoggedExercise, Exercise, MuscleGroup } from '@/types';
+import type { LoggedExercise, Exercise, MuscleGroup, SetStructure } from '@/types';
 import { LoggedExerciseCard } from '@/components/training-log/LoggedExerciseCard';
 import { AddExerciseDialog } from '@/components/training-log/AddExerciseDialog';
 import { ReplaceExerciseDialog } from '@/components/training-log/ReplaceExerciseDialog';
@@ -59,6 +59,53 @@ import { Separator } from '@/components/ui/separator';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { SET_STRUCTURE_COLORS } from '@/types/setStructure';
+
+// Determine effective structure for an exercise
+function effectiveStructureFor(ex: LoggedExercise): SetStructure {
+  return (ex.setStructureOverride ?? ex.setStructure ?? 'normal') as SetStructure;
+}
+
+// Should we render a connector *after* index i?
+function getConnectorAfterIndex(
+  exercises: LoggedExercise[],
+  i: number
+): { show: boolean; color?: string } {
+  const structure = effectiveStructureFor(exercises[i]);
+  if (structure !== 'superset' && structure !== 'triset') return { show: false };
+
+  const groupSize = structure === 'superset' ? 2 : 3;
+
+  // Find the contiguous run of same structure that contains index i
+  let runStart = i;
+  while (
+    runStart - 1 >= 0 &&
+    effectiveStructureFor(exercises[runStart - 1]) === structure
+  ) {
+    runStart--;
+  }
+  let runEnd = i;
+  while (
+    runEnd + 1 < exercises.length &&
+    effectiveStructureFor(exercises[runEnd + 1]) === structure
+  ) {
+    runEnd++;
+  }
+
+  // Position inside the run (0-based)
+  const posInRun = i - runStart;
+
+  // We connect if we are NOT the last item in the current chunk
+  // chunk size is groupSize; chunks repeat within the run
+  const isLastOfChunk = (posInRun % groupSize) === groupSize - 1;
+  const show = !isLastOfChunk && i < runEnd;
+
+  if (!show) return { show: false };
+
+  const color = SET_STRUCTURE_COLORS[structure]?.border ?? 'hsl(var(--border))';
+  return { show: true, color };
+}
+
 
 function TrainingLogPageContent() {
   const { user, isLoading: authIsLoading } = useAuth();
@@ -362,7 +409,9 @@ function TrainingLogPageContent() {
               <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
                 <SortableContext items={loggedExerciseIds} strategy={verticalListSortingStrategy}>
                   <div className="space-y-4">
-                    {currentLog.exercises.map((loggedEx, index) => (
+                    {currentLog.exercises.map((loggedEx, index) => {
+                      const connector = getConnectorAfterIndex(currentLog.exercises, index);
+                      return (
                       <React.Fragment key={loggedEx.id}>
                         <LoggedExerciseCard
                           loggedExercise={loggedEx}
@@ -374,6 +423,15 @@ function TrainingLogPageContent() {
                           onMarkAsInteracted={() => markExerciseAsInteracted(loggedEx.id)}
                           onUpdateSetStructureOverride={(structure) => updateExerciseSetStructureOverride(loggedEx.id, structure)}
                         />
+                        {connector.show && (
+                          <div className="relative my-2">
+                            <div
+                              className="h-[2px] w-full rounded-full"
+                              style={{ backgroundColor: connector.color }}
+                              aria-hidden
+                            />
+                          </div>
+                        )}
                          {index < currentLog.exercises.length - 1 && (
                             <div className="flex items-center space-x-2 my-2">
                                 <Separator className="flex-1" />
@@ -389,7 +447,8 @@ function TrainingLogPageContent() {
                             </div>
                         )}
                       </React.Fragment>
-                    ))}
+                      )
+                    })}
                   </div>
                 </SortableContext>
               </DndContext>
