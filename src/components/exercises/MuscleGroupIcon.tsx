@@ -1,4 +1,4 @@
-import type { MuscleGroup } from '@/types';
+import type { MuscleGroup } from '@/lib/constants';
 import { MUSCLE_GROUP_ICONS } from '@/lib/constants';
 import { cn } from '@/lib/utils';
 

@@ -2,7 +2,8 @@
 "use client";
 
 import { useState, useMemo, useEffect } from 'react';
-import type { Exercise, MuscleGroup } from '@/types';
+import type { Exercise } from '@/types';
+import type { MuscleGroup } from '@/lib/constants';
 import { MUSCLE_GROUPS_LIST } from '@/lib/constants';
 import { Button } from '@/components/ui/button';
 import {

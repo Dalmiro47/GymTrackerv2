@@ -3,7 +3,8 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import type { Exercise, MuscleGroup, ExerciseData, Routine } from '@/types';
+import type { Exercise, ExerciseData, Routine } from '@/types';
+import type { MuscleGroup } from '@/lib/constants';
 import type { ExerciseFormData } from './AddExerciseDialog';
 import { MUSCLE_GROUPS_LIST } from '@/lib/constants';
 import { defaultExercises } from '@/lib/defaultExercises';
@@ -152,7 +153,7 @@ export function ExerciseClientPage() {
   }, [exercises]);
 
   const { availableMuscleGroups, muscleGroupCounts } = useMemo(() => {
-    const counts: Record<MuscleGroup, number> = {} as Record<MuscleGroup, number>;
+    const counts: Record<string, number> = {};
     const seenGroups = new Set<MuscleGroup>();
 
     canonicalExercises.forEach(ex => {

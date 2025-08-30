@@ -5,7 +5,8 @@ import { useEffect } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import type { Exercise, MuscleGroup, WarmupTemplate } from '@/types';
+import type { Exercise, WarmupTemplate } from '@/types';
+import type { MuscleGroup } from '@/lib/constants';
 import { MUSCLE_GROUPS_LIST, WARMUP_TEMPLATES } from '@/lib/constants';
 import { Button } from '@/components/ui/button';
 import {

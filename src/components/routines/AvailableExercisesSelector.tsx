@@ -2,7 +2,8 @@
 "use client";
 
 import { useState, useMemo, useEffect } from 'react';
-import type { Exercise, MuscleGroup } from '@/types';
+import type { Exercise } from '@/types';
+import type { MuscleGroup } from '@/lib/constants';
 import { MUSCLE_GROUPS_LIST } from '@/lib/constants';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -33,7 +34,7 @@ export function AvailableExercisesSelector({
   }, [allExercises]);
 
   const { availableMuscleGroups, muscleGroupCounts } = useMemo(() => {
-    const counts: Record<MuscleGroup, number> = {} as Record<MuscleGroup, number>;
+    const counts: Record<string, number> = {};
     const seenGroups = new Set<MuscleGroup>();
 
     canonicalExercises.forEach(ex => {

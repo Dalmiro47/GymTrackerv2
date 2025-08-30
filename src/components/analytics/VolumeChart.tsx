@@ -25,7 +25,8 @@ import { getLoggedDateStrings, getWorkoutLog } from "@/services/trainingLogServi
 import { getExercises as getAllUserExercisesService } from "@/services/exerciseService";
 import { format, parseISO, isValid } from "date-fns";
 import { useAuth } from "@/contexts/AuthContext";
-import type { Exercise, MuscleGroup, WorkoutLog } from "@/types";
+import type { Exercise, WorkoutLog } from "@/types";
+import type { MuscleGroup } from "@/lib/constants";
 import { MUSCLE_GROUPS_LIST } from "@/lib/constants";
 import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
