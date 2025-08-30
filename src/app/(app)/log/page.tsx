@@ -60,6 +60,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { SET_STRUCTURE_COLORS } from '@/types/setStructure';
+import { cn } from '@/lib/utils';
 
 // Determine effective structure for an exercise
 function effectiveStructureFor(ex: LoggedExercise): SetStructure {
@@ -298,15 +299,15 @@ function TrainingLogPageContent() {
                     disabled={isDeletingLog}
                   >
                     {isDeletingLog ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Delete Log"}
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
 
-            <Button onClick={async () => await saveCurrentLog()} disabled={isSavingLog || isLoadingLog || isDeletingLog} className="bg-accent hover:bg-accent/90">
-                {isSavingLog ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                Save Day's Log
-            </Button>
+          <Button onClick={async () => await saveCurrentLog()} disabled={isSavingLog || isLoadingLog || isDeletingLog} className="bg-accent hover:bg-accent/90">
+              {isSavingLog ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+              Save Day's Log
+          </Button>
         </div>
       </PageHeader>
 
@@ -426,8 +427,13 @@ function TrainingLogPageContent() {
                             />
                         </div>
                         {index < currentLog.exercises.length - 1 && (
-                          <div className="relative my-2 -mx-4 sm:mx-0">
-                            <div className="flex items-center space-x-2">
+                          <div
+                            className={cn(
+                              "relative -mx-4 sm:mx-0",
+                              connector.show ? "-mt-2 -mb-2" : "my-2"
+                            )}
+                          >
+                            <div className="relative z-10 flex items-center space-x-2">
                               <Separator
                                 className="flex-1 h-[2px]"
                                 style={connector.show ? { backgroundColor: connector.color } : undefined}
@@ -449,12 +455,12 @@ function TrainingLogPageContent() {
                               <>
                                 <span
                                   aria-hidden
-                                  className="pointer-events-none absolute left-0 top-1/2 -translate-y-1/2 h-6 w-[2px] rounded-full"
+                                  className="pointer-events-none absolute left-[1px] top-0 bottom-0 w-[2px] rounded-full"
                                   style={{ backgroundColor: connector.color }}
                                 />
                                 <span
                                   aria-hidden
-                                  className="pointer-events-none absolute right-0 top-1/2 -translate-y-1/2 h-6 w-[2px] rounded-full"
+                                  className="pointer-events-none absolute right-[1px] top-0 bottom-0 w-[2px] rounded-full"
                                   style={{ backgroundColor: connector.color }}
                                 />
                               </>
@@ -584,3 +590,6 @@ export default function TrainingLogPage() {
 
     
 
+
+
+    
