@@ -425,19 +425,41 @@ function TrainingLogPageContent() {
                               onUpdateSetStructureOverride={(structure) => updateExerciseSetStructureOverride(loggedEx.id, structure)}
                             />
                         </div>
-                         {index < currentLog.exercises.length - 1 && (
-                            <div className="flex items-center space-x-2 my-2">
-                                <Separator className="flex-1 h-[2px]" style={connector.show ? { backgroundColor: connector.color } : undefined} />
-                                <Button 
-                                    onClick={() => handleOpenAddDialog(index + 1)}
-                                    variant="outline" 
-                                    size="sm"
-                                    className="border-dashed hover:border-solid hover:bg-muted/50 text-muted-foreground hover:text-foreground"
-                                >
-                                    <PlusCircle className="mr-2 h-4 w-4" /> Add Exercise Here
-                                </Button>
-                                <Separator className="flex-1 h-[2px]" style={connector.show ? { backgroundColor: connector.color } : undefined} />
+                        {index < currentLog.exercises.length - 1 && (
+                          <div className="relative my-2 -mx-4 sm:mx-0">
+                            <div className="flex items-center space-x-2">
+                              <Separator
+                                className="flex-1 h-[2px]"
+                                style={connector.show ? { backgroundColor: connector.color } : undefined}
+                              />
+                              <Button
+                                onClick={() => handleOpenAddDialog(index + 1)}
+                                variant="outline"
+                                size="sm"
+                                className="border-dashed hover:border-solid hover:bg-muted/50 text-muted-foreground hover:text-foreground"
+                              >
+                                <PlusCircle className="mr-2 h-4 w-4" /> Add Exercise Here
+                              </Button>
+                              <Separator
+                                className="flex-1 h-[2px]"
+                                style={connector.show ? { backgroundColor: connector.color } : undefined}
+                              />
                             </div>
+                            {connector.show && (
+                              <>
+                                <span
+                                  aria-hidden
+                                  className="pointer-events-none absolute left-0 top-1/2 -translate-y-1/2 h-6 w-[2px] rounded-full"
+                                  style={{ backgroundColor: connector.color }}
+                                />
+                                <span
+                                  aria-hidden
+                                  className="pointer-events-none absolute right-0 top-1/2 -translate-y-1/2 h-6 w-[2px] rounded-full"
+                                  style={{ backgroundColor: connector.color }}
+                                />
+                              </>
+                            )}
+                          </div>
                         )}
                       </React.Fragment>
                       )
