@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import type { WorkoutLog, LoggedExercise, LoggedSet, Routine, Exercise, ExercisePerformanceEntry, PersonalRecord, SetStructure, WarmupConfig } from '@/types';
 import type { MuscleGroup } from '@/lib/constants';
 import { useAuth } from '@/contexts/AuthContext';
@@ -44,6 +44,10 @@ const normalizeForPR = (sets: LoggedSet[]) =>
     )
     .map(s => ({ reps: Number(s.reps), weight: Number(s.weight) }));
 
+const makeEmptyLog = (id: string): WorkoutLog => ({
+  id, date: id, exercises: [], exerciseIds: [], notes: '',
+  routineId: undefined, routineName: undefined,
+});
 
 export const useTrainingLog = (initialDate: Date) => {
   const { user, isLoading: authIsLoading } = useAuth();
@@ -111,7 +115,9 @@ export const useTrainingLog = (initialDate: Date) => {
   const loadLogForDate = useCallback(async (dateToLoad: Date) => {
     const dateId = format(dateToLoad, 'yyyy-MM-dd');
     if (!user?.id) {
-        setCurrentLog({ id: dateId, date: dateId, exercises: [], exerciseIds: [], notes: '' });
+        const emptyLog = makeEmptyLog(dateId);
+        setCurrentLog(emptyLog);
+        setOriginalLogState(cloneDeep(emptyLog));
         setIsLoadingLog(false);
         return;
     }
@@ -160,15 +166,7 @@ export const useTrainingLog = (initialDate: Date) => {
             setIsDeload(log.isDeload ?? false);
 
         } else {
-            const newLog = {
-                id: dateId,
-                date: dateId,
-                exercises: [],
-                exerciseIds: [],
-                notes: '',
-                routineId: undefined,
-                routineName: undefined,
-            };
+            const newLog = makeEmptyLog(dateId);
             setCurrentLog(newLog);
             setOriginalLogState(cloneDeep(newLog));
             setIsDeload(false);
@@ -176,7 +174,7 @@ export const useTrainingLog = (initialDate: Date) => {
 
     } catch (error: any) {
         toast({ title: "Error Loading Log", description: `Could not load log for ${dateId}. ${error.message}`, variant: "destructive" });
-        setCurrentLog({ id: dateId, date: dateId, exercises: [], exerciseIds: [], notes: '' });
+        setCurrentLog(makeEmptyLog(dateId));
     } finally {
         setIsLoadingLog(false);
     }
@@ -215,68 +213,56 @@ export const useTrainingLog = (initialDate: Date) => {
     loadLogForDate(selectedDate);
   }, [selectedDate, authIsLoading, isLoadingExercises, loadLogForDate]);
 
-  const applyDeloadTransform = (log: WorkoutLog | null): WorkoutLog | null => {
+  const applyDeloadTransform = useCallback((log: WorkoutLog | null): WorkoutLog | null => {
     if (!log) return null;
-    const { volumeMultiplier, intensityMultiplier } = DEFAULT_DELOAD_PARAMS;
+    const { volumeMultiplier, intensityMultiplier } = log.deloadParams || DEFAULT_DELOAD_PARAMS;
   
     const transformSets = (sets: LoggedSet[]): LoggedSet[] => {
       if (!sets || sets.length === 0) return sets;
   
       const keepCount = Math.max(1, Math.ceil(sets.length * volumeMultiplier));
   
-      // Rank by weight desc (null/NaN treated as 0), pick top N
       const ranked = sets
         .map((s, i) => ({ i, w: Number.isFinite(Number(s.weight)) ? Number(s.weight) : 0 }))
         .sort((a, b) => b.w - a.w)
         .slice(0, keepCount)
         .map(x => x.i);
   
-      // Preserve original order of the picked indices
       const selectedIndexSet = new Set(ranked);
-      const selected = sets.filter((_, i) => selectedIndexSet.has(i));
-  
-      // Apply intensity reduction + rounding
-      return selected.map(set => ({
-        ...set,
-        weight: set.weight != null
-          ? roundToGymHalf(Number(set.weight) * intensityMultiplier)
-          : set.weight,
+      return sets
+        .filter((_, i) => selectedIndexSet.has(i))
+        .map(set => ({
+          ...set,
+          weight: set.weight != null
+            ? roundToGymHalf(Number(set.weight) * intensityMultiplier)
+            : set.weight,
       }));
     };
   
-    const transformedExercises = log.exercises.map(ex => ({
-      ...ex,
-      sets: transformSets(ex.sets),
-    }));
-  
-    return { ...log, exercises: transformedExercises };
-  };
+    return { ...log, exercises: log.exercises.map(ex => ({ ...ex, sets: transformSets(ex.sets) })) };
+  }, []);
 
   useEffect(() => {
     if (!currentLog) return;
   
     if (isDeload) {
-      // always derive view from the clean baseline (fallback to current if no baseline yet)
       const src = originalLogState ?? currentLog;
-      setCurrentLog(applyDeloadTransform(src));
-    } else {
-      if (originalLogState) {
+      const next = applyDeloadTransform(src);
+      if (next) setCurrentLog(next);
+    } else if (originalLogState) {
         setCurrentLog(cloneDeep(originalLogState));
-      }
     }
-  }, [isDeload, originalLogState]);
+  }, [isDeload, originalLogState, currentLog, applyDeloadTransform]);
 
-  // Helper to ensure we never mutate from a deloaded view
   const mutateBaseline = (
     produceNextFromBaseline: (baseline: WorkoutLog | null) => WorkoutLog | null
   ) => {
-    // Use the clean baseline if present; otherwise fall back to currentLog
     const baseline = originalLogState ?? currentLog ?? null;
     const nextBaseline = produceNextFromBaseline(baseline);
 
     if (!nextBaseline) return;
 
-    setOriginalLogState(nextBaseline); // store untouched baseline
+    setOriginalLogState(nextBaseline);
     setCurrentLog(isDeload ? applyDeloadTransform(nextBaseline) : nextBaseline);
   };
 
@@ -288,7 +274,7 @@ export const useTrainingLog = (initialDate: Date) => {
         ...base,
         exercises: base.exercises.map(ex =>
           ex.id === exerciseIdToUpdate
-            ? { ...ex, sets: ex.sets.map(s => ({ ...s, isProvisional: false })) }
+            ? { ...ex, isProvisional: false, sets: ex.sets.map(s => ({ ...s, isProvisional: false })) }
             : ex
         ),
       };
@@ -301,15 +287,7 @@ export const useTrainingLog = (initialDate: Date) => {
     const dateOfLog = format(selectedDate, 'yyyy-MM-dd'); 
 
     if (routineId === "none") {
-      const clearedLog = {
-        id: dateOfLog,
-        date: dateOfLog,
-        notes: currentLog?.notes || '',
-        routineId: undefined,
-        routineName: undefined,
-        exercises: [],
-        exerciseIds: []
-      };
+      const clearedLog = makeEmptyLog(dateOfLog);
       setOriginalLogState(cloneDeep(clearedLog));
       setCurrentLog(clearedLog);
       setIsDeload(false);
@@ -399,7 +377,7 @@ export const useTrainingLog = (initialDate: Date) => {
     };
 
     mutateBaseline((base) => {
-        const baseLog = base ?? { id: dateOfLog, date: dateOfLog, exercises: [], exerciseIds: [], notes: '' };
+        const baseLog = base ?? makeEmptyLog(dateOfLog);
         const updatedExercises = [...baseLog.exercises];
         const insertionIndex = (index == null) ? updatedExercises.length : index;
         updatedExercises.splice(insertionIndex, 0, newLoggedExercise);
@@ -511,7 +489,6 @@ export const useTrainingLog = (initialDate: Date) => {
     setIsSavingLog(true);
 
     try {
-      // Always save the clean, non-deloaded version from originalLogState
       const logToSave = originalLogState ? { ...originalLogState } : { ...currentLog };
 
       if (isDeload) {
@@ -524,13 +501,13 @@ export const useTrainingLog = (initialDate: Date) => {
 
       const exercisesWithUpdatedPrs = await Promise.all(
         logToSave.exercises.map(async (loggedEx) => {
-          const { isProvisional, ...restOfEx } = loggedEx; // Remove isProvisional for saving
+          const { isProvisional, ...restOfEx } = loggedEx; 
           const performanceEntry = await fetchExercisePerformanceData(restOfEx.exerciseId, logToSave.routineId);
           return {
             ...restOfEx,
             personalRecordDisplay: formatPersonalRecordDisplay(performanceEntry?.personalRecord || null),
             sets: restOfEx.sets.map(s => {
-                const { isProvisional: setProvisional, ...restOfSet } = s; // Also remove from set
+                const { isProvisional: setProvisional, ...restOfSet } = s; 
                 return restOfSet;
             })
           };
@@ -591,7 +568,6 @@ export const useTrainingLog = (initialDate: Date) => {
       return;
     }
   
-    // Find the clean version of the exercise from the baseline state
     const baseline = originalLogState ?? currentLog;
     const selectedExercise = baseline.exercises.find(e => e.id === exerciseLogId);
     if (!selectedExercise) {
@@ -665,7 +641,7 @@ export const useTrainingLog = (initialDate: Date) => {
 
   const updateOverallLogNotes = (notes: string) => {
     mutateBaseline((base) => {
-        const baseLog = base || { id: formattedDateId, date: formattedDateId, exercises: [], exerciseIds: [], notes: '' };
+        const baseLog = base || makeEmptyLog(formattedDateId);
         return { ...baseLog, notes };
     });
   };
@@ -693,16 +669,7 @@ export const useTrainingLog = (initialDate: Date) => {
         }
       }
       
-      const dateForEmptyLog = format(selectedDate, 'yyyy-MM-dd');
-      const emptyLog = {
-        id: dateForEmptyLog, 
-        date: dateForEmptyLog,
-        exercises: [],
-        exerciseIds: [],
-        notes: '',
-        routineId: undefined,
-        routineName: undefined,
-      };
+      const emptyLog = makeEmptyLog(logIdToDelete);
       setCurrentLog(emptyLog);
       setOriginalLogState(cloneDeep(emptyLog));
       setIsDeload(false);
@@ -748,15 +715,3 @@ export const useTrainingLog = (initialDate: Date) => {
     setIsDeload,
   };
 };
-
-
-    
-    
-
-    
-
-
-
-    
-
-    
