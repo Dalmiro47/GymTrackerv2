@@ -285,7 +285,9 @@ export function LoggedExerciseCard({
                 value={loggedExercise.setStructureOverride ?? (loggedExercise.setStructure ?? 'normal')}
                 onChange={(val) => {
                   onMarkAsInteracted();
-                  onUpdateSetStructureOverride(val === 'normal' ? null : val);
+                  const base = loggedExercise.setStructure ?? 'normal';
+                  const nextOverride = (val === base) ? null : val;
+                  onUpdateSetStructureOverride(nextOverride);
                 }}
                 disabled={isSavingThisExercise || isSavingParentLog}
               />
