@@ -1,11 +1,12 @@
 
-import type { MuscleGroup, WarmupTemplate } from '@/types';
 import type { LucideIcon } from 'lucide-react';
 import { UserCircle, PersonStanding, Footprints, Shield, Zap, MoveVertical, Waves, HeartPulse, HelpCircle } from 'lucide-react';
 
 export const MUSCLE_GROUPS_LIST = [
   "Chest", "Back", "Legs", "Shoulders", "Biceps", "Triceps", "Abs", "Cardio", "Other"
 ] as const;
+
+export type MuscleGroup = typeof MUSCLE_GROUPS_LIST[number];
 
 export const MUSCLE_GROUP_ICONS: Record<MuscleGroup, LucideIcon> = {
   Chest: UserCircle,
