@@ -111,6 +111,7 @@ function TrainingLogPageContent() {
   const { user, isLoading: authIsLoading } = useAuth();
   const router = useRouter();
   const isMobile = useIsMobile();
+  const searchParams = useSearchParams();
   
   const getInitialDateFromParams = () => {
     const dateQueryParam = searchParams.get('date');
@@ -556,5 +557,7 @@ export default function TrainingLogPage() {
     </Suspense>
   );
 }
+
+    
 
     
