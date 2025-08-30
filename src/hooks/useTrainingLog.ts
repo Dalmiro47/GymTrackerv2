@@ -3,7 +3,6 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import type { WorkoutLog, LoggedExercise, LoggedSet, Routine, Exercise, ExercisePerformanceEntry, PersonalRecord, SetStructure, WarmupConfig } from '@/types';
-import type { MuscleGroup } from '@/lib/constants';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   getWorkoutLog as fetchLogService,
@@ -215,7 +214,7 @@ export const useTrainingLog = (initialDate: Date) => {
 
   const applyDeloadTransform = useCallback((log: WorkoutLog | null): WorkoutLog | null => {
     if (!log) return null;
-    const { volumeMultiplier, intensityMultiplier } = log.deloadParams || DEFAULT_DELOAD_PARAMS;
+    const { volumeMultiplier, intensityMultiplier } = DEFAULT_DELOAD_PARAMS;
   
     const transformSets = (sets: LoggedSet[]): LoggedSet[] => {
       if (!sets || sets.length === 0) return sets;
@@ -244,15 +243,14 @@ export const useTrainingLog = (initialDate: Date) => {
 
   useEffect(() => {
     if (!currentLog) return;
-  
     if (isDeload) {
       const src = originalLogState ?? currentLog;
       const next = applyDeloadTransform(src);
       if (next) setCurrentLog(next);
     } else if (originalLogState) {
-        setCurrentLog(cloneDeep(originalLogState));
+      setCurrentLog(cloneDeep(originalLogState));
     }
-  }, [isDeload, originalLogState, currentLog, applyDeloadTransform]);
+  }, [isDeload, originalLogState, applyDeloadTransform]);
 
   const mutateBaseline = (
     produceNextFromBaseline: (baseline: WorkoutLog | null) => WorkoutLog | null
@@ -347,7 +345,7 @@ export const useTrainingLog = (initialDate: Date) => {
     if (!user?.id) return;
     const dateOfLog = format(selectedDate, 'yyyy-MM-dd');
     
-    const baseLogForPerf = currentLog || { id: dateOfLog, date: dateOfLog, exercises: [], exerciseIds: [], notes: '' };
+    const baseLogForPerf = currentLog || makeEmptyLog(dateOfLog);
     const performanceEntry = await fetchExercisePerformanceData(exercise.id, baseLogForPerf.routineId);
 
     let initialSets: LoggedSet[];
@@ -405,7 +403,7 @@ export const useTrainingLog = (initialDate: Date) => {
   const replaceExerciseInLog = async (exerciseIdToReplace: string, newExercise: Exercise) => {
     if (!user?.id) return;
     const dateOfLog = format(selectedDate, 'yyyy-MM-dd');
-    const baseLogForPerf = currentLog || { id: dateOfLog, date: dateOfLog, exercises: [], exerciseIds: [], notes: '' };
+    const baseLogForPerf = currentLog || makeEmptyLog(dateOfLog);
     const performanceEntry = await fetchExercisePerformanceData(newExercise.id, baseLogForPerf.routineId);
 
     const initialSets: LoggedSet[] = (performanceEntry?.lastPerformedSets?.length ? performanceEntry.lastPerformedSets : [{ reps: null, weight: null }])
