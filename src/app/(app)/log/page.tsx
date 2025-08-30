@@ -208,6 +208,16 @@ function TrainingLogPageContent() {
     );
   }
   
+  const deloadDescription = useMemo(() => {
+    if (!currentLog?.deloadParams) {
+        return "Sets reduced by ~50%, weight by ~10%. This log will be excluded from future progression calculations.";
+    }
+    const { volumeMultiplier, intensityMultiplier } = currentLog.deloadParams;
+    const setsPercent = Math.round((1 - volumeMultiplier) * 100);
+    const weightPercent = Math.round((1 - intensityMultiplier) * 100);
+    return `Sets reduced by ~${setsPercent}%, weight by ~${weightPercent}%. This log will be excluded from future progression calculations.`;
+  }, [currentLog?.deloadParams]);
+  
   return (
     <div className="space-y-6">
       <PageHeader title="Training Log" description="Record your daily workouts and track progress.">
@@ -217,7 +227,7 @@ function TrainingLogPageContent() {
                 <Button 
                     variant="outline" 
                     className="border-destructive text-destructive hover:bg-destructive/10"
-                    disabled={isDeletingLog || isLoadingLog || !canDeleteLog}
+                    disabled={isDeletingLog || isLoadingLog || !canDeleteLog || isSavingLog}
                 >
                   {isDeletingLog ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
                   Delete Day's Log
@@ -246,7 +256,7 @@ function TrainingLogPageContent() {
               </AlertDialogContent>
             </AlertDialog>
 
-            <Button onClick={async () => await saveCurrentLog()} disabled={isSavingLog || isLoadingLog} className="bg-accent hover:bg-accent/90">
+            <Button onClick={async () => await saveCurrentLog()} disabled={isSavingLog || isLoadingLog || isDeletingLog} className="bg-accent hover:bg-accent/90">
                 {isSavingLog ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                 Save Day's Log
             </Button>
@@ -292,7 +302,7 @@ function TrainingLogPageContent() {
             <Select 
               value={routineSelectValue}
               onValueChange={handleSelectRoutine} 
-              disabled={isLoadingRoutines || isLoadingLog}
+              disabled={isLoadingRoutines || isLoadingLog || isSavingLog || isDeletingLog}
             >
               <SelectTrigger>
                 <SelectValue placeholder={isLoadingRoutines || (isLoadingLog && !currentLog?.routineId) ? "Loading routines..." : "Start from a routine (optional)"} />
@@ -310,7 +320,7 @@ function TrainingLogPageContent() {
             </Button>
           </div>
 
-          {currentLog?.routineId && (
+          {(currentLog?.exercises.length ?? 0) > 0 && (
             <div className="flex items-center justify-end space-x-2 pt-2">
                 <Label htmlFor="deload-mode" className="text-muted-foreground">Deload Mode</Label>
                 <Popover>
@@ -320,14 +330,14 @@ function TrainingLogPageContent() {
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="max-w-xs text-sm">
-                    <p>-50% sets, -10% weight. This day won’t count for progression.</p>
+                    <p>{deloadDescription}</p>
                   </PopoverContent>
                 </Popover>
                 <Switch
                     id="deload-mode"
                     checked={isDeload}
                     onCheckedChange={setIsDeload}
-                    disabled={isLoadingLog || isSavingLog}
+                    disabled={isLoadingLog || isSavingLog || isDeletingLog}
                 />
             </div>
           )}
@@ -337,7 +347,7 @@ function TrainingLogPageContent() {
                 <AlertTriangle className="h-4 w-4 text-primary" />
                 <AlertTitle className="text-primary">Deload Mode Active</AlertTitle>
                 <AlertDescription>
-                  Sets reduced by 50%, weight by 10%. This log will be excluded from future progression calculations.
+                  {deloadDescription}
                 </AlertDescription>
               </Alert>
             )}
@@ -360,7 +370,7 @@ function TrainingLogPageContent() {
                           onSaveProgress={() => saveSingleExercise(loggedEx.id)}
                           onRemove={() => removeExerciseFromLog(loggedEx.id)}
                           onReplace={() => handleOpenReplaceDialog(loggedEx.id, loggedEx.muscleGroup)}
-                          isSavingParentLog={isSavingLog}
+                          isSavingParentLog={isSavingLog || isDeletingLog}
                           onMarkAsInteracted={() => markExerciseAsInteracted(loggedEx.id)}
                           onUpdateSetStructureOverride={(structure) => updateExerciseSetStructureOverride(loggedEx.id, structure)}
                         />
@@ -414,7 +424,7 @@ function TrainingLogPageContent() {
                 value={currentLog?.notes || ''}
                 onChange={handleOverallNotesChange}
                 rows={3}
-                disabled={isLoadingLog || isSavingLog}
+                disabled={isLoadingLog || isSavingLog || isDeletingLog}
               />
             )}
           </div>
@@ -426,7 +436,7 @@ function TrainingLogPageContent() {
               <Button 
                   variant="outline" 
                   className="border-destructive text-destructive hover:bg-destructive/10"
-                  disabled={isDeletingLog || isLoadingLog || !canDeleteLog}
+                  disabled={isDeletingLog || isLoadingLog || !canDeleteLog || isSavingLog}
               >
                 {isDeletingLog ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
                 Delete Day's Log
@@ -455,7 +465,7 @@ function TrainingLogPageContent() {
             </AlertDialogContent>
           </AlertDialog>
 
-          <Button onClick={async () => await saveCurrentLog()} disabled={isSavingLog || isLoadingLog} className="bg-accent hover:bg-accent/90">
+          <Button onClick={async () => await saveCurrentLog()} disabled={isSavingLog || isLoadingLog || isDeletingLog} className="bg-accent hover:bg-accent/90">
               {isSavingLog ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
               Save Day's Log
           </Button>
