@@ -116,14 +116,14 @@ export function LoggedExerciseCard({
     return loggedExercise.setStructureOverride ?? loggedExercise.setStructure ?? 'normal';
   }, [loggedExercise.setStructure, loggedExercise.setStructureOverride]);
 
+  const borderColor = SET_STRUCTURE_COLORS[effectiveSetStructure]?.border ?? 'hsl(var(--border))';
+
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.7 : 1,
     zIndex: isDragging ? 10 : 'auto',
-    '--card-border-color': effectiveSetStructure !== 'normal' 
-      ? SET_STRUCTURE_COLORS[effectiveSetStructure].border
-      : 'hsl(var(--border))',
+    '--card-border-color': borderColor,
   } as React.CSSProperties;
   
   const [localSets, setLocalSets] = useState<LoggedSet[]>(loggedExercise.sets);
@@ -200,7 +200,7 @@ export function LoggedExerciseCard({
         "border-[var(--card-border-color)]",
         effectiveSetStructure !== 'normal' && "border-2",
         isDragging && "ring-2 ring-primary",
-        isCardProvisional && "opacity-60 bg-muted/30 border-dashed border-primary/30"
+        isCardProvisional && "opacity-60 bg-muted/30 border-dashed"
       )}
     >
       <CardHeader className="py-3 px-4 border-b">
