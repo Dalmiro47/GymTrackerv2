@@ -281,6 +281,7 @@ export function LoggedExerciseCard({
                 Session Set Structure
               </span>
               <SetStructurePicker
+                className="h-10 w-44 sm:w-56"
                 value={loggedExercise.setStructureOverride ?? (loggedExercise.setStructure ?? 'normal')}
                 onChange={(val) => {
                   onMarkAsInteracted();
@@ -292,7 +293,7 @@ export function LoggedExerciseCard({
             <Button
               onClick={handleSaveThisExercise}
               disabled={isSavingThisExercise || isSavingParentLog}
-              className="w-full sm:w-auto"
+              className="w-full sm:w-auto sm:ml-auto"
             >
               {isSavingThisExercise ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> :
                 justSaved ? <Check className="mr-2 h-4 w-4" /> : <Save className="mr-2 h-4 w-4" />}
