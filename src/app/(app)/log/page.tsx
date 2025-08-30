@@ -408,30 +408,32 @@ function TrainingLogPageContent() {
             <>
               <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
                 <SortableContext items={loggedExerciseIds} strategy={verticalListSortingStrategy}>
-                  <div className="space-y-4">
+                  <div>
                     {currentLog.exercises.map((loggedEx, index) => {
                       const connector = getConnectorAfterIndex(currentLog.exercises, index);
                       return (
                       <React.Fragment key={loggedEx.id}>
-                        <LoggedExerciseCard
-                          loggedExercise={loggedEx}
-                          onUpdateSets={(sets) => updateExerciseInLog({ ...loggedEx, sets })}
-                          onSaveProgress={() => saveSingleExercise(loggedEx.id)}
-                          onRemove={() => removeExerciseFromLog(loggedEx.id)}
-                          onReplace={() => handleOpenReplaceDialog(loggedEx.id, loggedEx.muscleGroup)}
-                          isSavingParentLog={isSavingLog || isDeletingLog}
-                          onMarkAsInteracted={() => markExerciseAsInteracted(loggedEx.id)}
-                          onUpdateSetStructureOverride={(structure) => updateExerciseSetStructureOverride(loggedEx.id, structure)}
-                        />
-                        {connector.show && (
-                          <div className="relative my-2">
-                            <div
-                              className="h-[2px] w-full rounded-full"
-                              style={{ backgroundColor: connector.color }}
-                              aria-hidden
+                        <div className="mb-4">
+                            <LoggedExerciseCard
+                              loggedExercise={loggedEx}
+                              onUpdateSets={(sets) => updateExerciseInLog({ ...loggedEx, sets })}
+                              onSaveProgress={() => saveSingleExercise(loggedEx.id)}
+                              onRemove={() => removeExerciseFromLog(loggedEx.id)}
+                              onReplace={() => handleOpenReplaceDialog(loggedEx.id, loggedEx.muscleGroup)}
+                              isSavingParentLog={isSavingLog || isDeletingLog}
+                              onMarkAsInteracted={() => markExerciseAsInteracted(loggedEx.id)}
+                              onUpdateSetStructureOverride={(structure) => updateExerciseSetStructureOverride(loggedEx.id, structure)}
                             />
-                          </div>
-                        )}
+                             {connector.show && (
+                              <div className="relative -mx-4 sm:mx-0">
+                                <div
+                                  role="presentation"
+                                  className="h-[2px] w-full rounded-full"
+                                  style={{ backgroundColor: connector.color }}
+                                />
+                              </div>
+                            )}
+                        </div>
                          {index < currentLog.exercises.length - 1 && (
                             <div className="flex items-center space-x-2 my-2">
                                 <Separator className="flex-1" />
@@ -564,3 +566,5 @@ export default function TrainingLogPage() {
     </Suspense>
   );
 }
+
+    
