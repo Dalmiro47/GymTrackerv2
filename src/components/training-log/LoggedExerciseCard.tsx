@@ -17,6 +17,7 @@ import { useRouter } from 'next/navigation';
 import { SetStructureBadge } from '../SetStructureBadge';
 import { SetStructurePicker } from '../SetStructurePicker';
 import { Separator } from '../ui/separator';
+import { SET_STRUCTURE_COLORS } from '@/types/setStructure';
 
 interface LoggedExerciseCardProps {
   loggedExercise: LoggedExercise;
@@ -109,13 +110,22 @@ export function LoggedExerciseCard({
     isDragging,
   } = useSortable({ id: loggedExercise.id });
 
+  const isCardProvisional = loggedExercise.isProvisional && loggedExercise.sets.every(s => s.isProvisional);
+
+  const effectiveSetStructure = useMemo(() => {
+    return loggedExercise.setStructureOverride ?? loggedExercise.setStructure ?? 'normal';
+  }, [loggedExercise.setStructure, loggedExercise.setStructureOverride]);
+
+  const borderColor = SET_STRUCTURE_COLORS[effectiveSetStructure]?.border ?? 'hsl(var(--border))';
+
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.7 : 1,
     zIndex: isDragging ? 10 : 'auto',
-  };
-
+    '--card-border-color': borderColor,
+  } as React.CSSProperties;
+  
   const [localSets, setLocalSets] = useState<LoggedSet[]>(loggedExercise.sets);
   const [isSavingThisExercise, setIsSavingThisExercise] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
@@ -133,11 +143,6 @@ export function LoggedExerciseCard({
     };
   }, []);
 
-  const isCardProvisional = loggedExercise.isProvisional && loggedExercise.sets.every(s => s.isProvisional);
-
-  const effectiveSetStructure = useMemo(() => {
-    return loggedExercise.setStructureOverride ?? loggedExercise.setStructure ?? 'normal';
-  }, [loggedExercise.setStructure, loggedExercise.setStructureOverride]);
 
   const handleSetChange = (index: number, field: keyof Omit<LoggedSet, 'id' | 'isProvisional'>, value: string) => {
     onMarkAsInteracted(); 
@@ -191,9 +196,11 @@ export function LoggedExerciseCard({
       ref={setNodeRef}  
       style={style}
       className={cn(
-        "shadow-md transition-all border rounded-lg", 
+        "shadow-md transition-all rounded-lg border", 
+        "border-[var(--card-border-color)]",
+        effectiveSetStructure !== 'normal' && "border-2",
         isDragging && "ring-2 ring-primary",
-        isCardProvisional && "opacity-60 bg-muted/30 border-dashed border-primary/30"
+        isCardProvisional && "opacity-60 bg-muted/30 border-dashed"
       )}
     >
       <CardHeader className="py-3 px-4 border-b">
@@ -274,35 +281,36 @@ export function LoggedExerciseCard({
             </Button>
           </div>
         </div>
-
-        <Separator className="my-4"/>
-        
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground">Session Set Structure</span>
+        <div className="border-t -mx-4 px-4 pt-4 sm:mx-0 sm:px-0">
+          <div className="flex flex-col sm:flex-row items-center gap-3">
+            <div className="flex items-center gap-2 flex-1">
+              <span className="text-sm text-muted-foreground whitespace-nowrap">
+                Session Set Structure
+              </span>
               <SetStructurePicker
-                  value={loggedExercise.setStructureOverride ?? (loggedExercise.setStructure ?? 'normal')}
-                  onChange={(val) => {
-                      onMarkAsInteracted();
-                      onUpdateSetStructureOverride(val === 'normal' ? null : val);
-                  }}
-                  disabled={isSavingThisExercise || isSavingParentLog}
+                className="h-10 w-44 sm:w-56"
+                value={loggedExercise.setStructureOverride ?? (loggedExercise.setStructure ?? 'normal')}
+                onChange={(val) => {
+                  onMarkAsInteracted();
+                  const base = loggedExercise.setStructure ?? 'normal';
+                  const nextOverride = (val === base) ? null : val;
+                  onUpdateSetStructureOverride(nextOverride);
+                }}
+                disabled={isSavingThisExercise || isSavingParentLog}
               />
+            </div>
+            <Button
+              onClick={handleSaveThisExercise}
+              disabled={isSavingThisExercise || isSavingParentLog}
+              className="w-full sm:w-auto sm:ml-auto"
+            >
+              {isSavingThisExercise ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> :
+                justSaved ? <Check className="mr-2 h-4 w-4" /> : <Save className="mr-2 h-4 w-4" />}
+              {isSavingThisExercise ? "Saving..." : justSaved ? "Progress Saved!" : "Save Progress"}
+            </Button>
           </div>
-          <Button 
-            onClick={handleSaveThisExercise} 
-            disabled={isSavingThisExercise || isSavingParentLog} 
-            size="sm"
-            className="bg-primary/90 hover:bg-primary" 
-          >
-            {isSavingThisExercise ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : 
-            justSaved ? <Check className="mr-2 h-4 w-4" /> : <Save className="mr-2 h-4 w-4" />}
-            {isSavingThisExercise ? "Saving..." : justSaved ? "Progress Saved!" : "Save Progress"}
-          </Button>
         </div>
       </CardContent>
     </Card>
   );
 }
-
-    

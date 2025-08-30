@@ -19,7 +19,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea"; 
 import { useTrainingLog } from '@/hooks/useTrainingLog';
-import type { LoggedExercise, Exercise, MuscleGroup } from '@/types';
+import type { LoggedExercise, Exercise, MuscleGroup, SetStructure } from '@/types';
 import { LoggedExerciseCard } from '@/components/training-log/LoggedExerciseCard';
 import { AddExerciseDialog } from '@/components/training-log/AddExerciseDialog';
 import { ReplaceExerciseDialog } from '@/components/training-log/ReplaceExerciseDialog';
@@ -59,12 +59,60 @@ import { Separator } from '@/components/ui/separator';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { SET_STRUCTURE_COLORS } from '@/types/setStructure';
+import { cn } from '@/lib/utils';
+
+// Determine effective structure for an exercise
+function effectiveStructureFor(ex: LoggedExercise): SetStructure {
+  return (ex.setStructureOverride ?? ex.setStructure ?? 'normal') as SetStructure;
+}
+
+// Should we render a connector *after* index i?
+function getConnectorAfterIndex(
+  exercises: LoggedExercise[],
+  i: number
+): { show: boolean; color?: string } {
+  const structure = effectiveStructureFor(exercises[i]);
+  if (structure !== 'superset' && structure !== 'triset') return { show: false };
+
+  const groupSize = structure === 'superset' ? 2 : 3;
+
+  // Find the contiguous run of same structure that contains index i
+  let runStart = i;
+  while (
+    runStart - 1 >= 0 &&
+    effectiveStructureFor(exercises[runStart - 1]) === structure
+  ) {
+    runStart--;
+  }
+  let runEnd = i;
+  while (
+    runEnd + 1 < exercises.length &&
+    effectiveStructureFor(exercises[runEnd + 1]) === structure
+  ) {
+    runEnd++;
+  }
+
+  // Position inside the run (0-based)
+  const posInRun = i - runStart;
+
+  // We connect if we are NOT the last item in the current chunk
+  // chunk size is groupSize; chunks repeat within the run
+  const isLastOfChunk = (posInRun % groupSize) === groupSize - 1;
+  const show = !isLastOfChunk && i < runEnd;
+
+  if (!show) return { show: false };
+
+  const color = SET_STRUCTURE_COLORS[structure]?.border ?? 'hsl(var(--border))';
+  return { show: true, color };
+}
+
 
 function TrainingLogPageContent() {
   const { user, isLoading: authIsLoading } = useAuth();
   const router = useRouter();
-  const searchParams = useSearchParams();
   const isMobile = useIsMobile();
+  const searchParams = useSearchParams();
   
   const getInitialDateFromParams = () => {
     const dateQueryParam = searchParams.get('date');
@@ -251,15 +299,15 @@ function TrainingLogPageContent() {
                     disabled={isDeletingLog}
                   >
                     {isDeletingLog ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Delete Log"}
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
 
-            <Button onClick={async () => await saveCurrentLog()} disabled={isSavingLog || isLoadingLog || isDeletingLog} className="bg-accent hover:bg-accent/90">
-                {isSavingLog ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                Save Day's Log
-            </Button>
+          <Button onClick={async () => await saveCurrentLog()} disabled={isSavingLog || isLoadingLog || isDeletingLog} className="bg-accent hover:bg-accent/90">
+              {isSavingLog ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+              Save Day's Log
+          </Button>
         </div>
       </PageHeader>
 
@@ -361,35 +409,67 @@ function TrainingLogPageContent() {
             <>
               <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
                 <SortableContext items={loggedExerciseIds} strategy={verticalListSortingStrategy}>
-                  <div className="space-y-4">
-                    {currentLog.exercises.map((loggedEx, index) => (
+                  <div>
+                    {currentLog.exercises.map((loggedEx, index) => {
+                      const connector = getConnectorAfterIndex(currentLog.exercises, index);
+                      return (
                       <React.Fragment key={loggedEx.id}>
-                        <LoggedExerciseCard
-                          loggedExercise={loggedEx}
-                          onUpdateSets={(sets) => updateExerciseInLog({ ...loggedEx, sets })}
-                          onSaveProgress={() => saveSingleExercise(loggedEx.id)}
-                          onRemove={() => removeExerciseFromLog(loggedEx.id)}
-                          onReplace={() => handleOpenReplaceDialog(loggedEx.id, loggedEx.muscleGroup)}
-                          isSavingParentLog={isSavingLog || isDeletingLog}
-                          onMarkAsInteracted={() => markExerciseAsInteracted(loggedEx.id)}
-                          onUpdateSetStructureOverride={(structure) => updateExerciseSetStructureOverride(loggedEx.id, structure)}
-                        />
-                         {index < currentLog.exercises.length - 1 && (
-                            <div className="flex items-center space-x-2 my-2">
-                                <Separator className="flex-1" />
-                                <Button 
-                                    onClick={() => handleOpenAddDialog(index + 1)}
-                                    variant="outline" 
-                                    size="sm"
-                                    className="border-dashed hover:border-solid hover:bg-muted/50 text-muted-foreground hover:text-foreground"
-                                >
-                                    <PlusCircle className="mr-2 h-4 w-4" /> Add Exercise Here
-                                </Button>
-                                <Separator className="flex-1" />
+                        <div className="mb-4">
+                            <LoggedExerciseCard
+                              loggedExercise={loggedEx}
+                              onUpdateSets={(sets) => updateExerciseInLog({ ...loggedEx, sets })}
+                              onSaveProgress={() => saveSingleExercise(loggedEx.id)}
+                              onRemove={() => removeExerciseFromLog(loggedEx.id)}
+                              onReplace={() => handleOpenReplaceDialog(loggedEx.id, loggedEx.muscleGroup)}
+                              isSavingParentLog={isSavingLog || isDeletingLog}
+                              onMarkAsInteracted={() => markExerciseAsInteracted(loggedEx.id)}
+                              onUpdateSetStructureOverride={(structure) => updateExerciseSetStructureOverride(loggedEx.id, structure)}
+                            />
+                        </div>
+                        {index < currentLog.exercises.length - 1 && (
+                          <div
+                            className={cn(
+                              "relative -mx-4 sm:mx-0",
+                              connector.show ? "-mt-2 -mb-2" : "my-2"
+                            )}
+                          >
+                            <div className="relative z-10 flex items-center space-x-2">
+                              <Separator
+                                className="flex-1 h-[2px]"
+                                style={connector.show ? { backgroundColor: connector.color } : undefined}
+                              />
+                              <Button
+                                onClick={() => handleOpenAddDialog(index + 1)}
+                                variant="outline"
+                                size="sm"
+                                className="border-dashed hover:border-solid hover:bg-muted/50 text-muted-foreground hover:text-foreground"
+                              >
+                                <PlusCircle className="mr-2 h-4 w-4" /> Add Exercise Here
+                              </Button>
+                              <Separator
+                                className="flex-1 h-[2px]"
+                                style={connector.show ? { backgroundColor: connector.color } : undefined}
+                              />
                             </div>
+                            {connector.show && (
+                              <>
+                                <span
+                                  aria-hidden
+                                  className="pointer-events-none absolute left-[1px] top-0 bottom-0 w-[2px] rounded-full"
+                                  style={{ backgroundColor: connector.color }}
+                                />
+                                <span
+                                  aria-hidden
+                                  className="pointer-events-none absolute right-[1px] top-0 bottom-0 w-[2px] rounded-full"
+                                  style={{ backgroundColor: connector.color }}
+                                />
+                              </>
+                            )}
+                          </div>
                         )}
                       </React.Fragment>
-                    ))}
+                      )
+                    })}
                   </div>
                 </SortableContext>
               </DndContext>
@@ -505,3 +585,11 @@ export default function TrainingLogPage() {
     </Suspense>
   );
 }
+
+    
+
+    
+
+
+
+    
