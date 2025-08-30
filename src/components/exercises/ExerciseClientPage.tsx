@@ -151,17 +151,21 @@ export function ExerciseClientPage() {
       return exercises.map(e => ({...e, muscleGroup: assertMuscleGroup(e.muscleGroup as any)}));
   }, [exercises]);
 
-  const availableMuscleGroups = useMemo(() => {
-    const groups = new Set(canonicalExercises.map(ex => ex.muscleGroup));
-    return MUSCLE_GROUPS_LIST.filter(group => groups.has(group));
+  const { availableMuscleGroups, muscleGroupCounts } = useMemo(() => {
+    const counts: Record<MuscleGroup, number> = {} as Record<MuscleGroup, number>;
+    const seenGroups = new Set<MuscleGroup>();
+
+    canonicalExercises.forEach(ex => {
+      const group = ex.muscleGroup;
+      seenGroups.add(group);
+      counts[group] = (counts[group] || 0) + 1;
+    });
+    
+    const available = MUSCLE_GROUPS_LIST.filter(group => seenGroups.has(group));
+    
+    return { availableMuscleGroups: available, muscleGroupCounts: counts };
   }, [canonicalExercises]);
 
-  const muscleGroupCounts = useMemo(() => {
-    return availableMuscleGroups.reduce((acc, group) => {
-      acc[group] = canonicalExercises.filter(ex => ex.muscleGroup === group).length;
-      return acc;
-    }, {} as Record<MuscleGroup, number>);
-  }, [canonicalExercises, availableMuscleGroups]);
 
   useEffect(() => {
     if (selectedMuscleGroup !== 'All' && !availableMuscleGroups.includes(selectedMuscleGroup)) {
@@ -294,19 +298,14 @@ export function ExerciseClientPage() {
     try {
       if (affectedRoutines.length > 0) {
         await Promise.all(
-          affectedRoutines.map(async (routine) => {
-            try {
-              await updateRoutine(user.id!, routine.id, stripUndefinedDeep({
-                name: routine.name,
-                description: routine.description ?? '',
-                order: routine.order,
-                exercises: routine.exercises.filter(e => e.id !== exerciseToDeleteId),
-              }));
-            } catch(err) {
-              console.error(`Failed to update routine ${routine.name}`, err);
-              toast({ title: `Warning: Failed to update routine ${routine.name}`, variant: "destructive"})
-            }
-          })
+          affectedRoutines.map(routine =>
+            updateRoutine(user.id!, routine.id, stripUndefinedDeep({
+              name: routine.name,
+              description: routine.description ?? '',
+              order: routine.order,
+              exercises: routine.exercises.filter(e => e.id !== exerciseToDeleteId),
+            }))
+          )
         );
         toast({ title: "Routines Updated", description: `${exerciseName} removed from ${affectedRoutines.length} routine(s).` });
       }

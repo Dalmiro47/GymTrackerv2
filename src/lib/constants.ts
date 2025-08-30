@@ -1,3 +1,4 @@
+
 import type { MuscleGroup, WarmupTemplate } from '@/types';
 import type { LucideIcon } from 'lucide-react';
 import { UserCircle, PersonStanding, Footprints, Shield, Zap, MoveVertical, Waves, HeartPulse, HelpCircle } from 'lucide-react';
