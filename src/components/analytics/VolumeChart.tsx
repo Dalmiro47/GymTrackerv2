@@ -26,10 +26,11 @@ import { getExercises as getAllUserExercisesService } from "@/services/exerciseS
 import { format, parseISO, isValid } from "date-fns";
 import { useAuth } from "@/contexts/AuthContext";
 import type { Exercise, WorkoutLog } from "@/types";
-import type { MuscleGroup } from "@/lib/constants";
 import { MUSCLE_GROUPS_LIST } from "@/lib/constants";
+import type { MuscleGroup } from '@/lib/constants';
 import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { assertMuscleGroup, } from "@/lib/muscleGroup";
 
 type ChartDataEntry = { date: string; volume: number; formattedDate: string };
 
@@ -56,6 +57,12 @@ export const VolumeChart: React.FC<VolumeChartProps> = ({
   const [isLoadingLoggedDates, setIsLoadingLoggedDates] = useState(true);
   const [isLoadingChartData, setIsLoadingChartData] = useState(false);
 
+  // Normalize muscle groups coming from Firestore/legacy
+  const canonicalExercises = useMemo(
+    () => allUserExercises.map(e => ({ ...e, muscleGroup: assertMuscleGroup(e.muscleGroup as any) })),
+    [allUserExercises]
+  );
+
   useEffect(() => {
     if (user?.id) {
       setIsLoadingExercises(true);
@@ -73,14 +80,14 @@ export const VolumeChart: React.FC<VolumeChartProps> = ({
   }, [user?.id]);
 
   useEffect(() => {
-    if (defaultExerciseId && allUserExercises.length > 0) {
-      const exercise = allUserExercises.find(ex => ex.id === defaultExerciseId);
+    if (defaultExerciseId && canonicalExercises.length > 0) {
+      const exercise = canonicalExercises.find(ex => ex.id === defaultExerciseId);
       if (exercise) {
         setSelectedExerciseId(exercise.id);
-        setSelectedMuscleGroup(exercise.muscleGroup);
+        setSelectedMuscleGroup(assertMuscleGroup(exercise.muscleGroup as any));
       }
     }
-  }, [defaultExerciseId, allUserExercises]);
+  }, [defaultExerciseId, canonicalExercises]);
 
   useEffect(() => {
     if (!selectedExerciseId || !user?.id || allLoggedDates.length === 0) {
@@ -123,13 +130,13 @@ export const VolumeChart: React.FC<VolumeChartProps> = ({
   }, [selectedExerciseId, user?.id, allLoggedDates]);
 
   const filteredExercises = useMemo(() => {
-    if (!selectedMuscleGroup) return allUserExercises;
-    return allUserExercises.filter(ex => ex.muscleGroup === selectedMuscleGroup);
-  }, [selectedMuscleGroup, allUserExercises]);
+    if (!selectedMuscleGroup) return canonicalExercises;
+    return canonicalExercises.filter(ex => ex.muscleGroup === selectedMuscleGroup);
+  }, [selectedMuscleGroup, canonicalExercises]);
 
   const selectedExerciseName = useMemo(() => {
-    return allUserExercises.find(ex => ex.id === selectedExerciseId)?.name || "Exercise";
-  }, [selectedExerciseId, allUserExercises]);
+    return canonicalExercises.find(ex => ex.id === selectedExerciseId)?.name || "Exercise";
+  }, [selectedExerciseId, canonicalExercises]);
 
   const chartConfig = {
     volume: {

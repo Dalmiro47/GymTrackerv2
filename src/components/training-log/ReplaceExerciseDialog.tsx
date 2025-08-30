@@ -3,8 +3,8 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import type { Exercise } from '@/types';
-import type { MuscleGroup } from '@/lib/constants';
 import { MUSCLE_GROUPS_LIST } from '@/lib/constants';
+import type { MuscleGroup } from '@/lib/constants';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -18,6 +18,7 @@ import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Search, Filter, Loader2 } from 'lucide-react';
+import { assertMuscleGroup } from '@/lib/muscleGroup';
 
 interface ReplaceExerciseDialogProps {
   isOpen: boolean;
@@ -45,19 +46,23 @@ export function ReplaceExerciseDialog({
     }
   }, [isOpen, initialMuscleGroup]);
 
+  const canonicalExercises = useMemo(
+    () => availableExercises.map(e => ({ ...e, muscleGroup: assertMuscleGroup(e.muscleGroup as any) })),
+    [availableExercises]
+  );
 
   const filteredExercises = useMemo(() => {
-    let tempExercises = [...availableExercises];
+    let temp = [...canonicalExercises];
     if (searchTerm.trim() !== '') {
-      tempExercises = tempExercises.filter(ex =>
-        ex.name.toLowerCase().includes(searchTerm.toLowerCase().trim())
-      );
+      const q = searchTerm.toLowerCase().trim();
+      temp = temp.filter(ex => ex.name.toLowerCase().includes(q));
     }
     if (selectedMuscleGroup !== 'All') {
-      tempExercises = tempExercises.filter(ex => ex.muscleGroup === selectedMuscleGroup);
+      temp = temp.filter(ex => ex.muscleGroup === selectedMuscleGroup);
     }
-    return tempExercises;
-  }, [availableExercises, searchTerm, selectedMuscleGroup]);
+    return temp;
+  }, [canonicalExercises, searchTerm, selectedMuscleGroup]);
+
 
   const handleSelectExercise = (exercise: Exercise) => {
     onReplaceExercise(exercise);
