@@ -66,7 +66,6 @@ export const useTrainingLog = (initialDate: Date) => {
 
   const [isDeload, setIsDeload] = useState(false);
   const [originalLogState, setOriginalLogState] = useState<WorkoutLog | null>(null);
-  const skipNextDeloadEffectRef = useRef(false);
 
 
   const formattedDateId = format(selectedDate, 'yyyy-MM-dd');
@@ -159,10 +158,6 @@ export const useTrainingLog = (initialDate: Date) => {
             setCurrentLog(log);
             setOriginalLogState(cloneDeep(log));
             setIsDeload(log.isDeload ?? false);
-
-            if (log.isDeload) {
-              skipNextDeloadEffectRef.current = true;
-            }
 
         } else {
             const newLog = {
@@ -257,6 +252,20 @@ export const useTrainingLog = (initialDate: Date) => {
     return { ...log, exercises: transformedExercises };
   };
 
+  useEffect(() => {
+    if (!currentLog) return;
+  
+    if (isDeload) {
+      // always derive view from the clean baseline (fallback to current if no baseline yet)
+      const src = originalLogState ?? currentLog;
+      setCurrentLog(applyDeloadTransform(src));
+    } else {
+      if (originalLogState) {
+        setCurrentLog(cloneDeep(originalLogState));
+      }
+    }
+  }, [isDeload, originalLogState]);
+
   // Helper to ensure we never mutate from a deloaded view
   const mutateBaseline = (
     produceNextFromBaseline: (baseline: WorkoutLog | null) => WorkoutLog | null
@@ -270,22 +279,6 @@ export const useTrainingLog = (initialDate: Date) => {
     setOriginalLogState(nextBaseline); // store untouched baseline
     setCurrentLog(isDeload ? applyDeloadTransform(nextBaseline) : nextBaseline);
   };
-
-  useEffect(() => {
-    if (isDeload) {
-      if (skipNextDeloadEffectRef.current) {
-        skipNextDeloadEffectRef.current = false;
-        return; 
-      }
-      if (!originalLogState) setOriginalLogState(cloneDeep(currentLog));
-      setCurrentLog(applyDeloadTransform(originalLogState ?? currentLog));
-    } else {
-      if (originalLogState) {
-        setCurrentLog(cloneDeep(originalLogState));
-      }
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isDeload]);
 
 
   const markExerciseAsInteracted = (exerciseIdToUpdate: string) => {
