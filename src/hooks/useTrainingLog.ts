@@ -257,6 +257,17 @@ export const useTrainingLog = (initialDate: Date) => {
     return { ...log, exercises: transformedExercises };
   };
 
+  const setLogDeloadAware = (
+    produceNext: (prev: WorkoutLog | null) => WorkoutLog | null
+  ) => {
+    setCurrentLog(prev => {
+      const next = produceNext(prev);
+      if (!next) return prev;
+      setOriginalLogState(next);   // store untouched baseline
+      return isDeload ? applyDeloadTransform(next) : next;
+    });
+  };
+
   useEffect(() => {
     if (isDeload) {
       if (skipNextDeloadEffectRef.current) {
@@ -368,7 +379,6 @@ export const useTrainingLog = (initialDate: Date) => {
     const dateOfLog = format(selectedDate, 'yyyy-MM-dd');
     
     const baseLog = currentLog || { id: dateOfLog, date: dateOfLog, exercises: [], exerciseIds: [], notes: '' };
-
     const performanceEntry = await fetchExercisePerformanceData(exercise.id, baseLog.routineId);
 
     let initialSets: LoggedSet[];
@@ -397,7 +407,7 @@ export const useTrainingLog = (initialDate: Date) => {
       setStructureOverride: null,
     };
 
-    const updater = (log: WorkoutLog | null) => {
+    setLogDeloadAware((log) => {
         const logToUpdate = log || baseLog;
         const updatedExercises = [...logToUpdate.exercises];
         const insertionIndex = (index === null || index === undefined) ? updatedExercises.length : index;
@@ -408,40 +418,36 @@ export const useTrainingLog = (initialDate: Date) => {
             exercises: updatedExercises,
             exerciseIds: updatedExercises.map(e => e.exerciseId) 
         };
-    };
-    setCurrentLog(updater);
-    setOriginalLogState(updater);
+    });
   };
 
   const removeExerciseFromLog = (loggedExerciseId: string) => {
-    const updater = (log: WorkoutLog | null) => {
-        if (!log) return null;
-        const updatedExercises = log.exercises.filter(ex => ex.id !== loggedExerciseId);
-        return { 
-            ...log, 
-            exercises: updatedExercises,
-            exerciseIds: updatedExercises.map(e => e.exerciseId) 
-        };
-    };
-    setCurrentLog(updater);
-    setOriginalLogState(updater);
+    setLogDeloadAware((log) => {
+      if (!log) return log;
+      const updatedExercises = log.exercises.filter(ex => ex.id !== loggedExerciseId);
+      return { 
+          ...log, 
+          exercises: updatedExercises,
+          exerciseIds: updatedExercises.map(e => e.exerciseId) 
+      };
+    });
   };
 
   const replaceExerciseInLog = async (exerciseIdToReplace: string, newExercise: Exercise) => {
-    if (!user?.id || !currentLog) return;
-
+    if (!user?.id) return;
     const dateOfLog = format(selectedDate, 'yyyy-MM-dd');
-    const performanceEntry = await fetchExercisePerformanceData(newExercise.id, currentLog.routineId);
+    const baseLog = currentLog || { id: dateOfLog, date: dateOfLog, exercises: [], exerciseIds: [], notes: '' };
+    const performanceEntry = await fetchExercisePerformanceData(newExercise.id, baseLog.routineId);
 
     const initialSets: LoggedSet[] = (performanceEntry?.lastPerformedSets?.length ? performanceEntry.lastPerformedSets : [{ reps: null, weight: null }])
       .map((s, i) => ({ ...s, id: `set-${dateOfLog}-${newExercise.id}-${i}-${Date.now()}`, isProvisional: true }));
 
-    const updater = (log: WorkoutLog | null): WorkoutLog | null => {
-      if (!log) return null;
+    setLogDeloadAware((log) => {
+      if (!log) return log;
       const idx = log.exercises.findIndex(ex => ex.id === exerciseIdToReplace);
       if (idx === -1) return log;
 
-      const prev = log.exercises[idx]; // <-- keep structure
+      const prev = log.exercises[idx];
       const updatedExercises = [...log.exercises];
       updatedExercises[idx] = {
         id: `${newExercise.id}-${dateOfLog}-${Date.now()}`,
@@ -463,10 +469,7 @@ export const useTrainingLog = (initialDate: Date) => {
         exercises: updatedExercises,
         exerciseIds: updatedExercises.map(e => e.exerciseId),
       };
-    };
-
-    setCurrentLog(updater);
-    setOriginalLogState(updater);
+    });
   };
 
   const reorderExercisesInLog = (reorderedExercises: LoggedExercise[]) => {
@@ -768,3 +771,6 @@ export const useTrainingLog = (initialDate: Date) => {
 
     
 
+
+
+    
