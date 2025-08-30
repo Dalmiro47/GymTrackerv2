@@ -1,6 +1,7 @@
 
 import type { LucideIcon } from 'lucide-react';
 import type { SetStructure } from './setStructure';
+import type { MuscleGroup } from '@/lib/constants';
 
 export type NavItem = {
   title: string;
@@ -10,12 +11,6 @@ export type NavItem = {
   disabled?: boolean;
   external?: boolean;
 };
-
-export const MUSCLE_GROUPS = [
-  "Chest", "Back", "Legs", "Shoulders", "Biceps", "Triceps", "Abs", "Cardio", "Other"
-] as const;
-
-export type MuscleGroup = typeof MUSCLE_GROUPS[number];
 
 // --- Warm-up Types ---
 export type WarmupTemplate = 'HEAVY_BARBELL' | 'HEAVY_DB' | 'MACHINE_COMPOUND' | 'BODYWEIGHT' | 'ISOLATION' | 'NONE';

@@ -1,6 +1,6 @@
 
 import { db } from '@/lib/firebaseConfig';
-import type { Exercise, ExerciseData, MuscleGroup } from '@/types';
+import type { Exercise, ExerciseData } from '@/types';
 import { 
   collection, 
   addDoc, 

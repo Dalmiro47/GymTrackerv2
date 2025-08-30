@@ -3,6 +3,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import type { WorkoutLog, LoggedExercise, LoggedSet, Routine, Exercise, ExercisePerformanceEntry, PersonalRecord, SetStructure, WarmupConfig } from '@/types';
+import type { MuscleGroup } from '@/lib/constants';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   getWorkoutLog as fetchLogService,

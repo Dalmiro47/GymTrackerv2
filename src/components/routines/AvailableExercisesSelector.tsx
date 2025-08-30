@@ -2,7 +2,8 @@
 "use client";
 
 import { useState, useMemo, useEffect } from 'react';
-import type { Exercise, MuscleGroup } from '@/types';
+import type { Exercise } from '@/types';
+import type { MuscleGroup } from '@/lib/constants';
 import { MUSCLE_GROUPS_LIST } from '@/lib/constants';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -32,18 +33,21 @@ export function AvailableExercisesSelector({
       return allExercises.map(e => ({...e, muscleGroup: assertMuscleGroup(e.muscleGroup as any)}));
   }, [allExercises]);
 
-  const availableMuscleGroups = useMemo(() => {
-    const groups = new Set(canonicalExercises.map(ex => ex.muscleGroup));
-    return MUSCLE_GROUPS_LIST.filter(group => groups.has(group));
+  const { availableMuscleGroups, muscleGroupCounts } = useMemo(() => {
+    const counts: Record<string, number> = {};
+    const seenGroups = new Set<MuscleGroup>();
+
+    canonicalExercises.forEach(ex => {
+      const group = ex.muscleGroup;
+      seenGroups.add(group);
+      counts[group] = (counts[group] || 0) + 1;
+    });
+    
+    const available = MUSCLE_GROUPS_LIST.filter(group => seenGroups.has(group));
+    
+    return { availableMuscleGroups: available, muscleGroupCounts: counts };
   }, [canonicalExercises]);
   
-  const muscleGroupCounts = useMemo(() => {
-    return availableMuscleGroups.reduce((acc, group) => {
-      acc[group] = canonicalExercises.filter(ex => ex.muscleGroup === group).length;
-      return acc;
-    }, {} as Record<MuscleGroup, number>);
-  }, [canonicalExercises, availableMuscleGroups]);
-
   useEffect(() => {
     if (selectedMuscleGroup !== 'All' && !availableMuscleGroups.includes(selectedMuscleGroup)) {
       setSelectedMuscleGroup('All');
