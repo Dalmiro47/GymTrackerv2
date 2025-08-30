@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { WorkoutLog, LoggedExercise, LoggedSet, Routine, Exercise, ExercisePerformanceEntry, PersonalRecord, SetStructure, WarmupConfig } from '@/types';
 import type { MuscleGroup } from '@/lib/constants';
 import { useAuth } from '@/contexts/AuthContext';
@@ -66,6 +66,7 @@ export const useTrainingLog = (initialDate: Date) => {
 
   const [isDeload, setIsDeload] = useState(false);
   const [originalLogState, setOriginalLogState] = useState<WorkoutLog | null>(null);
+  const skipNextDeloadEffectRef = useRef(false);
 
 
   const formattedDateId = format(selectedDate, 'yyyy-MM-dd');
@@ -158,6 +159,10 @@ export const useTrainingLog = (initialDate: Date) => {
             setCurrentLog(log);
             setOriginalLogState(cloneDeep(log));
             setIsDeload(log.isDeload ?? false);
+
+            if (log.isDeload) {
+              skipNextDeloadEffectRef.current = true;
+            }
 
         } else {
             const newLog = {
@@ -254,12 +259,16 @@ export const useTrainingLog = (initialDate: Date) => {
 
   useEffect(() => {
     if (isDeload) {
-        if (!originalLogState) setOriginalLogState(cloneDeep(currentLog));
-        setCurrentLog(applyDeloadTransform(currentLog));
+      if (skipNextDeloadEffectRef.current) {
+        skipNextDeloadEffectRef.current = false;
+        return; 
+      }
+      if (!originalLogState) setOriginalLogState(cloneDeep(currentLog));
+      setCurrentLog(applyDeloadTransform(currentLog));
     } else {
-        if (originalLogState) {
-            setCurrentLog(cloneDeep(originalLogState));
-        }
+      if (originalLogState) {
+        setCurrentLog(cloneDeep(originalLogState));
+      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isDeload]);
@@ -758,3 +767,4 @@ export const useTrainingLog = (initialDate: Date) => {
     
 
     
+
