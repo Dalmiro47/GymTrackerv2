@@ -110,7 +110,6 @@ function getConnectorAfterIndex(
 function TrainingLogPageContent() {
   const { user, isLoading: authIsLoading } = useAuth();
   const router = useRouter();
-  const searchParams = useSearchParams();
   const isMobile = useIsMobile();
   
   const getInitialDateFromParams = () => {
@@ -424,19 +423,10 @@ function TrainingLogPageContent() {
                               onMarkAsInteracted={() => markExerciseAsInteracted(loggedEx.id)}
                               onUpdateSetStructureOverride={(structure) => updateExerciseSetStructureOverride(loggedEx.id, structure)}
                             />
-                             {connector.show && (
-                              <div className="relative -mx-4 sm:mx-0">
-                                <div
-                                  role="presentation"
-                                  className="h-[2px] w-full rounded-full"
-                                  style={{ backgroundColor: connector.color }}
-                                />
-                              </div>
-                            )}
                         </div>
                          {index < currentLog.exercises.length - 1 && (
                             <div className="flex items-center space-x-2 my-2">
-                                <Separator className="flex-1" />
+                                <Separator className="flex-1 h-[2px]" style={connector.show ? { backgroundColor: connector.color } : undefined} />
                                 <Button 
                                     onClick={() => handleOpenAddDialog(index + 1)}
                                     variant="outline" 
@@ -445,7 +435,7 @@ function TrainingLogPageContent() {
                                 >
                                     <PlusCircle className="mr-2 h-4 w-4" /> Add Exercise Here
                                 </Button>
-                                <Separator className="flex-1" />
+                                <Separator className="flex-1 h-[2px]" style={connector.show ? { backgroundColor: connector.color } : undefined} />
                             </div>
                         )}
                       </React.Fragment>
