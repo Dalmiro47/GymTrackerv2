@@ -274,35 +274,33 @@ export function LoggedExerciseCard({
             </Button>
           </div>
         </div>
-
-        <Separator className="my-4"/>
-        
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground">Session Set Structure</span>
+        <div className="border-t -mx-4 px-4 pt-4 sm:mx-0 sm:px-0">
+          <div className="flex flex-col sm:flex-row items-center gap-3">
+            <div className="flex items-center gap-2 flex-1">
+              <span className="text-sm text-muted-foreground whitespace-nowrap">
+                Session Set Structure
+              </span>
               <SetStructurePicker
-                  value={loggedExercise.setStructureOverride ?? (loggedExercise.setStructure ?? 'normal')}
-                  onChange={(val) => {
-                      onMarkAsInteracted();
-                      onUpdateSetStructureOverride(val === 'normal' ? null : val);
-                  }}
-                  disabled={isSavingThisExercise || isSavingParentLog}
+                value={loggedExercise.setStructureOverride ?? (loggedExercise.setStructure ?? 'normal')}
+                onChange={(val) => {
+                  onMarkAsInteracted();
+                  onUpdateSetStructureOverride(val === 'normal' ? null : val);
+                }}
+                disabled={isSavingThisExercise || isSavingParentLog}
               />
+            </div>
+            <Button
+              onClick={handleSaveThisExercise}
+              disabled={isSavingThisExercise || isSavingParentLog}
+              className="w-full sm:w-auto"
+            >
+              {isSavingThisExercise ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> :
+                justSaved ? <Check className="mr-2 h-4 w-4" /> : <Save className="mr-2 h-4 w-4" />}
+              {isSavingThisExercise ? "Saving..." : justSaved ? "Progress Saved!" : "Save Progress"}
+            </Button>
           </div>
-          <Button 
-            onClick={handleSaveThisExercise} 
-            disabled={isSavingThisExercise || isSavingParentLog} 
-            size="sm"
-            className="bg-primary/90 hover:bg-primary" 
-          >
-            {isSavingThisExercise ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : 
-            justSaved ? <Check className="mr-2 h-4 w-4" /> : <Save className="mr-2 h-4 w-4" />}
-            {isSavingThisExercise ? "Saving..." : justSaved ? "Progress Saved!" : "Save Progress"}
-          </Button>
         </div>
       </CardContent>
     </Card>
   );
 }
-
-    
