@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -7,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { PlusCircle, Trash2, Save, GripVertical, Loader2, Check, Settings2, ArrowLeftRight, Flame, TrendingUp } from 'lucide-react';
+import { PlusCircle, Trash2, Save, GripVertical, Loader2, Check, Settings2, ArrowLeftRight, Flame, TrendingUp, Dumbbell } from 'lucide-react';
 import { SetInputRow } from './SetInputRow'; 
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -17,7 +18,6 @@ import { SetStructureBadge } from '../SetStructureBadge';
 import { SetStructurePicker } from '../SetStructurePicker';
 import { Separator } from '../ui/separator';
 import { SET_STRUCTURE_COLORS } from '@/types/setStructure';
-import { BicepIcon } from '@/components/icons/BicepIcon';
 
 interface LoggedExerciseCardProps {
   loggedExercise: LoggedExercise;
@@ -265,7 +265,7 @@ export function LoggedExerciseCard({
           <div className="pl-8 space-y-0.5">
               <div className="flex items-center justify-between text-xs text-muted-foreground mt-1">
                 <span className="flex items-center leading-tight">
-                  <BicepIcon className="mr-1.5 h-3 w-3 text-primary" />
+                  <Dumbbell aria-hidden="true" className="mr-1.5 h-3 w-3 text-primary" />
                   <span className="tabular-nums">{loggedExercise.personalRecordDisplay || 'PR: N/A'}</span>
                 </span>
               </div>
@@ -371,3 +371,5 @@ export function LoggedExerciseCard({
     </div>
   );
 }
+
+    
