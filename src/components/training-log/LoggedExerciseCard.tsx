@@ -293,19 +293,19 @@ export function LoggedExerciseCard({
         >
           {/* column headers */}
           <div className="grid grid-cols-[2rem_1fr_auto_1fr_auto_2.25rem] items-center gap-2 text-xs font-medium text-muted-foreground">
-            <span className="text-center">Set</span>
-            <span className="text-center">Reps</span>
+            <span className="w-full text-center">Set</span>
+            <span className="w-full text-center">Reps</span>
 
-            {/* keep the auto-width column for the 'x' aligned with rows */}
-            <span className="invisible select-none" aria-hidden="true">x</span>
+            {/* keep width for the 'x' column */}
+            <span className="invisible select-none w-full text-center" aria-hidden>x</span>
 
-            <span className="text-center">Weight</span>
+            <span className="w-full text-center">Weight</span>
 
-            {/* keep the auto-width column for the 'kg' aligned with rows */}
-            <span className="invisible select-none" aria-hidden="true">kg</span>
+            {/* keep width for the 'kg' column */}
+            <span className="invisible select-none w-full text-center" aria-hidden>kg</span>
 
-            {/* delete column placeholder (fixed 2.25rem) */}
-            <span className="invisible" aria-hidden="true" />
+            {/* delete button column placeholder */}
+            <span className="invisible" aria-hidden />
           </div>
 
           {localSets.map((set, index) => (
