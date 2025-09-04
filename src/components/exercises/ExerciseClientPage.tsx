@@ -233,20 +233,20 @@ export function ExerciseClientPage() {
         const affected = routines.filter(r =>
           r.exercises.some(e => e.id === exerciseToEdit.id)
         );
+
         if (affected.length > 0) {
-            await Promise.all(affected.map(r =>
-                updateRoutine(user.id!, r.id, {
-                ...r,
-                exercises: r.exercises.map(e =>
+            await Promise.all(affected.map(r => {
+                const updatedExercises = r.exercises.map(e =>
                     e.id === exerciseToEdit.id ? { ...e, ...exercisePayload } : e
-                ),
-                })
-            ));
+                );
+                return updateRoutine(user.id!, r.id, { exercises: updatedExercises });
+            }));
             toast({
                 title: "Routines Synced",
                 description: `Updated ${exercisePayload.name} in ${affected.length} routine(s).`,
             });
         }
+
 
       } else {
         await addExercise(user.id, exercisePayload);

@@ -267,14 +267,14 @@ export function LoggedExerciseCard({
                   <span>{loggedExercise.personalRecordDisplay || 'PR: N/A'}</span>
               </div>
               {loggedExercise.exerciseSetup && (
-                  <div className="text-xs text-muted-foreground flex items-center">
-                      <Settings2 className="mr-1 h-3 w-3 text-primary" />
+                  <div className="text-xs text-muted-foreground flex items-center leading-tight">
+                      <Settings2 aria-hidden="true" className="mr-1 h-3 w-3 text-primary" />
                       Setup: {loggedExercise.exerciseSetup}
                   </div>
               )}
               {loggedExercise.progressiveOverload && (
-                <div className="text-xs text-muted-foreground flex items-center">
-                  <TrendingUp className="mr-1 h-3 w-3 text-primary" />
+                <div className="text-xs text-muted-foreground flex items-center leading-tight">
+                  <TrendingUp aria-hidden="true" className="mr-1 h-3 w-3 text-primary" />
                   Progressive overload: {loggedExercise.progressiveOverload}
                 </div>
               )}
