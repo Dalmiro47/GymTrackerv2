@@ -1,0 +1,24 @@
+import {PointerSensor, type PointerSensorOptions} from '@dnd-kit/core';
+
+function isInteractive(el: EventTarget | null): boolean {
+  const node = el as HTMLElement | null;
+  if (!node) return false;
+  if (node.isContentEditable) return true;
+  const tag = node.tagName?.toLowerCase();
+  if (['input','textarea','select','button','option'].includes(tag || '')) return true;
+  if (node.closest('[data-dndkit-no-drag],[data-no-dnd],input,textarea,select,button,[contenteditable="true"]')) {
+    return true;
+  }
+  return false;
+}
+
+export class SafePointerSensor extends PointerSensor {
+  // Block activation when the original event starts on an interactive element
+  static activators = [{
+    eventName: 'onPointerDown' as const,
+    handler: ({nativeEvent}: {nativeEvent: PointerEvent}) => {
+      if (isInteractive(nativeEvent.target)) return false;
+      return true;
+    }
+  }];
+}

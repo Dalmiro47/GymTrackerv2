@@ -41,10 +41,10 @@ import {
   DndContext,
   closestCenter,
   KeyboardSensor,
-  PointerSensor,
   useSensor,
   useSensors,
   type DragEndEvent,
+  type PointerSensorOptions,
 } from '@dnd-kit/core';
 import {
   arrayMove,
@@ -61,6 +61,7 @@ import { Switch } from '@/components/ui/switch';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { SET_STRUCTURE_COLORS } from '@/types/setStructure';
 import { cn } from '@/lib/utils';
+import { SafePointerSensor } from './sensors';
 
 // Determine effective structure for an exercise
 function effectiveStructureFor(ex: LoggedExercise): SetStructure {
@@ -179,25 +180,20 @@ function TrainingLogPageContent() {
     return parsedDates;
   }, [loggedDayStrings]);
 
-  const pointerSensor = useSensor(PointerSensor, {
-    activationConstraint: isMobile
-      ? { delay: 200, tolerance: 8 }
-      : { distance: 6 },
-  });
-
+  const pointerSensor = useSensor(SafePointerSensor, {
+    activationConstraint: isMobile ? { delay: 200, tolerance: 8 } : { distance: 6 },
+  } as PointerSensorOptions);
+  
   const keyboardSensor = useSensor(KeyboardSensor, {
     coordinateGetter: sortableKeyboardCoordinates,
     onActivation: ({ event }) => {
-        const el = event.target as HTMLElement | null;
-        if (el && (
-            el.tagName === 'INPUT' || 
-            el.tagName === 'TEXTAREA' || 
-            el.isContentEditable
-        )) {
-            return false;
-        }
-        return true;
-    }
+      const el = event.target as HTMLElement | null;
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) {
+        event.preventDefault();
+        event.stopPropagation();
+        return; // do not start a drag
+      }
+    },
   });
 
   const sensors = useSensors(pointerSensor, keyboardSensor);

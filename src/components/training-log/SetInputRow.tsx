@@ -34,6 +34,8 @@ export function SetInputRow({ set, index, onSetChange, onRemoveSet, isProvisiona
         onChange={(e) => handleInputChange('reps', e.target.value)}
         onWheel={(e) => (e.currentTarget as HTMLInputElement).blur()}
         onPointerDownCapture={(e) => e.stopPropagation()}
+        onMouseDownCapture={(e) => e.stopPropagation()}
+        onTouchStartCapture={(e) => e.stopPropagation()}
         onKeyDownCapture={(e) => e.stopPropagation()}
         className={cn(
             "h-9 text-sm",
@@ -49,6 +51,8 @@ export function SetInputRow({ set, index, onSetChange, onRemoveSet, isProvisiona
         onChange={(e) => handleInputChange('weight', e.target.value)}
         onWheel={(e) => (e.currentTarget as HTMLInputElement).blur()}
         onPointerDownCapture={(e) => e.stopPropagation()}
+        onMouseDownCapture={(e) => e.stopPropagation()}
+        onTouchStartCapture={(e) => e.stopPropagation()}
         onKeyDownCapture={(e) => e.stopPropagation()}
         className={cn(
             "h-9 text-sm",
