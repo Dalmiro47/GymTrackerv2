@@ -36,27 +36,43 @@ export async function addExercise(userId: string, data: ExerciseData): Promise<E
   let candidateId = baseId;
   let suffix = 2;
 
-  // Ensure uniqueness by probing Firestore for existing doc IDs.
-  // This is cheap because it's a direct getDoc by ID.
-  // If there is a collision, append -2, -3, ...
-  // NOTE: If you want "name already used" instead, we can throw instead of suffixing.
   // eslint-disable-next-line no-constant-condition
   while (true) {
     const ref = doc(db, colPath, candidateId);
     const snap = await getDoc(ref);
     if (!snap.exists()) {
-      await setDoc(ref, {
-        // store everything except id; id is the document key
-        name: data.name,
+      // Build payload and remove ALL undefined deeply
+      const raw = {
+        name: data.name.trim(),
         muscleGroup: data.muscleGroup,
         targetNotes: data.targetNotes || '',
         exerciseSetup: data.exerciseSetup || '',
         progressiveOverload: data.progressiveOverload || '',
         instructions: data.instructions || '',
-        dataAiHint: data.dataAiHint || '',      // if you set this elsewhere, keep it
-        warmup: data.warmup ?? undefined,
-      });
-      return { id: candidateId, ...data }; // return the exercise object with readable id
+        dataAiHint: data.dataAiHint || '',
+        // warmup is optional; only include defined fields
+        warmup: data.warmup
+          ? {
+              template: data.warmup.template,
+              isWeightedBodyweight: data.warmup.isWeightedBodyweight,
+              roundingIncrementKg: data.warmup.roundingIncrementKg,
+              overrideSteps: data.warmup.overrideSteps?.map(s => ({
+                type: s.type,
+                percent: s.type === 'PERCENT' ? s.percent : undefined,
+                reps: s.reps,
+                rest: s.rest,
+                appliesTo: s.appliesTo,
+                note: s.note,
+                label: s.type === 'LABEL' ? s.label : undefined,
+              })),
+            }
+          : undefined,
+      };
+
+      const payload = stripUndefinedDeep(raw); // <-- KEY LINE
+
+      await setDoc(ref, payload);
+      return { id: candidateId, ...(payload as ExerciseData) };
     }
     candidateId = `${baseId}-${suffix++}`;
   }
