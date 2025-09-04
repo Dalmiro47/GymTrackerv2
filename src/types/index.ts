@@ -53,17 +53,6 @@ export interface RoutineExercise extends Exercise {
   isMissing?: boolean; // Flag for UI if exercise was deleted from main library
 }
 
-export interface Routine {
-  id: string; // Firestore document ID
-  name: string;
-  description?: string;
-  exercises: RoutineExercise[]; 
-  order: number; // For drag-and-drop ordering
-}
-
-export type RoutineData = Omit<Routine, 'id'>;
-
-
 export interface LoggedSet {
   id: string; // Unique ID for the set (e.g., UUID or timestamp-based)
   reps: number | null; // Allow null for empty input
@@ -81,6 +70,7 @@ export interface LoggedExercise {
   sets: LoggedSet[];
   notes?: string;
   personalRecordDisplay?: string; // e.g., "PR: 1x5 @ 100kg" or "PR: N/A"
+  currentPR: { reps: number, weight: number } | null; // Numeric PR for reliable logic
   isProvisional?: boolean; // True if auto-populated and not yet interacted with/saved
   warmupConfig?: WarmupConfig; // Pass along for warmup calculation
   setStructure?: SetStructure; // Default from the routine
