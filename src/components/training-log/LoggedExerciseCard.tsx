@@ -285,12 +285,29 @@ export function LoggedExerciseCard({
               setIsEditing(true);
             }
           }}
-          onBlurCapture={() => {
+          onBlurCapture={(e) => {
             // iOS often gives null relatedTarget — compute from activeElement
             const active = document.activeElement as HTMLElement | null;
             setIsEditing(!!(active && contentRef.current?.contains(active)));
           }}
         >
+          {/* column headers */}
+          <div className="grid grid-cols-[2rem_1fr_auto_1fr_auto_2.25rem] items-center gap-2 text-xs font-medium text-muted-foreground">
+            <span className="w-full text-center">Set</span>
+            <span className="w-full text-center">Reps</span>
+
+            {/* keep width for the 'x' column */}
+            <span className="invisible select-none w-full text-center" aria-hidden>x</span>
+
+            <span className="w-full text-center">Weight</span>
+
+            {/* keep width for the 'kg' column */}
+            <span className="invisible select-none w-full text-center" aria-hidden>kg</span>
+
+            {/* delete button column placeholder */}
+            <span className="invisible" aria-hidden />
+          </div>
+
           {localSets.map((set, index) => (
             <SetInputRow
               key={set.id} 
@@ -352,5 +369,3 @@ export function LoggedExerciseCard({
     </div>
   );
 }
-
-    

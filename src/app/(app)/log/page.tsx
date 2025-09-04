@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import React, { useState, useMemo, useEffect, Suspense } from 'react';
@@ -414,7 +415,7 @@ function TrainingLogPageContent() {
                       const connector = getConnectorAfterIndex(currentLog.exercises, index);
                       return (
                       <React.Fragment key={loggedEx.id}>
-                        <div className="mb-4">
+                        <div className={cn(!connector.show && "mb-4")}>
                             <LoggedExerciseCard
                               loggedExercise={loggedEx}
                               onUpdateSets={(sets) => updateExerciseInLog({ ...loggedEx, sets })}
@@ -429,11 +430,15 @@ function TrainingLogPageContent() {
                         {index < currentLog.exercises.length - 1 && (
                           <div
                             className={cn(
-                              "relative -mx-4 sm:mx-0",
-                              connector.show ? "-mt-2 -mb-2 pointer-events-none" : "my-2"
+                              "relative -mx-4 my-2 sm:mx-0",
+                              connector.show && "pointer-events-none"
                             )}
                           >
-                            <div className="relative z-10 flex items-center space-x-2 pointer-events-auto">
+                           <div
+                              className={cn(
+                                'relative z-10 flex items-center space-x-2 pointer-events-auto'
+                              )}
+                            >
                               <Separator
                                 className="flex-1 h-[2px]"
                                 style={connector.show ? { backgroundColor: connector.color } : undefined}
@@ -442,7 +447,7 @@ function TrainingLogPageContent() {
                                 onClick={() => handleOpenAddDialog(index + 1)}
                                 variant="outline"
                                 size="sm"
-                                className="border-dashed hover:border-solid hover:bg-muted/50 text-muted-foreground hover:text-foreground"
+                                className='border-dashed hover:border-solid hover:bg-muted/50 text-muted-foreground hover:text-foreground'
                               >
                                 <PlusCircle className="mr-2 h-4 w-4" /> Add Exercise Here
                               </Button>
@@ -455,12 +460,12 @@ function TrainingLogPageContent() {
                               <>
                                 <span
                                   aria-hidden
-                                  className="pointer-events-none absolute left-[1px] top-0 bottom-0 w-[2px] rounded-full"
+                                  className="pointer-events-none absolute left-[1px] top-1/2 -translate-y-1/2 bottom-0 w-[2px] rounded-full"
                                   style={{ backgroundColor: connector.color }}
                                 />
                                 <span
                                   aria-hidden
-                                  className="pointer-events-none absolute right-[1px] top-0 bottom-0 w-[2px] rounded-full"
+                                  className="pointer-events-none absolute right-[1px] top-1/2 -translate-y-1/2 bottom-0 w-[2px] rounded-full"
                                   style={{ backgroundColor: connector.color }}
                                 />
                               </>
@@ -585,3 +590,5 @@ export default function TrainingLogPage() {
     </Suspense>
   );
 }
+
+    
