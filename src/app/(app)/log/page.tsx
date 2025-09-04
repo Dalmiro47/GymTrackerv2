@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import React, { useState, useMemo, useEffect, Suspense } from 'react';
@@ -430,10 +431,15 @@ function TrainingLogPageContent() {
                           <div
                             className={cn(
                               "relative -mx-4 sm:mx-0",
-                              connector.show ? "-mt-2 -mb-2 pointer-events-none" : "my-2"
+                              connector.show ? "-mt-4 -mb-2 z-0" : "my-2"
                             )}
                           >
-                            <div className="relative z-10 flex items-center space-x-2 pointer-events-auto">
+                           <div
+                              className={cn(
+                                'relative z-10 flex items-center space-x-2',
+                                connector.show && 'pointer-events-none'
+                              )}
+                            >
                               <Separator
                                 className="flex-1 h-[2px]"
                                 style={connector.show ? { backgroundColor: connector.color } : undefined}
@@ -442,7 +448,10 @@ function TrainingLogPageContent() {
                                 onClick={() => handleOpenAddDialog(index + 1)}
                                 variant="outline"
                                 size="sm"
-                                className="border-dashed hover:border-solid hover:bg-muted/50 text-muted-foreground hover:text-foreground"
+                                className={cn(
+                                  'border-dashed hover:border-solid hover:bg-muted/50 text-muted-foreground hover:text-foreground',
+                                  connector.show && 'pointer-events-auto'
+                                )}
                               >
                                 <PlusCircle className="mr-2 h-4 w-4" /> Add Exercise Here
                               </Button>
@@ -455,12 +464,12 @@ function TrainingLogPageContent() {
                               <>
                                 <span
                                   aria-hidden
-                                  className="pointer-events-none absolute left-[1px] top-0 bottom-0 w-[2px] rounded-full"
+                                  className="pointer-events-none absolute left-0 top-0 bottom-0 w-[2px] rounded-full sm:left-[1px]"
                                   style={{ backgroundColor: connector.color }}
                                 />
                                 <span
                                   aria-hidden
-                                  className="pointer-events-none absolute right-[1px] top-0 bottom-0 w-[2px] rounded-full"
+                                  className="pointer-events-none absolute right-0 top-0 bottom-0 w-[2px] rounded-full sm:right-[1px]"
                                   style={{ backgroundColor: connector.color }}
                                 />
                               </>
