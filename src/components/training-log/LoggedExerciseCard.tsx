@@ -199,8 +199,7 @@ export function LoggedExerciseCard({
         "shadow-md transition-all rounded-lg border", 
         "border-[var(--card-border-color)]",
         effectiveSetStructure !== 'normal' && "border-2",
-        isDragging && "ring-2 ring-primary",
-        isCardProvisional && "opacity-60 bg-muted/30 border-dashed"
+        isDragging && "ring-2 ring-primary"
       )}
     >
       <CardHeader className="py-3 px-4 border-b">

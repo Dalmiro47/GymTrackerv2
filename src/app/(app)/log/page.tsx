@@ -430,10 +430,10 @@ function TrainingLogPageContent() {
                           <div
                             className={cn(
                               "relative -mx-4 sm:mx-0",
-                              connector.show ? "-mt-2 -mb-2" : "my-2"
+                              connector.show ? "-mt-2 -mb-2 pointer-events-none" : "my-2"
                             )}
                           >
-                            <div className="relative z-10 flex items-center space-x-2">
+                            <div className="relative z-10 flex items-center space-x-2 pointer-events-auto">
                               <Separator
                                 className="flex-1 h-[2px]"
                                 style={connector.show ? { backgroundColor: connector.color } : undefined}
