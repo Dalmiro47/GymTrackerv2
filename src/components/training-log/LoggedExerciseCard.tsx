@@ -253,7 +253,10 @@ export function LoggedExerciseCard({
             )}
         </div>
       </CardHeader>
-      <CardContent className="p-4 space-y-3">
+      <CardContent 
+        className="p-4 space-y-3"
+        data-dndkit-no-drag
+      >
         {localSets.map((set, index) => (
           <SetInputRow
             key={set.id} 
