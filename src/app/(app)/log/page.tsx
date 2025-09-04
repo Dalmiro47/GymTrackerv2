@@ -40,8 +40,6 @@ import {
 import {
   DndContext,
   closestCenter,
-  KeyboardSensor,
-  PointerSensor,
   useSensor,
   useSensors,
   type DragEndEvent,
@@ -61,6 +59,7 @@ import { Switch } from '@/components/ui/switch';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { SET_STRUCTURE_COLORS } from '@/types/setStructure';
 import { cn } from '@/lib/utils';
+import { SafePointerSensor, SafeKeyboardSensor } from './sensors';
 
 // Determine effective structure for an exercise
 function effectiveStructureFor(ex: LoggedExercise): SetStructure {
@@ -180,13 +179,14 @@ function TrainingLogPageContent() {
   }, [loggedDayStrings]);
 
   const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: isMobile
-        ? { delay: 200, tolerance: 8 } // Delay for touch devices
-        : undefined, // No delay for mouse
+    useSensor(SafePointerSensor, {
+      activationConstraint: isMobile ? { delay: 200, tolerance: 8 } : { distance: 6 },
     }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+    useSensor(SafeKeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
   );
+
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
@@ -430,10 +430,10 @@ function TrainingLogPageContent() {
                           <div
                             className={cn(
                               "relative -mx-4 sm:mx-0",
-                              connector.show ? "-mt-2 -mb-2" : "my-2"
+                              connector.show ? "-mt-2 -mb-2 pointer-events-none" : "my-2"
                             )}
                           >
-                            <div className="relative z-10 flex items-center space-x-2">
+                            <div className="relative z-10 flex items-center space-x-2 pointer-events-auto">
                               <Separator
                                 className="flex-1 h-[2px]"
                                 style={connector.show ? { backgroundColor: connector.color } : undefined}
@@ -585,11 +585,3 @@ export default function TrainingLogPage() {
     </Suspense>
   );
 }
-
-    
-
-    
-
-
-
-    
