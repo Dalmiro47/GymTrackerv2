@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -18,7 +17,7 @@ import { SetStructureBadge } from '../SetStructureBadge';
 import { SetStructurePicker } from '../SetStructurePicker';
 import { Separator } from '../ui/separator';
 import { SET_STRUCTURE_COLORS } from '@/types/setStructure';
-import { MuscleGroupIcon } from '@/components/exercises/MuscleGroupIcon';
+import { BicepIcon } from '@/components/icons/BicepIcon';
 
 interface LoggedExerciseCardProps {
   loggedExercise: LoggedExercise;
@@ -266,11 +265,7 @@ export function LoggedExerciseCard({
           <div className="pl-8 space-y-0.5">
               <div className="flex items-center justify-between text-xs text-muted-foreground mt-1">
                 <span className="flex items-center leading-tight">
-                  <MuscleGroupIcon
-                    muscleGroup={loggedExercise.muscleGroup}
-                    className="mr-1.5 h-3 w-3 text-primary"
-                    aria-hidden="true"
-                  />
+                  <BicepIcon className="mr-1.5 h-3 w-3 text-primary" />
                   <span className="tabular-nums">{loggedExercise.personalRecordDisplay || 'PR: N/A'}</span>
                 </span>
               </div>
