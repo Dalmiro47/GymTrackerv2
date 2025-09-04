@@ -139,6 +139,7 @@ export function LoggedExerciseCard({
     transition,
     opacity: isDragging ? 0.9 : 1,
     zIndex: isDragging ? 10 : 'auto',
+    willChange: transform ? 'transform' : undefined,
   }), [transform, transition, isDragging]);
   
   useEffect(() => {
@@ -234,6 +235,7 @@ export function LoggedExerciseCard({
                   {...listeners} 
                   className="cursor-grab p-1 text-muted-foreground hover:text-foreground touch-none"
                   aria-label={`Drag to reorder ${loggedExercise.name}`}
+                  aria-roledescription="Draggable exercise"
               >
                 <GripVertical className="h-5 w-5" />
               </button>

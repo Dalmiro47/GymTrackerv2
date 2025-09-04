@@ -113,6 +113,7 @@ function getConnectorAfterIndex(
 function TrainingLogPageContent() {
   const { user, isLoading: authIsLoading } = useAuth();
   const router = useRouter();
+  const isMobile = useIsMobile();
   
   const searchParams = useSearchParams();
   
@@ -183,7 +184,9 @@ function TrainingLogPageContent() {
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
-      activationConstraint: { distance: 6 },
+      activationConstraint: isMobile 
+        ? { delay: 120, tolerance: 6 } 
+        : { distance: 6 },
     }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
