@@ -218,9 +218,9 @@ export function ExerciseClientPage() {
       const exercisePayload: ExerciseData = {
         name: formData.name,
         muscleGroup: formData.muscleGroup,
-        targetNotes: formData.targetNotes || '',
-        exerciseSetup: formData.exerciseSetup || '',
-        progressiveOverload: formData.progressiveOverload || '',
+        targetNotes: (formData.targetNotes || '').trim(),
+        exerciseSetup: (formData.exerciseSetup || '').trim(),
+        progressiveOverload: (formData.progressiveOverload || '').trim(),
         dataAiHint: formData.name.toLowerCase().split(" ").slice(0,2).join(" ") || 'exercise',
         warmup: formData.warmup,
       };
@@ -229,21 +229,23 @@ export function ExerciseClientPage() {
         await updateExercise(user.id, exerciseToEdit.id, exercisePayload);
         toast({ title: "Exercise Updated", description: `${formData.name} has been successfully updated.` });
 
-        if (exerciseToEdit.name !== formData.name) {
-          const routines = await getRoutines(user.id);
-          const affected = routines.filter(r =>
-            r.exercises.some(e => e.id === exerciseToEdit.id && e.name !== formData.name)
-          );
-          await Promise.all(affected.map(r =>
-            updateRoutine(user.id!, r.id, stripUndefinedDeep({
-              name: r.name,
-              description: r.description ?? '',
-              order: r.order,
-              exercises: r.exercises.map(e =>
-                e.id === exerciseToEdit.id ? { ...e, name: formData.name } : e
-              ),
-            }))
-          ));
+        const routines = await getRoutines(user.id);
+        const affected = routines.filter(r =>
+          r.exercises.some(e => e.id === exerciseToEdit.id)
+        );
+        if (affected.length > 0) {
+            await Promise.all(affected.map(r =>
+                updateRoutine(user.id!, r.id, {
+                ...r,
+                exercises: r.exercises.map(e =>
+                    e.id === exerciseToEdit.id ? { ...e, ...exercisePayload } : e
+                ),
+                })
+            ));
+            toast({
+                title: "Routines Synced",
+                description: `Updated ${exercisePayload.name} in ${affected.length} routine(s).`,
+            });
         }
 
       } else {

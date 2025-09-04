@@ -262,7 +262,7 @@ export function LoggedExerciseCard({
               </Button>
             </div>
           </div>
-          <div className="pl-8 space-y-1">
+          <div className="pl-8 space-y-0.5">
               <div className="flex items-center justify-between text-xs text-muted-foreground mt-1">
                   <span>{loggedExercise.personalRecordDisplay || 'PR: N/A'}</span>
               </div>
