@@ -291,13 +291,14 @@ export function LoggedExerciseCard({
             setIsEditing(!!(active && contentRef.current?.contains(active)));
           }}
         >
-          <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-            <span className="w-8 text-center">Set</span>
-            <div className="flex-1 text-center">Reps</div>
-            <div className="w-6 shrink-0" />
-            <div className="flex-1 text-center">Weight</div>
-            <div className="w-12 shrink-0" />
-            <div className="w-9 shrink-0" />
+          {/* column headers */}
+          <div className="grid grid-cols-[2rem_1fr_auto_1fr_auto_2.25rem] items-center gap-2 text-xs font-medium text-muted-foreground">
+            <span className="text-center">Set</span>
+            <div className="text-center">Reps</div>
+            <div aria-hidden />          {/* placeholder for the "x" column */}
+            <div className="text-center">Weight</div>
+            <div aria-hidden />          {/* placeholder for the "kg" column */}
+            <div aria-hidden />          {/* placeholder for the delete button column */}
           </div>
 
           {localSets.map((set, index) => (
@@ -361,5 +362,3 @@ export function LoggedExerciseCard({
     </div>
   );
 }
-
-    
