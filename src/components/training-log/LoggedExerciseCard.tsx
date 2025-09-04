@@ -18,6 +18,7 @@ import { SetStructureBadge } from '../SetStructureBadge';
 import { SetStructurePicker } from '../SetStructurePicker';
 import { Separator } from '../ui/separator';
 import { SET_STRUCTURE_COLORS } from '@/types/setStructure';
+import { MuscleGroupIcon } from '@/components/exercises/MuscleGroupIcon';
 
 interface LoggedExerciseCardProps {
   loggedExercise: LoggedExercise;
@@ -264,7 +265,14 @@ export function LoggedExerciseCard({
           </div>
           <div className="pl-8 space-y-0.5">
               <div className="flex items-center justify-between text-xs text-muted-foreground mt-1">
-                  <span>{loggedExercise.personalRecordDisplay || 'PR: N/A'}</span>
+                <span className="flex items-center leading-tight">
+                  <MuscleGroupIcon
+                    muscleGroup={loggedExercise.muscleGroup}
+                    className="mr-1.5 h-3 w-3 text-primary"
+                    aria-hidden="true"
+                  />
+                  <span className="tabular-nums">{loggedExercise.personalRecordDisplay || 'PR: N/A'}</span>
+                </span>
               </div>
               {loggedExercise.exerciseSetup && (
                   <div className="text-xs text-muted-foreground flex items-center leading-tight">
@@ -301,16 +309,9 @@ export function LoggedExerciseCard({
           <div className="grid grid-cols-[2rem_1fr_auto_1fr_auto_2.25rem] items-center gap-2 text-xs font-medium text-muted-foreground">
             <span className="w-full text-center">Set</span>
             <span className="w-full text-center">Reps</span>
-
-            {/* keep width for the 'x' column */}
             <span className="invisible select-none w-full text-center" aria-hidden>x</span>
-
             <span className="w-full text-center">Weight</span>
-
-            {/* keep width for the 'kg' column */}
             <span className="invisible select-none w-full text-center" aria-hidden>kg</span>
-
-            {/* delete button column placeholder */}
             <span className="invisible" aria-hidden />
           </div>
 
