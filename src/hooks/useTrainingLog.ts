@@ -18,6 +18,7 @@ import { getRoutines as fetchUserRoutines } from '@/services/routineService';
 import { format } from 'date-fns';
 import { useToast } from './use-toast';
 import { inferWarmupTemplate, roundToGymHalf } from '@/lib/utils';
+import { isBetterPR, formatPR, pickBestSet } from '@/lib/pr';
 
 
 // A safe deep-clone function using JSON stringify/parse, suitable for serializable data.
@@ -48,38 +49,6 @@ const makeEmptyLog = (id: string): WorkoutLog => ({
   routineId: undefined, routineName: undefined,
 });
 
-// PR Helper functions
-function validWorkingSets(sets: LoggedSet[]): { reps: number; weight: number }[] {
-  return (sets ?? [])
-    .filter(s => !(s as any)?.isWarmup) // exclude warmups
-    .map(s => ({
-      reps: Number(s?.reps ?? NaN),
-      weight: Number(s?.weight ?? NaN),
-    }))
-    .filter(s => Number.isFinite(s.reps) && Number.isFinite(s.weight) && s.reps > 0 && s.weight > 0);
-}
-
-function pickBestSet(sets: LoggedSet[]): { reps: number; weight: number } | null {
-  const arr = validWorkingSets(sets);
-  if (!arr.length) return null;
-  return arr.reduce((best, cur) => {
-    if (cur.weight > best.weight) return cur;
-    if (cur.weight === best.weight && cur.reps > best.reps) return cur;
-    return best;
-  });
-}
-
-function isBetterPR(candidate: { reps: number; weight: number } | null, current: { reps: number; weight: number } | null): boolean {
-  if (!current) return !!candidate;
-  if (!candidate) return false;
-  if (candidate.weight > current.weight) return true;
-  if (candidate.weight === current.weight && candidate.reps > current.reps) return true;
-  return false;
-}
-
-function formatPR(set: { reps: number; weight: number } | null): string {
-    return set ? `PR: ${set.reps}x${Number(set.weight).toString()}kg` : 'PR: N/A';
-}
 
 export const useTrainingLog = (initialDate: Date) => {
   const { user, isLoading: authIsLoading } = useAuth();
@@ -105,13 +74,6 @@ export const useTrainingLog = (initialDate: Date) => {
 
 
   const formattedDateId = format(selectedDate, 'yyyy-MM-dd');
-
-  const formatPersonalRecordDisplay = useCallback((pr: PersonalRecord | null): string => {
-    if (!pr || (pr.reps === 0 && pr.weight === 0 && !pr.logId)) return "PR: N/A";
-    const repsDisplay = pr.reps ?? 'N/A';
-    const weightDisplay = pr.weight ?? 'N/A';
-    return `PR: ${repsDisplay}x${weightDisplay}kg`;
-  }, []);
   
   const fetchLoggedDates = useCallback(async () => {
     if (!user?.id) {
@@ -168,6 +130,10 @@ export const useTrainingLog = (initialDate: Date) => {
                       ...s,
                       id: s.id || `set-${dateId}-${exFromStoredLog.exerciseId}-${idx}-${Date.now()}`,
                     }));
+                    
+                    const currentPR = performanceEntry?.personalRecord
+                      ? { reps: performanceEntry.personalRecord.reps, weight: performanceEntry.personalRecord.weight }
+                      : null;
 
                     return {
                         ...exFromStoredLog,
@@ -178,7 +144,8 @@ export const useTrainingLog = (initialDate: Date) => {
                         warmupConfig: exFromStoredLog.warmupConfig
                           ?? (fullDef ? getWarmupConfig(fullDef) : undefined),
                         sets: setsWithIds,
-                        personalRecordDisplay: formatPersonalRecordDisplay(performanceEntry?.personalRecord || null),
+                        personalRecordDisplay: formatPR(currentPR),
+                        currentPR: currentPR,
                     };
                 })
             );
@@ -211,7 +178,7 @@ export const useTrainingLog = (initialDate: Date) => {
     } finally {
         setIsLoadingLog(false);
     }
-  }, [user?.id, toast, fetchExercisePerformanceData, formatPersonalRecordDisplay, availableExercises]);
+  }, [user?.id, toast, fetchExercisePerformanceData, availableExercises]);
 
   useEffect(() => {
     if (user?.id) {
@@ -346,6 +313,10 @@ export const useTrainingLog = (initialDate: Date) => {
                 initialSets = [{ id: `set-${dateOfLog}-${routineEx.id}-0-${Date.now()}`, reps: null, weight: null, isProvisional: true }];
             }
 
+            const currentPR = performanceEntry?.personalRecord
+              ? { reps: performanceEntry.personalRecord.reps, weight: performanceEntry.personalRecord.weight }
+              : null;
+
             return {
                 id: `${routineEx.id}-${dateOfLog}-${index}-${Date.now()}`, 
                 exerciseId: routineEx.id,
@@ -355,7 +326,8 @@ export const useTrainingLog = (initialDate: Date) => {
                 progressiveOverload: fullExerciseDef?.progressiveOverload ?? '',
                 sets: initialSets,
                 notes: '',
-                personalRecordDisplay: formatPersonalRecordDisplay(performanceEntry?.personalRecord || null),
+                personalRecordDisplay: formatPR(currentPR),
+                currentPR: currentPR,
                 isProvisional: true, 
                 warmupConfig: fullExerciseDef ? getWarmupConfig(fullExerciseDef) : undefined,
                 setStructure: routineEx.setStructure ?? 'normal',
@@ -394,6 +366,10 @@ export const useTrainingLog = (initialDate: Date) => {
         initialSets = [{ id: `set-${dateOfLog}-${exercise.id}-0-${Date.now()}`, reps: null, weight: null, isProvisional: true }];
     }
 
+    const currentPR = performanceEntry?.personalRecord
+      ? { reps: performanceEntry.personalRecord.reps, weight: performanceEntry.personalRecord.weight }
+      : null;
+
     const newLoggedExercise: LoggedExercise = {
       id: `${exercise.id}-${dateOfLog}-${Date.now()}`, 
       exerciseId: exercise.id,
@@ -403,7 +379,8 @@ export const useTrainingLog = (initialDate: Date) => {
       progressiveOverload: exercise.progressiveOverload || '',
       sets: initialSets,
       notes: '',
-      personalRecordDisplay: formatPersonalRecordDisplay(performanceEntry?.personalRecord || null),
+      personalRecordDisplay: formatPR(currentPR),
+      currentPR: currentPR,
       isProvisional: true,
       warmupConfig: getWarmupConfig(exercise),
       setStructure: 'normal',
@@ -445,6 +422,10 @@ export const useTrainingLog = (initialDate: Date) => {
     const initialSets: LoggedSet[] = (performanceEntry?.lastPerformedSets?.length ? performanceEntry.lastPerformedSets : [{ reps: null, weight: null }])
       .map((s, i) => ({ ...s, id: `set-${dateOfLog}-${newExercise.id}-${i}-${Date.now()}`, isProvisional: true }));
 
+    const currentPR = performanceEntry?.personalRecord
+      ? { reps: performanceEntry.personalRecord.reps, weight: performanceEntry.personalRecord.weight }
+      : null;
+
     mutateBaseline((base) => {
       if (!base) return base;
       const idx = base.exercises.findIndex(ex => ex.id === exerciseIdToReplace);
@@ -461,7 +442,8 @@ export const useTrainingLog = (initialDate: Date) => {
         progressiveOverload: newExercise.progressiveOverload || '',
         sets: initialSets,
         notes: '',
-        personalRecordDisplay: formatPersonalRecordDisplay(performanceEntry?.personalRecord || null),
+        personalRecordDisplay: formatPR(currentPR),
+        currentPR: currentPR,
         isProvisional: true,
         warmupConfig: getWarmupConfig(newExercise),
         setStructure: prev.setStructure ?? 'normal',
@@ -526,13 +508,15 @@ export const useTrainingLog = (initialDate: Date) => {
             ...base,
             exercises: base.exercises.map(ex => {
                 if (ex.exerciseId !== exerciseId) return ex;
+                
+                const newIsBetter = isBetterPR(bestToday, ex.currentPR ?? null);
+                const nextPR = newIsBetter ? bestToday : (ex.currentPR ?? null);
 
-                const currentPrString = ex.personalRecordDisplay || '';
-                const prMatch = currentPrString.match(/PR: (\d+)x([\d.]+)kg/);
-                const currentPR = prMatch ? { reps: parseInt(prMatch[1]), weight: parseFloat(prMatch[2]) } : null;
-
-                const newDisplay = isBetterPR(bestToday, currentPR) ? formatPR(bestToday) : ex.personalRecordDisplay;
-                return { ...ex, personalRecordDisplay: newDisplay };
+                return { 
+                  ...ex, 
+                  currentPR: nextPR,
+                  personalRecordDisplay: formatPR(nextPR),
+                };
             })
         };
     });
@@ -560,9 +544,13 @@ export const useTrainingLog = (initialDate: Date) => {
         logToSave.exercises.map(async (loggedEx) => {
           const { isProvisional, ...restOfEx } = loggedEx; 
           const performanceEntry = await fetchExercisePerformanceData(restOfEx.exerciseId, logToSave.routineId);
+          const currentPR = performanceEntry?.personalRecord
+              ? { reps: performanceEntry.personalRecord.reps, weight: performanceEntry.personalRecord.weight }
+              : null;
           return {
             ...restOfEx,
-            personalRecordDisplay: formatPersonalRecordDisplay(performanceEntry?.personalRecord || null),
+            personalRecordDisplay: formatPR(currentPR),
+            currentPR: currentPR,
             sets: restOfEx.sets.map(s => {
                 const { isProvisional: setProvisional, ...restOfSet } = s; 
                 return restOfSet;
@@ -588,7 +576,7 @@ export const useTrainingLog = (initialDate: Date) => {
                     await saveExercisePerformanceEntry(
                       user.id,
                       loggedEx.exerciseId,
-                      normalizeForPR(loggedEx.sets),
+                      loggedEx.sets,
                       finalLogToSave.id
                     );
                     applyLocalPRUpdate(loggedEx.exerciseId, loggedEx.sets);
@@ -648,9 +636,13 @@ export const useTrainingLog = (initialDate: Date) => {
         logToSave.exercises.map(async (ex) => {
           const { isProvisional, ...rest } = ex;
           const perf = await fetchExercisePerformanceData(rest.exerciseId, logToSave.routineId);
+          const currentPR = perf?.personalRecord
+              ? { reps: perf.personalRecord.reps, weight: perf.personalRecord.weight }
+              : null;
           return {
             ...rest,
-            personalRecordDisplay: formatPersonalRecordDisplay(perf?.personalRecord || null),
+            personalRecordDisplay: formatPR(currentPR),
+            currentPR: currentPR,
             sets: rest.sets.map(({ isProvisional: _p, ...s }) => s),
           };
         })
@@ -669,26 +661,11 @@ export const useTrainingLog = (initialDate: Date) => {
           await saveExercisePerformanceEntry(
             user.id,
             selectedExercise.exerciseId,
-            normalizeForPR(selectedExercise.sets),
+            selectedExercise.sets,
             payload.id
           );
           applyLocalPRUpdate(selectedExercise.exerciseId, selectedExercise.sets);
       }
-  
-      const newPerf = await fetchExercisePerformanceData(selectedExercise.exerciseId, baseline.routineId);
-      const prText = formatPersonalRecordDisplay(newPerf?.personalRecord || null);
-  
-      mutateBaseline((base) => {
-        if (!base) return null;
-        return {
-          ...base,
-          exercises: base.exercises.map(ex =>
-            ex.id === exerciseLogId
-              ? { ...ex, isProvisional: false, personalRecordDisplay: prText }
-              : ex
-          ),
-        };
-      });
   
       toast({ title: "Exercise Saved", description: `${selectedExercise?.name ?? "Exercise"} saved.` });
     } catch (error: any) {

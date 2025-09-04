@@ -29,6 +29,7 @@ import {
 } from 'firebase/firestore';
 import { parseISO } from 'date-fns';
 import { stripUndefinedDeep } from '@/lib/sanitize';
+import { validWorkingSets, pickBestSet, isBetterPR } from '@/lib/pr';
 
 const getUserWorkoutLogsCollectionPath = (userId: string) => `users/${userId}/workoutLogs`;
 const getUserPerformanceEntriesCollectionPath = (userId: string) => `users/${userId}/performanceEntries`;
@@ -50,7 +51,7 @@ export const saveWorkoutLog = async (userId: string, date: string, workoutLogPay
     exerciseIds: exerciseIds,
     exercises: workoutLogPayload.exercises.map(ex => { 
       // Destructure to remove UI-only fields before saving
-      const { personalRecordDisplay, isProvisional, ...restOfEx } = ex;
+      const { personalRecordDisplay, isProvisional, currentPR, ...restOfEx } = ex;
 
       // Clean up optional fields that might be null or undefined on the exercise
       const exerciseToSave: { [key: string]: any } = { ...restOfEx };
@@ -165,34 +166,6 @@ export const getLoggedDateStrings = async (userId: string): Promise<string[]> =>
   }
 };
 
-function validWorkingSets(sets: LoggedSet[]): { reps: number; weight: number }[] {
-  return (sets ?? [])
-    .filter(s => !(s as any)?.isWarmup) // exclude warmups
-    .map(s => ({
-      reps: Number(s?.reps ?? NaN),
-      weight: Number(s?.weight ?? NaN),
-    }))
-    .filter(s => Number.isFinite(s.reps) && Number.isFinite(s.weight) && s.reps > 0 && s.weight > 0);
-}
-
-function pickBestSet(sets: LoggedSet[]): { reps: number; weight: number } | null {
-  const arr = validWorkingSets(sets);
-  if (!arr.length) return null;
-  return arr.reduce((best, cur) => {
-    if (cur.weight > best.weight) return cur;
-    if (cur.weight === best.weight && cur.reps > best.reps) return cur;
-    return best;
-  });
-}
-
-function isBetterPR(candidate: { reps: number; weight: number } | null, current: { reps: number; weight: number } | null): boolean {
-  if (!current) return !!candidate;
-  if (!candidate) return false;
-  if (candidate.weight > current.weight) return true;
-  if (candidate.weight === current.weight && candidate.reps > current.reps) return true;
-  return false;
-}
-
 export const saveExercisePerformanceEntry = async (
   userId: string,
   exerciseId: string,
@@ -211,19 +184,18 @@ export const saveExercisePerformanceEntry = async (
     
     const bestToday = pickBestSet(currentSessionSets);
     const currentPR = existingEntryData?.personalRecord ?? null;
-
-    const validSets = validWorkingSets(currentSessionSets);
+    const achievedAtMs = Timestamp.fromDate(parseISO(logDate)).toMillis();
     
     const updatePayload: Partial<ExercisePerformanceEntry> & { lastPerformedDate?: number } = {
-        lastPerformedSets: validSets,
-        lastPerformedDate: Timestamp.now().toMillis()
+        lastPerformedSets: validWorkingSets(currentSessionSets),
+        lastPerformedDate: achievedAtMs
     };
     
     if (isBetterPR(bestToday, currentPR)) {
         updatePayload.personalRecord = {
             reps: bestToday!.reps,
             weight: bestToday!.weight,
-            date: Timestamp.now().toMillis(), 
+            date: achievedAtMs, 
             logId: logDate, 
         };
     }
