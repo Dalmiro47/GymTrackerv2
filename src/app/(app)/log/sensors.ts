@@ -1,6 +1,10 @@
 
 import {PointerSensor, KeyboardSensor} from '@dnd-kit/core';
 
+// This file is kept for future reference but is currently not used
+// by the main dnd-kit implementation in the log page, which now uses
+// a simpler PointerSensor with an activation constraint.
+
 function isInteractive(el: EventTarget | null): boolean {
   const node = el as HTMLElement | null;
   if (!node) return false;
