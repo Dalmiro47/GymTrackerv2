@@ -285,7 +285,7 @@ export function LoggedExerciseCard({
               setIsEditing(true);
             }
           }}
-          onBlurCapture={() => {
+          onBlurCapture={(e) => {
             // iOS often gives null relatedTarget — compute from activeElement
             const active = document.activeElement as HTMLElement | null;
             setIsEditing(!!(active && contentRef.current?.contains(active)));
