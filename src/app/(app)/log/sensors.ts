@@ -1,3 +1,4 @@
+
 import {PointerSensor, type PointerSensorOptions} from '@dnd-kit/core';
 
 function isInteractive(el: EventTarget | null): boolean {
@@ -14,11 +15,23 @@ function isInteractive(el: EventTarget | null): boolean {
 
 export class SafePointerSensor extends PointerSensor {
   // Block activation when the original event starts on an interactive element
-  static activators = [{
-    eventName: 'onPointerDown' as const,
-    handler: ({nativeEvent}: {nativeEvent: PointerEvent}) => {
-      if (isInteractive(nativeEvent.target)) return false;
-      return true;
-    }
-  }];
+  static activators = [
+    {
+      eventName: 'onPointerDown' as const,
+      handler: ({ nativeEvent }: { nativeEvent: PointerEvent }) =>
+        !isInteractive(nativeEvent.target),
+    },
+    {
+      // cover environments that use mouse activator
+      eventName: 'onMouseDown' as const,
+      handler: ({ nativeEvent }: { nativeEvent: MouseEvent }) =>
+        !isInteractive(nativeEvent.target),
+    },
+    {
+      // cover touch activator on mobile/safari
+      eventName: 'onTouchStart' as const,
+      handler: ({ nativeEvent }: { nativeEvent: TouchEvent }) =>
+        !isInteractive(nativeEvent.target),
+    },
+  ];
 }
