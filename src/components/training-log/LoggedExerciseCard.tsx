@@ -291,6 +291,15 @@ export function LoggedExerciseCard({
             setIsEditing(!!(active && contentRef.current?.contains(active)));
           }}
         >
+          <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+            <span className="w-8 text-center">Set</span>
+            <span className="flex-1 text-center">Reps</span>
+            <span className="w-6 shrink-0"></span>
+            <span className="flex-1 text-center">Weight</span>
+            <span className="w-12 shrink-0 text-left"></span>
+            <span className="w-9 shrink-0"></span>
+          </div>
+
           {localSets.map((set, index) => (
             <SetInputRow
               key={set.id} 

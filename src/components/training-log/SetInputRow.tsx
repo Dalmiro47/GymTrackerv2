@@ -34,7 +34,7 @@ export function SetInputRow({
         type="number"
         inputMode="numeric"
         draggable={false}
-        placeholder="Reps"
+        aria-label={`Reps for set ${index + 1}`}
         value={set.reps === null ? '' : String(set.reps)}
         onChange={(e) => change('reps', e.target.value)}
         onWheel={(e) => (e.currentTarget as HTMLInputElement).blur()}
@@ -43,18 +43,18 @@ export function SetInputRow({
         onTouchStartCapture={(e) => e.stopPropagation()}
         onClickCapture={(e) => e.stopPropagation()}
         onKeyDownCapture={(e) => e.stopPropagation()}
-        className={cn("h-9 text-sm", isProvisional && "bg-muted/40 dark:bg-muted/20 placeholder:text-muted-foreground/70 opacity-80")}
+        className={cn("h-9 text-sm text-center", isProvisional && "bg-muted/40 dark:bg-muted/20 placeholder:text-muted-foreground/70 opacity-80")}
         min="0"
       />
 
-      <span className="text-muted-foreground">x</span>
+      <span className="text-muted-foreground w-6 shrink-0 text-center">x</span>
 
       <Input
         type="number"
         inputMode="decimal"
         step="0.25"
         draggable={false}
-        placeholder="Weight"
+        aria-label={`Weight for set ${index + 1}`}
         value={set.weight === null ? '' : String(set.weight)}
         onChange={(e) => change('weight', e.target.value)}
         onWheel={(e) => (e.currentTarget as HTMLInputElement).blur()}
@@ -63,11 +63,11 @@ export function SetInputRow({
         onTouchStartCapture={(e) => e.stopPropagation()}
         onClickCapture={(e) => e.stopPropagation()}
         onKeyDownCapture={(e) => e.stopPropagation()}
-        className={cn("h-9 text-sm", isProvisional && "bg-muted/40 dark:bg-muted/20 placeholder:text-muted-foreground/70 opacity-80")}
+        className={cn("h-9 text-sm text-center", isProvisional && "bg-muted/40 dark:bg-muted/20 placeholder:text-muted-foreground/70 opacity-80")}
         min="0"
       />
 
-      <span className="text-muted-foreground">kg</span>
+      <span className="text-muted-foreground w-12 shrink-0">kg</span>
 
       <Button variant="ghost" size="icon" onClick={onRemoveSet}
         className="text-muted-foreground hover:text-destructive h-9 w-9">
