@@ -126,7 +126,7 @@ export function LoggedExerciseCard({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: loggedExercise.id, disabled: isEditing });
+  } = useSortable({ id: loggedExercise.id });
 
   const effectiveSetStructure = useMemo(() => {
     return loggedExercise.setStructureOverride ?? loggedExercise.setStructure ?? 'normal';
@@ -134,9 +134,10 @@ export function LoggedExerciseCard({
 
   const borderColor = SET_STRUCTURE_COLORS[effectiveSetStructure]?.border ?? 'hsl(var(--border))';
   
-  const wrapperStyle = useMemo<React.CSSProperties>(() => ({
-    transform: transform ? CSS.Transform.toString(transform) : undefined,
+  const style = useMemo<React.CSSProperties>(() => ({
+    transform: CSS.Transform.toString(transform),
     transition,
+    opacity: isDragging ? 0.9 : 1,
     zIndex: isDragging ? 10 : 'auto',
   }), [transform, transition, isDragging]);
   
@@ -212,7 +213,7 @@ export function LoggedExerciseCard({
   };
 
   return (
-    <div ref={setNodeRef} style={wrapperStyle} data-dragging={isDragging || undefined}>
+    <div ref={setNodeRef} style={style} data-dragging={isDragging || undefined}>
       <Card 
         style={{
           '--card-border-color': borderColor,
@@ -263,24 +264,24 @@ export function LoggedExerciseCard({
             </div>
           </div>
           <div className="pl-8 space-y-0.5">
-              <div className="flex items-center justify-between text-xs text-muted-foreground mt-1">
-                <span className="flex items-center leading-tight">
-                  <Dumbbell aria-hidden="true" className="mr-1.5 h-3 w-3 text-primary" />
-                  <span className="tabular-nums">{loggedExercise.personalRecordDisplay || 'PR: N/A'}</span>
-                </span>
-              </div>
-              {loggedExercise.exerciseSetup && (
-                  <div className="text-xs text-muted-foreground flex items-center leading-tight">
-                      <Settings2 aria-hidden="true" className="mr-1 h-3 w-3 text-primary" />
-                      Setup: {loggedExercise.exerciseSetup}
-                  </div>
-              )}
-              {loggedExercise.progressiveOverload && (
+            <div className="flex items-center justify-between text-xs text-muted-foreground mt-1">
+              <span className="flex items-center leading-tight">
+                <Dumbbell aria-hidden="true" className="mr-1.5 h-3 w-3 text-primary" />
+                <span className="tabular-nums">{loggedExercise.personalRecordDisplay || 'PR: N/A'}</span>
+              </span>
+            </div>
+            {loggedExercise.exerciseSetup && (
                 <div className="text-xs text-muted-foreground flex items-center leading-tight">
-                  <TrendingUp aria-hidden="true" className="mr-1 h-3 w-3 text-primary" />
-                  Progressive overload: {loggedExercise.progressiveOverload}
+                    <Settings2 aria-hidden="true" className="mr-1 h-3 w-3 text-primary" />
+                    Setup: {loggedExercise.exerciseSetup}
                 </div>
-              )}
+            )}
+            {loggedExercise.progressiveOverload && (
+              <div className="text-xs text-muted-foreground flex items-center leading-tight">
+                <TrendingUp aria-hidden="true" className="mr-1 h-3 w-3 text-primary" />
+                Progressive overload: {loggedExercise.progressiveOverload}
+              </div>
+            )}
           </div>
         </CardHeader>
         <CardContent 
@@ -371,5 +372,3 @@ export function LoggedExerciseCard({
     </div>
   );
 }
-
-    

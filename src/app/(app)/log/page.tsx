@@ -44,6 +44,8 @@ import {
   useSensor,
   useSensors,
   type DragEndEvent,
+  PointerSensor,
+  KeyboardSensor,
 } from '@dnd-kit/core';
 import {
   arrayMove,
@@ -60,7 +62,7 @@ import { Switch } from '@/components/ui/switch';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { SET_STRUCTURE_COLORS } from '@/types/setStructure';
 import { cn } from '@/lib/utils';
-import { SafePointerSensor, SafeKeyboardSensor } from './sensors';
+// import { SafePointerSensor, SafeKeyboardSensor } from './sensors'; - Removed as per new implementation
 
 // Determine effective structure for an exercise
 function effectiveStructureFor(ex: LoggedExercise): SetStructure {
@@ -111,7 +113,7 @@ function getConnectorAfterIndex(
 function TrainingLogPageContent() {
   const { user, isLoading: authIsLoading } = useAuth();
   const router = useRouter();
-  const isMobile = useIsMobile();
+  
   const searchParams = useSearchParams();
   
   const getInitialDateFromParams = () => {
@@ -180,10 +182,10 @@ function TrainingLogPageContent() {
   }, [loggedDayStrings]);
 
   const sensors = useSensors(
-    useSensor(SafePointerSensor, {
-      activationConstraint: isMobile ? { delay: 200, tolerance: 8 } : { distance: 6 },
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 6 },
     }),
-    useSensor(SafeKeyboardSensor, {
+    useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     })
   );
@@ -191,13 +193,14 @@ function TrainingLogPageContent() {
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
-    if (currentLog && over && active.id !== over.id) {
-      const oldIndex = currentLog.exercises.findIndex((ex) => ex.id === active.id);
-      const newIndex = currentLog.exercises.findIndex((ex) => ex.id === over.id);
-      if (oldIndex !== -1 && newIndex !== -1) {
-        reorderExercisesInLog(arrayMove(currentLog.exercises, oldIndex, newIndex));
-      }
-    }
+    if (!currentLog || !over || active.id === over.id) return;
+  
+    const oldIndex = currentLog.exercises.findIndex(ex => ex.id === String(active.id));
+    const newIndex = currentLog.exercises.findIndex(ex => ex.id === String(over.id));
+    if (oldIndex < 0 || newIndex < 0) return;
+  
+    const reordered = arrayMove(currentLog.exercises, oldIndex, newIndex);
+    reorderExercisesInLog(reordered);
   }
 
   const handleOverallNotesChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
