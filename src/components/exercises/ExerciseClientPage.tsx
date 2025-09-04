@@ -220,6 +220,7 @@ export function ExerciseClientPage() {
         muscleGroup: formData.muscleGroup,
         targetNotes: formData.targetNotes || '',
         exerciseSetup: formData.exerciseSetup || '',
+        progressiveOverload: formData.progressiveOverload || '',
         dataAiHint: formData.name.toLowerCase().split(" ").slice(0,2).join(" ") || 'exercise',
         warmup: formData.warmup,
       };
