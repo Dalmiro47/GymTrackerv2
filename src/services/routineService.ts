@@ -40,6 +40,7 @@ export const addRoutine = async (userId: string, routineData: Omit<RoutineData, 
         muscleGroup: ex.muscleGroup,
         targetNotes: ex.targetNotes || '',
         exerciseSetup: ex.exerciseSetup || '',
+        progressiveOverload: ex.progressiveOverload || '', // NEW
         dataAiHint: ex.dataAiHint || '',
         setStructure: ex.setStructure || 'normal',
     }));
@@ -117,6 +118,7 @@ export const updateRoutine = async (userId: string, routineId: string, routineDa
             muscleGroup: ex.muscleGroup,
             targetNotes: ex.targetNotes || '',
             exerciseSetup: ex.exerciseSetup || '',
+            progressiveOverload: ex.progressiveOverload || '', // NEW
             dataAiHint: ex.dataAiHint || '',
             setStructure: ex.setStructure || 'normal',
         }));

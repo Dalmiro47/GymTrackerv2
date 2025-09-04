@@ -39,6 +39,7 @@ export interface Exercise {
   muscleGroup: MuscleGroup;
   targetNotes?: string;
   exerciseSetup?: string; 
+  progressiveOverload?: string;   // NEW
   instructions?: string; 
   dataAiHint?: string;
   warmup?: WarmupConfig; // New field for warm-up settings
@@ -76,6 +77,7 @@ export interface LoggedExercise {
   name: string;
   muscleGroup: MuscleGroup; // Copied for convenience if needed
   exerciseSetup?: string; // Copied from the base exercise definition
+  progressiveOverload?: string;   // NEW (copied from Exercise at insert time)
   sets: LoggedSet[];
   notes?: string;
   personalRecordDisplay?: string; // e.g., "PR: 1x5 @ 100kg" or "PR: N/A"

@@ -49,6 +49,7 @@ const exerciseFormSchema = z.object({
   muscleGroup: muscleGroupSchema,
   targetNotes: z.string().optional(),
   exerciseSetup: z.string().optional(),
+  progressiveOverload: z.string().optional(), // NEW
   warmup: z.object({
     template: z.enum(WARMUP_TEMPLATES),
     isWeightedBodyweight: z.boolean().optional(),
@@ -83,6 +84,7 @@ export function AddExerciseDialog({
             muscleGroup: 'Back', // A sensible default
             targetNotes: '',
             exerciseSetup: '',
+            progressiveOverload: '',
             warmup: undefined,
         },
     });
@@ -98,6 +100,7 @@ export function AddExerciseDialog({
         muscleGroup: assertMuscleGroup(exerciseToEdit.muscleGroup as any),
         targetNotes: exerciseToEdit.targetNotes ?? '',
         exerciseSetup: exerciseToEdit.exerciseSetup ?? '',
+        progressiveOverload: exerciseToEdit.progressiveOverload ?? '',
         warmup: exerciseToEdit.warmup,
       });
     } else {
@@ -106,6 +109,7 @@ export function AddExerciseDialog({
         muscleGroup: 'Back',
         targetNotes: '',
         exerciseSetup: '',
+        progressiveOverload: '',
         warmup: undefined,
       });
     }
@@ -193,6 +197,20 @@ export function AddExerciseDialog({
                       </FormControl>
                       <FormMessage />
                   </FormItem>
+              )}
+            />
+
+            <FormField
+              control={control}
+              name="progressiveOverload"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Progressive Overload (Optional)</FormLabel>
+                  <FormControl>
+                    <Input {...field} placeholder="e.g., 8–10 reps" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
               )}
             />
             

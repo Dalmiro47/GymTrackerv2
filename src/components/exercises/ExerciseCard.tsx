@@ -3,7 +3,7 @@ import type { Exercise } from '@/types';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { MuscleGroupIcon } from './MuscleGroupIcon';
-import { Edit3, Trash2, Info, Settings2 } from 'lucide-react'; // Added Settings2 for setup
+import { Edit3, Trash2, Info, Settings2, TrendingUp } from 'lucide-react';
 
 interface ExerciseCardProps {
   exercise: Exercise;
@@ -40,6 +40,17 @@ export function ExerciseCard({ exercise, onEdit, onDelete, onViewDetails }: Exer
             </p>
             <CardDescription className="line-clamp-2 text-sm">
               {exercise.exerciseSetup}
+            </CardDescription>
+          </div>
+        )}
+        {exercise.progressiveOverload && (
+          <div>
+            <p className="text-xs font-semibold text-muted-foreground flex items-center">
+              <TrendingUp className="h-3 w-3 mr-1 text-primary" />
+              Progressive Overload:
+            </p>
+            <CardDescription className="line-clamp-2 text-sm">
+              {exercise.progressiveOverload}
             </CardDescription>
           </div>
         )}

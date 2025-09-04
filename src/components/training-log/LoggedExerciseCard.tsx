@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { PlusCircle, Trash2, Save, GripVertical, Loader2, Check, Settings2, ArrowLeftRight, Flame } from 'lucide-react';
+import { PlusCircle, Trash2, Save, GripVertical, Loader2, Check, Settings2, ArrowLeftRight, Flame, TrendingUp, Dumbbell } from 'lucide-react';
 import { SetInputRow } from './SetInputRow'; 
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -262,15 +262,24 @@ export function LoggedExerciseCard({
               </Button>
             </div>
           </div>
-          <div className="pl-8 space-y-1">
+          <div className="pl-8 space-y-0.5">
               <div className="flex items-center justify-between text-xs text-muted-foreground mt-1">
-                  <span>{loggedExercise.personalRecordDisplay || 'PR: N/A'}</span>
+                <span className="flex items-center leading-tight">
+                  <Dumbbell aria-hidden="true" className="mr-1.5 h-3 w-3 text-primary" />
+                  <span className="tabular-nums">{loggedExercise.personalRecordDisplay || 'PR: N/A'}</span>
+                </span>
               </div>
               {loggedExercise.exerciseSetup && (
-                  <div className="text-xs text-muted-foreground flex items-center">
-                      <Settings2 className="mr-1 h-3 w-3 text-primary" />
+                  <div className="text-xs text-muted-foreground flex items-center leading-tight">
+                      <Settings2 aria-hidden="true" className="mr-1 h-3 w-3 text-primary" />
                       Setup: {loggedExercise.exerciseSetup}
                   </div>
+              )}
+              {loggedExercise.progressiveOverload && (
+                <div className="text-xs text-muted-foreground flex items-center leading-tight">
+                  <TrendingUp aria-hidden="true" className="mr-1 h-3 w-3 text-primary" />
+                  Progressive overload: {loggedExercise.progressiveOverload}
+                </div>
               )}
           </div>
         </CardHeader>
@@ -295,16 +304,9 @@ export function LoggedExerciseCard({
           <div className="grid grid-cols-[2rem_1fr_auto_1fr_auto_2.25rem] items-center gap-2 text-xs font-medium text-muted-foreground">
             <span className="w-full text-center">Set</span>
             <span className="w-full text-center">Reps</span>
-
-            {/* keep width for the 'x' column */}
             <span className="invisible select-none w-full text-center" aria-hidden>x</span>
-
             <span className="w-full text-center">Weight</span>
-
-            {/* keep width for the 'kg' column */}
             <span className="invisible select-none w-full text-center" aria-hidden>kg</span>
-
-            {/* delete button column placeholder */}
             <span className="invisible" aria-hidden />
           </div>
 
@@ -369,3 +371,5 @@ export function LoggedExerciseCard({
     </div>
   );
 }
+
+    
