@@ -101,6 +101,8 @@ export function LoggedExerciseCard({
   onMarkAsInteracted,
   onUpdateSetStructureOverride,
 }: LoggedExerciseCardProps) {
+  const [isEditing, setIsEditing] = useState(false);
+
   const {
     attributes,
     listeners,
@@ -108,7 +110,7 @@ export function LoggedExerciseCard({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: loggedExercise.id });
+  } = useSortable({ id: loggedExercise.id, disabled: isEditing });
 
   const isCardProvisional = loggedExercise.isProvisional && loggedExercise.sets.every(s => s.isProvisional);
 
@@ -256,6 +258,18 @@ export function LoggedExerciseCard({
           className="p-4 space-y-3"
           data-dndkit-no-drag
           style={{ WebkitUserSelect: 'text' }}
+          onFocusCapture={(e) => {
+            const t = e.target as HTMLElement | null;
+            if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) {
+              setIsEditing(true);
+            }
+          }}
+          onBlurCapture={(e) => {
+            const next = e.relatedTarget as Node | null;
+            if (!next || !e.currentTarget.contains(next)) {
+              setIsEditing(false);
+            }
+          }}
         >
           {localSets.map((set, index) => (
             <SetInputRow
