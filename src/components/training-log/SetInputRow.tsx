@@ -44,7 +44,10 @@ export function SetInputRow({
         onTouchStartCapture={(e) => e.stopPropagation()}
         onClickCapture={(e) => e.stopPropagation()}
         onKeyDownCapture={(e) => e.stopPropagation()}
-        className={cn("h-9 text-sm", isProvisional && "bg-muted/40 dark:bg-muted/20 placeholder:text-muted-foreground/70 opacity-80")}
+        className={cn(
+          "h-9 text-sm text-center placeholder:text-center",
+          isProvisional && "bg-muted/40 dark:bg-muted/20 placeholder:text-muted-foreground/70 opacity-80"
+        )}
         min="0"
       />
 
@@ -65,7 +68,10 @@ export function SetInputRow({
         onTouchStartCapture={(e) => e.stopPropagation()}
         onClickCapture={(e) => e.stopPropagation()}
         onKeyDownCapture={(e) => e.stopPropagation()}
-        className={cn("h-9 text-sm", isProvisional && "bg-muted/40 dark:bg-muted/20 placeholder:text-muted-foreground/70 opacity-80")}
+        className={cn(
+          "h-9 text-sm text-center placeholder:text-center",
+          isProvisional && "bg-muted/40 dark:bg-muted/20 placeholder:text-muted-foreground/70 opacity-80"
+        )}
         min="0"
       />
 
