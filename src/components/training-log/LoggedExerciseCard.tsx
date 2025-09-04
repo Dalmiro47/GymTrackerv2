@@ -90,6 +90,15 @@ const WarmupPanel: React.FC<{ loggedExercise: LoggedExercise }> = ({ loggedExerc
     );
 };
 
+function setsShallowEqual(a: LoggedSet[], b: LoggedSet[]) {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i], y = b[i];
+    if (x.id !== y.id || x.reps !== y.reps || x.weight !== y.weight) return false;
+  }
+  return true;
+}
 
 export function LoggedExerciseCard({
   loggedExercise,
@@ -102,6 +111,13 @@ export function LoggedExerciseCard({
   onUpdateSetStructureOverride,
 }: LoggedExerciseCardProps) {
   const [isEditing, setIsEditing] = useState(false);
+  const [localSets, setLocalSets] = useState<LoggedSet[]>(loggedExercise.sets);
+  const [isSavingThisExercise, setIsSavingThisExercise] = useState(false);
+  const [justSaved, setJustSaved] = useState(false);
+  
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const timeoutRef = useRef<number | null>(null);
+  const pushUpTimer = useRef<number | null>(null);
 
   const {
     attributes,
@@ -111,8 +127,6 @@ export function LoggedExerciseCard({
     transition,
     isDragging,
   } = useSortable({ id: loggedExercise.id, disabled: isEditing });
-
-  const isCardProvisional = loggedExercise.isProvisional && loggedExercise.sets.every(s => s.isProvisional);
 
   const effectiveSetStructure = useMemo(() => {
     return loggedExercise.setStructureOverride ?? loggedExercise.setStructure ?? 'normal';
@@ -125,34 +139,40 @@ export function LoggedExerciseCard({
     transition,
     zIndex: isDragging ? 10 : 'auto',
   }), [transform, transition, isDragging]);
-
-  const [localSets, setLocalSets] = useState<LoggedSet[]>(loggedExercise.sets);
-  const [isSavingThisExercise, setIsSavingThisExercise] = useState(false);
-  const [justSaved, setJustSaved] = useState(false);
-  const timeoutRef = useRef<number | null>(null);
-
+  
   useEffect(() => {
-    setLocalSets(loggedExercise.sets);
-  }, [loggedExercise.sets]);
+    // Do NOT overwrite while the user is typing in this card
+    if (!isEditing && !setsShallowEqual(localSets, loggedExercise.sets)) {
+      setLocalSets(loggedExercise.sets);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loggedExercise.sets, isEditing]);
   
   useEffect(() => {
     return () => {
-      if (timeoutRef.current) {
-        window.clearTimeout(timeoutRef.current);
-      }
+      if (timeoutRef.current) window.clearTimeout(timeoutRef.current);
+      if (pushUpTimer.current) window.clearTimeout(pushUpTimer.current);
     };
   }, []);
 
+  function pushUp(next: LoggedSet[]) {
+    if (pushUpTimer.current) clearTimeout(pushUpTimer.current);
+    pushUpTimer.current = window.setTimeout(() => {
+      onUpdateSets(next);
+    }, 150);
+  }
 
   const handleSetChange = (index: number, field: keyof Omit<LoggedSet, 'id' | 'isProvisional'>, value: string) => {
-    onMarkAsInteracted(); 
-    const newSets = [...localSets];
-    const n = value === '' ? null : Number(value);
-    if (newSets[index]) {
-       newSets[index] = { ...newSets[index], [field]: (Number.isFinite(n) ? n : null), isProvisional: false };
-       setLocalSets(newSets); 
-       onUpdateSets(newSets); 
-    }
+    onMarkAsInteracted();
+    setLocalSets(prev => {
+        const next = [...prev];
+        const n = value === '' ? null : Number(value);
+        if (next[index]) {
+            next[index] = { ...next[index], [field]: (Number.isFinite(n) ? n : null), isProvisional: false };
+        }
+        pushUp(next); // Debounce parent update
+        return next; // Local immediately reflects typing
+    });
   };
 
   const addSet = () => {
@@ -255,6 +275,7 @@ export function LoggedExerciseCard({
           </div>
         </CardHeader>
         <CardContent 
+          ref={contentRef}
           className="p-4 space-y-3"
           data-dndkit-no-drag
           style={{ WebkitUserSelect: 'text' }}
@@ -264,11 +285,10 @@ export function LoggedExerciseCard({
               setIsEditing(true);
             }
           }}
-          onBlurCapture={(e) => {
-            const next = e.relatedTarget as Node | null;
-            if (!next || !e.currentTarget.contains(next)) {
-              setIsEditing(false);
-            }
+          onBlurCapture={() => {
+            // iOS often gives null relatedTarget — compute from activeElement
+            const active = document.activeElement as HTMLElement | null;
+            setIsEditing(!!(active && contentRef.current?.contains(active)));
           }}
         >
           {localSets.map((set, index) => (
@@ -332,3 +352,5 @@ export function LoggedExerciseCard({
     </div>
   );
 }
+
+    
