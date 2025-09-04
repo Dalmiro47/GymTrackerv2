@@ -48,6 +48,39 @@ const makeEmptyLog = (id: string): WorkoutLog => ({
   routineId: undefined, routineName: undefined,
 });
 
+// PR Helper functions
+function validWorkingSets(sets: LoggedSet[]): { reps: number; weight: number }[] {
+  return (sets ?? [])
+    .filter(s => !(s as any)?.isWarmup) // exclude warmups
+    .map(s => ({
+      reps: Number(s?.reps ?? NaN),
+      weight: Number(s?.weight ?? NaN),
+    }))
+    .filter(s => Number.isFinite(s.reps) && Number.isFinite(s.weight) && s.reps > 0 && s.weight > 0);
+}
+
+function pickBestSet(sets: LoggedSet[]): { reps: number; weight: number } | null {
+  const arr = validWorkingSets(sets);
+  if (!arr.length) return null;
+  return arr.reduce((best, cur) => {
+    if (cur.weight > best.weight) return cur;
+    if (cur.weight === best.weight && cur.reps > best.reps) return cur;
+    return best;
+  });
+}
+
+function isBetterPR(candidate: { reps: number; weight: number } | null, current: { reps: number; weight: number } | null): boolean {
+  if (!current) return !!candidate;
+  if (!candidate) return false;
+  if (candidate.weight > current.weight) return true;
+  if (candidate.weight === current.weight && candidate.reps > current.reps) return true;
+  return false;
+}
+
+function formatPR(set: { reps: number; weight: number } | null): string {
+    return set ? `PR: ${set.reps}x${Number(set.weight).toString()}kg` : 'PR: N/A';
+}
+
 export const useTrainingLog = (initialDate: Date) => {
   const { user, isLoading: authIsLoading } = useAuth();
   const { toast } = useToast();
@@ -483,6 +516,28 @@ export const useTrainingLog = (initialDate: Date) => {
     });
   };
   
+  const applyLocalPRUpdate = useCallback((exerciseId: string, todaysSets: LoggedSet[]) => {
+    const bestToday = pickBestSet(todaysSets);
+    if (!bestToday) return;
+
+    mutateBaseline(base => {
+        if (!base) return null;
+        return {
+            ...base,
+            exercises: base.exercises.map(ex => {
+                if (ex.exerciseId !== exerciseId) return ex;
+
+                const currentPrString = ex.personalRecordDisplay || '';
+                const prMatch = currentPrString.match(/PR: (\d+)x([\d.]+)kg/);
+                const currentPR = prMatch ? { reps: parseInt(prMatch[1]), weight: parseFloat(prMatch[2]) } : null;
+
+                const newDisplay = isBetterPR(bestToday, currentPR) ? formatPR(bestToday) : ex.personalRecordDisplay;
+                return { ...ex, personalRecordDisplay: newDisplay };
+            })
+        };
+    });
+  }, []);
+
   const saveCurrentLog = async () => {
     if (!user?.id || !currentLog) {
       toast({ title: "Error", description: "No user or log data to save.", variant: "destructive" });
@@ -536,6 +591,7 @@ export const useTrainingLog = (initialDate: Date) => {
                       normalizeForPR(loggedEx.sets),
                       finalLogToSave.id
                     );
+                    applyLocalPRUpdate(loggedEx.exerciseId, loggedEx.sets);
                 }
             }
           }
@@ -616,6 +672,7 @@ export const useTrainingLog = (initialDate: Date) => {
             normalizeForPR(selectedExercise.sets),
             payload.id
           );
+          applyLocalPRUpdate(selectedExercise.exerciseId, selectedExercise.sets);
       }
   
       const newPerf = await fetchExercisePerformanceData(selectedExercise.exerciseId, baseline.routineId);

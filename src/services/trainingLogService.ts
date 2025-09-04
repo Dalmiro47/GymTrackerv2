@@ -165,21 +165,33 @@ export const getLoggedDateStrings = async (userId: string): Promise<string[]> =>
   }
 };
 
-const findBestSetInSetsArray = (sets: LoggedSet[]): { reps: number; weight: number } | null => {
-  if (!sets || sets.length === 0) return null;
-  let bestSet: { reps: number; weight: number } | null = null;
-  for (const set of sets) {
-    const weight = typeof set.weight === 'number' ? set.weight : 0;
-    const reps = typeof set.reps === 'number' ? set.reps : 0;
+function validWorkingSets(sets: LoggedSet[]): { reps: number; weight: number }[] {
+  return (sets ?? [])
+    .filter(s => !(s as any)?.isWarmup) // exclude warmups
+    .map(s => ({
+      reps: Number(s?.reps ?? NaN),
+      weight: Number(s?.weight ?? NaN),
+    }))
+    .filter(s => Number.isFinite(s.reps) && Number.isFinite(s.weight) && s.reps > 0 && s.weight > 0);
+}
 
-    if (weight <= 0 && reps <= 0) continue;
+function pickBestSet(sets: LoggedSet[]): { reps: number; weight: number } | null {
+  const arr = validWorkingSets(sets);
+  if (!arr.length) return null;
+  return arr.reduce((best, cur) => {
+    if (cur.weight > best.weight) return cur;
+    if (cur.weight === best.weight && cur.reps > best.reps) return cur;
+    return best;
+  });
+}
 
-    if (!bestSet || weight > bestSet.weight || (weight === bestSet.weight && reps > bestSet.reps)) {
-      bestSet = { weight, reps };
-    }
-  }
-  return bestSet;
-};
+function isBetterPR(candidate: { reps: number; weight: number } | null, current: { reps: number; weight: number } | null): boolean {
+  if (!current) return !!candidate;
+  if (!candidate) return false;
+  if (candidate.weight > current.weight) return true;
+  if (candidate.weight === current.weight && candidate.reps > current.reps) return true;
+  return false;
+}
 
 export const saveExercisePerformanceEntry = async (
   userId: string,
@@ -190,70 +202,38 @@ export const saveExercisePerformanceEntry = async (
   if (!userId) throw new Error("User ID is required.");
   if (!exerciseId) throw new Error("Exercise ID is required.");
   if (!logDate) throw new Error("Log date is required for PR tracking.");
-
-  const validCurrentSessionSets = currentSessionSets
-    .map(s => ({
-      id: s.id || `set-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, 
-      reps: s.reps === null || isNaN(Number(s.reps)) ? 0 : Number(s.reps),
-      weight: s.weight === null || isNaN(Number(s.weight)) ? 0 : Number(s.weight),
-    }))
-    .filter(s => s.reps > 0 || s.weight > 0); 
   
   const performanceEntryDocRef = doc(db, getUserPerformanceEntriesCollectionPath(userId), exerciseId);
-  
-  let newPersonalRecord: PersonalRecord | null = null;
-  let newLastPerformedDate: number | null = null;
-  let newLastPerformedSets: LoggedSet[] = [];
   
   try {
     const existingDocSnap = await getDoc(performanceEntryDocRef);
     const existingEntryData = existingDocSnap.exists() ? existingDocSnap.data() as ExercisePerformanceEntry : null;
     
-    newPersonalRecord = existingEntryData?.personalRecord || null;
+    const bestToday = pickBestSet(currentSessionSets);
+    const currentPR = existingEntryData?.personalRecord ?? null;
 
-    if (validCurrentSessionSets.length > 0) {
-        newLastPerformedDate = Timestamp.now().toMillis();
-        newLastPerformedSets = validCurrentSessionSets;
-
-        const bestSetThisSession = findBestSetInSetsArray(validCurrentSessionSets);
-        if (bestSetThisSession) {
-          if (!newPersonalRecord || 
-              bestSetThisSession.weight > newPersonalRecord.weight ||
-              (bestSetThisSession.weight === newPersonalRecord.weight && bestSetThisSession.reps > newPersonalRecord.reps)) {
-            newPersonalRecord = {
-              reps: bestSetThisSession.reps,
-              weight: bestSetThisSession.weight,
-              date: newLastPerformedDate, 
-              logId: logDate, 
-            };
-          }
-        }
-    } else {
-        newLastPerformedDate = existingEntryData?.lastPerformedDate || null;
-        newLastPerformedSets = existingEntryData?.lastPerformedSets || [];
+    const validSets = validWorkingSets(currentSessionSets);
+    
+    const updatePayload: Partial<ExercisePerformanceEntry> & { lastPerformedDate?: number } = {
+        lastPerformedSets: validSets,
+        lastPerformedDate: Timestamp.now().toMillis()
+    };
+    
+    if (isBetterPR(bestToday, currentPR)) {
+        updatePayload.personalRecord = {
+            reps: bestToday!.reps,
+            weight: bestToday!.weight,
+            date: Timestamp.now().toMillis(), 
+            logId: logDate, 
+        };
     }
 
-    const isEntryEffectivelyEmpty = !newPersonalRecord && (!newLastPerformedDate || newLastPerformedSets.length === 0);
+    const sanitizedPayload = stripUndefinedDeep(updatePayload);
 
-    if (isEntryEffectivelyEmpty) {
-      if (existingDocSnap.exists()) {
-        await deleteFirestoreDoc(performanceEntryDocRef);
-      }
+    if (existingDocSnap.exists()) {
+        await setDoc(performanceEntryDocRef, sanitizedPayload, { merge: true });
     } else {
-      const entryDataToSave: Partial<ExercisePerformanceEntry> = {};
-      if (newPersonalRecord) {
-        entryDataToSave.personalRecord = newPersonalRecord;
-      } else {
-        entryDataToSave.personalRecord = deleteField() as any;
-      }
-      if (newLastPerformedDate && newLastPerformedSets.length > 0) {
-        entryDataToSave.lastPerformedDate = newLastPerformedDate;
-        entryDataToSave.lastPerformedSets = newLastPerformedSets;
-      } else {
-        entryDataToSave.lastPerformedDate = deleteField() as any;
-        entryDataToSave.lastPerformedSets = []; 
-      }
-      await setDoc(performanceEntryDocRef, entryDataToSave, { merge: true });
+        await setDoc(performanceEntryDocRef, sanitizedPayload);
     }
 
   } catch (error: any) {
@@ -374,6 +354,7 @@ export const updatePerformanceEntryOnLogDelete = async (
   let logsSnap = await getDocs(logsQuery);
   let fallbackLogDoc: typeof logsSnap.docs[0] | undefined;
 
+  // Find the next most recent log that isn't the one being deleted
   for (const doc of logsSnap.docs) {
     if (doc.id !== deletedLogId) { 
         fallbackLogDoc = doc;
@@ -381,6 +362,7 @@ export const updatePerformanceEntryOnLogDelete = async (
     }
   }
 
+  // If no other logs exist for this exercise, delete the performance entry
   if (!fallbackLogDoc) { 
     await deleteFirestoreDoc(perfRef);
     return;
@@ -389,12 +371,13 @@ export const updatePerformanceEntryOnLogDelete = async (
   const fallbackLogData = fallbackLogDoc.data() as WorkoutLog;
   const exerciseInFallbackLog = fallbackLogData.exercises.find(e => e.exerciseId === exerciseId);
 
+  // If the fallback log doesn't actually contain the exercise or its sets are empty, delete
   if (!exerciseInFallbackLog || exerciseInFallbackLog.sets.length === 0 || exerciseInFallbackLog.sets.every(s => (s.reps ?? 0) === 0 && (s.weight ?? 0) === 0)) {
     await deleteFirestoreDoc(perfRef);
     return;
   }
   
-  const bestSetInFallback = findBestSetInSetsArray(exerciseInFallbackLog.sets);
+  const bestSetInFallback = pickBestSet(exerciseInFallbackLog.sets);
 
   const newEntryDataToSet: ExercisePerformanceEntry = { 
     lastPerformedDate: Timestamp.fromDate(parseISO(fallbackLogData.id)).toMillis(),
@@ -432,5 +415,3 @@ export const updatePerformanceEntryOnLogDelete = async (
     }
   }
 };
-
-    
