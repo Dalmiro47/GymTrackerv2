@@ -415,7 +415,7 @@ function TrainingLogPageContent() {
                       const connector = getConnectorAfterIndex(currentLog.exercises, index);
                       return (
                       <React.Fragment key={loggedEx.id}>
-                        <div className="mb-4">
+                        <div className={cn(!connector.show && "mb-4")}>
                             <LoggedExerciseCard
                               loggedExercise={loggedEx}
                               onUpdateSets={(sets) => updateExerciseInLog({ ...loggedEx, sets })}
@@ -431,7 +431,7 @@ function TrainingLogPageContent() {
                           <div
                             className={cn(
                               "relative -mx-4 sm:mx-0",
-                              connector.show ? "-mt-4 -mb-2 z-0" : "my-2"
+                              connector.show ? "-mt-2 -mb-2" : "my-2"
                             )}
                           >
                            <div
@@ -594,3 +594,5 @@ export default function TrainingLogPage() {
     </Suspense>
   );
 }
+
+    
