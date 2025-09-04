@@ -179,14 +179,28 @@ function TrainingLogPageContent() {
     return parsedDates;
   }, [loggedDayStrings]);
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: isMobile
-        ? { delay: 200, tolerance: 8 } // Delay for touch devices
-        : undefined, // No delay for mouse
-    }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
-  );
+  const pointerSensor = useSensor(PointerSensor, {
+    activationConstraint: isMobile
+      ? { delay: 200, tolerance: 8 }
+      : { distance: 6 },
+  });
+
+  const keyboardSensor = useSensor(KeyboardSensor, {
+    coordinateGetter: sortableKeyboardCoordinates,
+    onActivation: ({ event }) => {
+        const el = event.target as HTMLElement | null;
+        if (el && (
+            el.tagName === 'INPUT' || 
+            el.tagName === 'TEXTAREA' || 
+            el.isContentEditable
+        )) {
+            return false;
+        }
+        return true;
+    }
+  });
+
+  const sensors = useSensors(pointerSensor, keyboardSensor);
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
