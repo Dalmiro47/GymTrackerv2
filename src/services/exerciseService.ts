@@ -3,7 +3,6 @@ import { db } from '@/lib/firebaseConfig';
 import type { Exercise, ExerciseData } from '@/types';
 import { 
   collection, 
-  addDoc, 
   getDocs, 
   doc, 
   deleteDoc, 
@@ -11,27 +10,73 @@ import {
   setDoc,
   query,
   orderBy,
+  getDoc,
 } from 'firebase/firestore';
 import { deleteAllPerformanceEntriesForExercise } from './trainingLogService'; 
 import { stripUndefinedDeep } from '@/lib/sanitize';
+import { buildExerciseDocId } from '@/lib/ids';
 
 const getUserExercisesCollectionPath = (userId: string) => `users/${userId}/exercises`;
 
-export const addExercise = async (userId: string, exerciseData: ExerciseData): Promise<Exercise> => {
-  if (!userId) throw new Error("User ID is required to add an exercise.");
-  try {
-    const userExercisesColRef = collection(db, getUserExercisesCollectionPath(userId));
-    
-    // Sanitize the object to remove any `undefined` values before sending to Firestore
-    const dataToSave = stripUndefinedDeep(exerciseData);
-
-    const docRef = await addDoc(userExercisesColRef, dataToSave); 
-    return { id: docRef.id, ...dataToSave as ExerciseData };
-  } catch (error: any) {
-    console.error("Detailed error adding exercise to Firestore: ", error); 
-    throw new Error(`Failed to add exercise. Firestore error: ${error.message || error}`);
+/**
+ * Create a new exercise with a deterministic, human-readable document ID
+ * based on the exercise name + muscle group, with collision suffixes (-2, -3, ...).
+ */
+export async function addExercise(userId: string, data: ExerciseData): Promise<Exercise> {
+  if (!userId) throw new Error('User ID is required.');
+  if (!data?.name || data.name.trim().length < 2) {
+    throw new Error('Exercise name must be at least 2 characters.');
   }
-};
+  if (!data?.muscleGroup) {
+    throw new Error('Muscle group is required.');
+  }
+
+  const colPath = getUserExercisesCollectionPath(userId);
+  const baseId = buildExerciseDocId(data.name, data.muscleGroup);
+  let candidateId = baseId;
+  let suffix = 2;
+
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const ref = doc(db, colPath, candidateId);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) {
+      // Build payload and remove ALL undefined deeply
+      const raw = {
+        name: data.name.trim(),
+        muscleGroup: data.muscleGroup,
+        targetNotes: data.targetNotes || '',
+        exerciseSetup: data.exerciseSetup || '',
+        progressiveOverload: data.progressiveOverload || '',
+        instructions: data.instructions || '',
+        dataAiHint: data.dataAiHint || '',
+        // warmup is optional; only include defined fields
+        warmup: data.warmup
+          ? {
+              template: data.warmup.template,
+              isWeightedBodyweight: data.warmup.isWeightedBodyweight,
+              roundingIncrementKg: data.warmup.roundingIncrementKg,
+              overrideSteps: data.warmup.overrideSteps?.map(s => ({
+                type: s.type,
+                percent: s.type === 'PERCENT' ? s.percent : undefined,
+                reps: s.reps,
+                rest: s.rest,
+                appliesTo: s.appliesTo,
+                note: s.note,
+                label: s.type === 'LABEL' ? s.label : undefined,
+              })),
+            }
+          : undefined,
+      };
+
+      const payload = stripUndefinedDeep(raw); // <-- KEY LINE
+
+      await setDoc(ref, payload);
+      return { id: candidateId, ...(payload as ExerciseData) };
+    }
+    candidateId = `${baseId}-${suffix++}`;
+  }
+}
 
 export const addDefaultExercisesBatch = async (userId: string, defaultExercisesWithIds: Exercise[]): Promise<void> => {
   if (!userId) throw new Error("User ID is required to add default exercises.");
