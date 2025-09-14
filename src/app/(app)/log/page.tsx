@@ -3,7 +3,7 @@
 "use client";
 
 import React, { useState, useMemo, useEffect, Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { 
@@ -54,7 +54,7 @@ import {
   sortableKeyboardCoordinates,
 } from '@dnd-kit/sortable';
 import { useAuth } from '@/contexts/AuthContext';
-import { useRouter } from 'next/navigation';
+
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Separator } from '@/components/ui/separator';
 import { Label } from '@/components/ui/label';
@@ -62,7 +62,7 @@ import { Switch } from '@/components/ui/switch';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { SET_STRUCTURE_COLORS } from '@/types/setStructure';
 import { cn } from '@/lib/utils';
-// import { SafePointerSensor, SafeKeyboardSensor } from './sensors'; - Removed as per new implementation
+import { CoachInline } from './CoachInline';
 
 // Determine effective structure for an exercise
 function effectiveStructureFor(ex: LoggedExercise): SetStructure {
@@ -272,11 +272,21 @@ function TrainingLogPageContent() {
     const weightPercent = Math.round((1 - intensityMultiplier) * 100);
     return `Sets reduced by ~${setsPercent}%, weight by ~${weightPercent}%. This log will be excluded from future progression calculations.`;
   }, [currentLog?.deloadParams]);
+
+  const routineDay = React.useMemo(() => {
+    const id = currentLog?.routineId && currentLog.routineId !== 'none' ? currentLog.routineId : null;
+    if (!id) return null;
+    const dayName = availableRoutines.find(r => r.id === id)?.name || id;
+    return { dayId: id, dayName };
+  }, [currentLog?.routineId, availableRoutines]);
   
   return (
     <div className="space-y-6">
       <PageHeader title="Training Log" description="Record your daily workouts and track progress.">
         <div className="flex gap-2">
+            <CoachInline
+              routineContext={routineDay}
+            />
             <AlertDialog open={isDeleteConfirmOpen} onOpenChange={setIsDeleteConfirmOpen}>
               <AlertDialogTrigger asChild>
                 <Button 
@@ -596,5 +606,7 @@ export default function TrainingLogPage() {
     </Suspense>
   );
 }
+
+    
 
     

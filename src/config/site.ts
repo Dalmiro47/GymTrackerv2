@@ -1,6 +1,5 @@
-
 import type { NavItem } from '@/types';
-import { LayoutDashboard, Dumbbell, ListChecks, ClipboardEdit } from 'lucide-react'; // Removed CalendarDays
+import { LayoutDashboard, Dumbbell, ListChecks, ClipboardEdit, Sparkles, User } from 'lucide-react';
 
 export const siteConfig = {
   name: "DDS Gym Tracker",
@@ -26,12 +25,12 @@ export const navItems: NavItem[] = [
     icon: ClipboardEdit,
     label: 'Training Log',
   },
-  // { // Calendar page removed
-  //   title: 'Calendar',
-  //   href: '/calendar',
-  //   icon: CalendarDays,
-  //   label: 'Training Calendar',
-  // },
+  {
+    title: 'AI Coach',
+    href: '/coach',
+    icon: Sparkles,
+    label: 'AI Coach',
+  },
   {
     title: 'Exercises',
     href: '/exercises',
@@ -43,5 +42,11 @@ export const navItems: NavItem[] = [
     href: '/routines',
     icon: ListChecks,
     label: 'Routines',
+  },
+  {
+    title: 'Profile',
+    href: '/profile',
+    icon: User,
+    label: 'Profile',
   },
 ];

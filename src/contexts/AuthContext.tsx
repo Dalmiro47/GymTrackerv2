@@ -1,6 +1,6 @@
 "use client";
 
-import type { UserProfile } from '@/types';
+import type { UserProfile as AppUserProfile } from '@/types';
 import type { ReactNode } from 'react';
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { 
@@ -14,7 +14,7 @@ import {
 import { app } from '@/lib/firebaseConfig'; // Ensure app is initialized
 
 interface AuthContextType {
-  user: UserProfile | null;
+  user: AppUserProfile | null;
   firebaseUser: FirebaseUser | null;
   isAuthenticated: boolean;
   isLoading: boolean;
@@ -25,7 +25,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const [user, setUser] = useState<UserProfile | null>(null);
+  const [user, setUser] = useState<AppUserProfile | null>(null);
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const auth = getAuth(app); // Get auth instance
@@ -34,7 +34,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const unsubscribe = onAuthStateChanged(auth, (fbUser) => {
       if (fbUser) {
         setFirebaseUser(fbUser);
-        const userProfile: UserProfile = {
+        const userProfile: AppUserProfile = {
           id: fbUser.uid,
           email: fbUser.email,
           name: fbUser.displayName,
