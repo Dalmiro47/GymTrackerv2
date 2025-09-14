@@ -30,12 +30,13 @@ export default function CoachPage() {
           )}
           <p className="text-sm text-muted-foreground mt-2">
             Manage your profile in{' '}
-            <Link href="/settings/profile" className="underline">
-              Settings → Profile
-            </Link>.
+            <Link href="/profile" className="underline">
+              Profile
+            </Link>
+            .
           </p>
         </div>
-        <Button onClick={run} disabled={isRunning || data.isLoading}>
+        <Button onClick={() => run()} disabled={isRunning || data.isLoading}>
           {isRunning ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Analyzing…</> : 'Run coach'}
         </Button>
       </div>

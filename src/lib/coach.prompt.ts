@@ -26,6 +26,10 @@ POLICY
 - Respect daysPerWeekTarget when distributing volume.
 - Ensure weekly balance across squat/hinge/horizontal+vertical push/pull/core.
 - Suggest 1–3 high-impact tweaks with rationale. If data is thin, be cautious.
+- If TrainingSummary.liftTrends shows stalled lifts, address those first and include them in meta.stalledLifts.
+- Use TrainingSummary.weeklyVolume to identify volume gaps vs the user's goal; include gaps in meta.volumeGaps.
+- If balance (push/pull/legs/hinge/core) is skewed, note that in meta.balance and prioritize a fix.
+- Strength+Hypertrophy goal: program compounds in 3–6 reps for strength and accessories in 6–12 for hypertrophy within the same week; show clear sets/reps/RIR.
 
 RESPONSE
 Return ONLY valid JSON for CoachAdvice.

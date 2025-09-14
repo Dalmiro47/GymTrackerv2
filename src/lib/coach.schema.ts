@@ -11,4 +11,11 @@ export interface CoachAdvice {
     rationale: string;
   }>;
   nextFourWeeks: Array<{ week: number; focus: string; notes: string }>;
+  // NEW (optional): gives you anchors to why the coach recommended changes
+  meta?: {
+    stalledLifts?: Array<{ name: string; reason: string }>;
+    volumeGaps?: Array<{ muscleGroup: string; weeklySets: number; targetRange: string }>;
+    balance?: { pushPct?: number; pullPct?: number; legsPct?: number; hingePct?: number; corePct?: number };
+    confidence?: number; // 0–1
+  };
 }
