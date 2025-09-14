@@ -12,6 +12,9 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@
 import { Loader2, CheckCircle2 } from 'lucide-react';
 import { stripUndefined } from '@/lib/clean';
 
+const clampSession = (n?: number) =>
+  typeof n === 'number' ? Math.min(180, Math.max(20, Math.round(n))) : undefined;
+
 export function CoachProfileForm({ initial, title = 'Profile' }: { initial: UserProfile; title?: string }) {
   const { user } = useAuth();
   const [form, setForm] = useState<UserProfile>(initial);
@@ -35,6 +38,7 @@ export function CoachProfileForm({ initial, title = 'Profile' }: { initial: User
       setSaving(true);
       const payload = stripUndefined({
         ...form,
+        sessionTimeTargetMin: clampSession(form.sessionTimeTargetMin),
         ...(form.gender === 'Self-describe' ? {} : { genderSelfDescribe: undefined }),
       });
       await setDoc(doc(db, 'users', user.id, 'profile', 'profile'), payload, { merge: true });
@@ -130,8 +134,8 @@ export function CoachProfileForm({ initial, title = 'Profile' }: { initial: User
             value={form.sessionTimeTargetMin ?? ''}
             onChange={(e) => {
               const val = e.target.value;
-              const n = val === '' ? undefined : Math.min(180, Math.max(20, Number(val)));
-              setForm({ ...form, sessionTimeTargetMin: n });
+              const n = val === '' ? undefined : Number(val);
+              setForm({ ...form, sessionTimeTargetMin: Number.isFinite(n as number) ? (n as number) : undefined });
             }}
             placeholder="e.g. 60"
           />
