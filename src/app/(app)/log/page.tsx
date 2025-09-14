@@ -3,7 +3,7 @@
 "use client";
 
 import React, { useState, useMemo, useEffect, Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { 
@@ -54,7 +54,7 @@ import {
   sortableKeyboardCoordinates,
 } from '@dnd-kit/sortable';
 import { useAuth } from '@/contexts/AuthContext';
-import { useRouter } from 'next/navigation';
+
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Separator } from '@/components/ui/separator';
 import { Label } from '@/components/ui/label';
@@ -62,6 +62,7 @@ import { Switch } from '@/components/ui/switch';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { SET_STRUCTURE_COLORS } from '@/types/setStructure';
 import { cn } from '@/lib/utils';
+import { CoachInline } from './CoachInline';
 // import { SafePointerSensor, SafeKeyboardSensor } from './sensors'; - Removed as per new implementation
 
 // Determine effective structure for an exercise
@@ -277,6 +278,7 @@ function TrainingLogPageContent() {
     <div className="space-y-6">
       <PageHeader title="Training Log" description="Record your daily workouts and track progress.">
         <div className="flex gap-2">
+            <CoachInline onOpenFull={() => router.push('/coach')} />
             <AlertDialog open={isDeleteConfirmOpen} onOpenChange={setIsDeleteConfirmOpen}>
               <AlertDialogTrigger asChild>
                 <Button 
