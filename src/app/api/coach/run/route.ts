@@ -5,7 +5,7 @@ export const runtime = 'nodejs';
 
 export async function POST(req: NextRequest) {
   try {
-    const { profile, routineSummary, trainingSummary } = await req.json();
+    const { profile, routineSummary, trainingSummary, scope } = await req.json();
     const apiKey = process.env.GOOGLE_API_KEY || '';
     if (!apiKey) return NextResponse.json({ error: 'Missing GOOGLE_API_KEY' }, { status: 503 });
 
@@ -16,7 +16,9 @@ export async function POST(req: NextRequest) {
     });
 
     const { buildCoachPrompt } = await import('@/lib/coach.prompt');
-    const result = await model.generateContent(buildCoachPrompt(profile, routineSummary, trainingSummary));
+    const result = await model.generateContent(
+      buildCoachPrompt(profile, routineSummary, trainingSummary, scope)
+    );
     const raw = result.response.text();
 
     try {

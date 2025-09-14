@@ -6,10 +6,23 @@ import { Loader2, Sparkles } from 'lucide-react';
 import { useCoachRun } from '@/hooks/use-coach-run';
 import { useCoachData } from '@/hooks/use-coach-data';
 
-export function CoachInline({ onOpenFull }: { onOpenFull: () => void }) {
+export function CoachInline({
+  onOpenFull,
+  routineContext,
+}: {
+  onOpenFull: () => void;
+  routineContext?: { dayId: string; dayName?: string } | null;
+}) {
   const data = useCoachData({ weeks: 6 });
+  const scope = routineContext
+    ? { mode: 'day' as const, dayId: routineContext.dayId, dayName: routineContext.dayName }
+    : { mode: 'global' as const };
+
   const { advice, run, isRunning } = useCoachRun({
-    profile: data.profile, routineSummary: data.routineSummary, trainingSummary: data.summary,
+    profile: data.profile,
+    routineSummary: data.routineSummary,
+    trainingSummary: data.summary,
+    scope,
   });
 
   return (
@@ -18,9 +31,14 @@ export function CoachInline({ onOpenFull }: { onOpenFull: () => void }) {
         <Button variant="outline" size="sm"><Sparkles className="mr-2 h-4 w-4" />Coach</Button>
       </SheetTrigger>
       <SheetContent side="right" className="w-[420px]">
-        <SheetHeader><SheetTitle>Coach – top suggestions</SheetTitle></SheetHeader>
+        <SheetHeader>
+          <SheetTitle>
+            Coach – top suggestions
+            {scope.mode === 'day' ? ` for ${routineContext?.dayName ?? 'this day'}` : ''}
+          </SheetTitle>
+        </SheetHeader>
         <div className="mt-4 space-y-4">
-          <Button disabled={isRunning || data.isLoading} onClick={run} className="w-full">
+          <Button disabled={isRunning || data.isLoading} onClick={() => run()} className="w-full">
             {isRunning ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Analyzing…</> : 'Run coach'}
           </Button>
           {!advice && <p className="text-sm text-muted-foreground">Run the coach to see suggestions.</p>}

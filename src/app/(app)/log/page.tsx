@@ -272,12 +272,22 @@ function TrainingLogPageContent() {
     const weightPercent = Math.round((1 - intensityMultiplier) * 100);
     return `Sets reduced by ~${setsPercent}%, weight by ~${weightPercent}%. This log will be excluded from future progression calculations.`;
   }, [currentLog?.deloadParams]);
+
+  const routineDay = React.useMemo(() => {
+    const id = currentLog?.routineId && currentLog.routineId !== 'none' ? currentLog.routineId : null;
+    if (!id) return null;
+    const dayName = availableRoutines.find(r => r.id === id)?.name || id;
+    return { dayId: id, dayName };
+  }, [currentLog?.routineId, availableRoutines]);
   
   return (
     <div className="space-y-6">
       <PageHeader title="Training Log" description="Record your daily workouts and track progress.">
         <div className="flex gap-2">
-            <CoachInline onOpenFull={() => router.push('/coach')} />
+            <CoachInline
+              onOpenFull={() => router.push('/coach')}
+              routineContext={routineDay}
+            />
             <AlertDialog open={isDeleteConfirmOpen} onOpenChange={setIsDeleteConfirmOpen}>
               <AlertDialogTrigger asChild>
                 <Button 
