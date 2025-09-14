@@ -1,35 +1,37 @@
+
 import { NextRequest, NextResponse } from 'next/server';
 import {
   GoogleGenerativeAI,
   HarmCategory,
   HarmBlockThreshold,
-  type Schema, // Depending on SDK version, this type may exist. If TS complains, remove and keep plain objects.
+  SchemaType,
+  type Schema,
 } from '@google/generative-ai';
 
 export const runtime = 'nodejs';
 
 // CoachAdvice schema (tool parameters). Keep this aligned with src/lib/coach.schema.ts
 const CoachAdviceParams: Schema = {
-  type: 'object',
+  type: SchemaType.OBJECT,
   properties: {
-    overview: { type: 'string', description: 'Short high-level summary.' },
-    priorityScore: { type: 'number', description: '1–100 priority of these changes.' },
-    risks: { type: 'array', items: { type: 'string' } },
+    overview: { type: SchemaType.STRING, description: 'Short high-level summary.' },
+    priorityScore: { type: SchemaType.NUMBER, description: '1–100 priority of these changes.' },
+    risks: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
     routineTweaks: {
-      type: 'array',
+      type: SchemaType.ARRAY,
       items: {
-        type: 'object',
+        type: SchemaType.OBJECT,
         properties: {
           where: {
-            type: 'object',
+            type: SchemaType.OBJECT,
             properties: {
-              day: { type: 'string' },
-              slot: { type: 'number' },
+              day: { type: SchemaType.STRING },
+              slot: { type: SchemaType.NUMBER },
             },
             required: ['day'],
           },
           change: {
-            type: 'string',
+            type: SchemaType.STRING,
             enum: [
               'Replace Exercise',
               'Add Exercise',
@@ -38,71 +40,71 @@ const CoachAdviceParams: Schema = {
               'Change Frequency',
             ],
           },
-          details: { type: 'string' },
+          details: { type: SchemaType.STRING },
           setsReps: {
-            type: 'object',
+            type: SchemaType.OBJECT,
             properties: {
-              sets: { type: 'number' },
-              repsRange: { type: 'string' },
-              rir: { type: 'string' },
+              sets: { type: SchemaType.NUMBER },
+              repsRange: { type: SchemaType.STRING },
+              rir: { type: SchemaType.STRING },
             },
             required: ['sets', 'repsRange'],
           },
-          exampleExercises: { type: 'array', items: { type: 'string' } },
-          rationale: { type: 'string' },
+          exampleExercises: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+          rationale: { type: SchemaType.STRING },
         },
         required: ['where', 'change', 'details', 'rationale'],
       },
     },
     nextFourWeeks: {
-      type: 'array',
+      type: SchemaType.ARRAY,
       items: {
-        type: 'object',
+        type: SchemaType.OBJECT,
         properties: {
-          week: { type: 'number' },
-          focus: { type: 'string' },
-          notes: { type: 'string' },
+          week: { type: SchemaType.NUMBER },
+          focus: { type: SchemaType.STRING },
+          notes: { type: SchemaType.STRING },
         },
         required: ['week', 'focus', 'notes'],
       },
     },
     meta: {
-      type: 'object',
+      type: SchemaType.OBJECT,
       properties: {
         stalledLifts: {
-          type: 'array',
+          type: SchemaType.ARRAY,
           items: {
-            type: 'object',
+            type: SchemaType.OBJECT,
             properties: {
-              name: { type: 'string' },
-              reason: { type: 'string' },
+              name: { type: SchemaType.STRING },
+              reason: { type: SchemaType.STRING },
             },
             required: ['name', 'reason'],
           },
         },
         volumeGaps: {
-          type: 'array',
+          type: SchemaType.ARRAY,
           items: {
-            type: 'object',
+            type: SchemaType.OBJECT,
             properties: {
-              muscleGroup: { type: 'string' },
-              weeklySets: { type: 'number' },
-              targetRange: { type: 'string' },
+              muscleGroup: { type: SchemaType.STRING },
+              weeklySets: { type: SchemaType.NUMBER },
+              targetRange: { type: SchemaType.STRING },
             },
             required: ['muscleGroup', 'weeklySets', 'targetRange'],
           },
         },
         balance: {
-          type: 'object',
+          type: SchemaType.OBJECT,
           properties: {
-            pushPct: { type: 'number' },
-            pullPct: { type: 'number' },
-            legsPct: { type: 'number' },
-            hingePct: { type: 'number' },
-            corePct: { type: 'number' },
+            pushPct: { type: SchemaType.NUMBER },
+            pullPct: { type: SchemaType.NUMBER },
+            legsPct: { type: SchemaType.NUMBER },
+            hingePct: { type: SchemaType.NUMBER },
+            corePct: { type: SchemaType.NUMBER },
           },
         },
-        confidence: { type: 'number' },
+        confidence: { type: SchemaType.NUMBER },
       },
     },
   },
@@ -169,16 +171,24 @@ Call the CoachAdvice function with your structured advice.
 
     const result = await model.generateContent(prompt);
 
-    // Extract function call
     const parts = result.response?.candidates?.[0]?.content?.parts ?? [];
-    const fn = parts.find((p: any) => p.functionCall)?.functionCall;
-    if (fn?.name === 'CoachAdvice' && fn?.args) {
-      // fn.args is already a JS object matching the schema
-      return NextResponse.json({ advice: fn.args }, { status: 200 });
+    const fn = parts.find((p: any) => p?.functionCall)?.functionCall;
+    let advice = fn?.name === 'CoachAdvice' ? fn?.args : undefined;
+
+    // belt-and-suspenders fallback for odd responses
+    if (!advice && typeof result.response?.text === 'function') {
+      try {
+        advice = JSON.parse(result.response.text());
+      } catch {}
     }
 
-    console.error('CoachAdvice function was not called. Raw:', JSON.stringify(result.response, null, 2));
-    return NextResponse.json({ error: 'Invalid response structure from model' }, { status: 502 });
+    if (!advice) {
+      console.error('CoachAdvice function was not called or parsed. Raw:', JSON.stringify(result.response, null, 2));
+      return NextResponse.json({ error: 'Invalid response structure from model' }, { status: 502 });
+    }
+
+    return NextResponse.json({ advice }, { status: 200 });
+
   } catch (e: any) {
     console.error('Coach route error:', e);
     return NextResponse.json({ error: e?.message ?? 'coach_error' }, { status: 500 });
