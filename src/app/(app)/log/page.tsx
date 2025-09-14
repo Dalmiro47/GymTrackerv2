@@ -285,7 +285,6 @@ function TrainingLogPageContent() {
       <PageHeader title="Training Log" description="Record your daily workouts and track progress.">
         <div className="flex gap-2">
             <CoachInline
-              onOpenFull={() => router.push('/coach')}
               routineContext={routineDay}
             />
             <AlertDialog open={isDeleteConfirmOpen} onOpenChange={setIsDeleteConfirmOpen}>
@@ -607,5 +606,7 @@ export default function TrainingLogPage() {
     </Suspense>
   );
 }
+
+    
 
     
