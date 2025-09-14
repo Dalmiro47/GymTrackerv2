@@ -35,6 +35,14 @@ export function useCoachRun({ profile, routineSummary, trainingSummary }:{
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ profile, routineSummary, trainingSummary }),
     });
+    
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      console.error('Coach API error:', res.status, err?.error);
+      setRunning(false);
+      return; 
+    }
+
     const json = await res.json();
     if (json?.advice) {
       setAdvice(json.advice as CoachAdvice);

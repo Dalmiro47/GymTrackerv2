@@ -63,7 +63,6 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { SET_STRUCTURE_COLORS } from '@/types/setStructure';
 import { cn } from '@/lib/utils';
 import { CoachInline } from './CoachInline';
-// import { SafePointerSensor, SafeKeyboardSensor } from './sensors'; - Removed as per new implementation
 
 // Determine effective structure for an exercise
 function effectiveStructureFor(ex: LoggedExercise): SetStructure {
