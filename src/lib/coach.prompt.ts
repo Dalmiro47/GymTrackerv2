@@ -15,10 +15,15 @@ RoutineSummary: ${JSON.stringify(routineSummary)}
 TrainingSummary: ${JSON.stringify(trainingSummary)}
 
 POLICY
-- Respect injuries/constraints.
-- Hypertrophy: 10–20 hard sets/muscle/week, reps 6–12, RIR 1–3.
-- Strength: 6–12 sets for main lifts, reps 3–6, RIR 2–3.
-- Fat Loss: maintain strength, manage volume, add conditioning 1–3×/wk.
+- Respect stated constraints. If gender === "Self-describe", use genderSelfDescribe. If "Prefer not to say", ignore gender.
+- Training is largely gender-neutral; do not change fundamentals solely based on gender. Only adjust where clearly relevant (comfort, equipment access, etc.).
+- Goal mapping:
+  * Hypertrophy: 10–20 hard sets/muscle/week, reps 6–12, RIR 1–3.
+  * Strength: 6–12 sets for main lifts, reps 3–6, RIR 2–3.
+  * Strength+Hypertrophy: compounds in 3–6 reps for strength + accessories in 6–12 reps for size; 12–18 total sets for focus muscles.
+  * Fat Loss: maintain strength, moderate volume, add conditioning 1–3×/wk.
+  * General Fitness: balanced mix with moderate volume.
+- Respect daysPerWeekTarget when distributing volume.
 - Ensure weekly balance across squat/hinge/horizontal+vertical push/pull/core.
 - Suggest 1–3 high-impact tweaks with rationale. If data is thin, be cautious.
 

@@ -10,14 +10,23 @@ import { CoachProfileForm } from '@/components/coach/CoachProfileForm';
 
 export default function CoachPage() {
   const data = useCoachData({ weeks: 8 });
-  const { advice, run, isRunning } = useCoachRun({
+  const { advice, run, isRunning, createdAt } = useCoachRun({
     profile: data.profile, routineSummary: data.routineSummary, trainingSummary: data.summary,
   });
+
+  const lastAnalyzed = advice ? new Date(createdAt ?? 0) : null;
 
   return (
     <div className="container mx-auto space-y-6 py-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold flex items-center gap-2"><Sparkles className="h-5 w-5" /> Coach</h1>
+        <div>
+            <h1 className="text-2xl font-semibold flex items-center gap-2"><Sparkles className="h-5 w-5" /> Coach</h1>
+            {lastAnalyzed && Number.isFinite(lastAnalyzed.getTime()) && lastAnalyzed.getFullYear() > 2000 && (
+                <div className="text-xs text-muted-foreground mt-1">
+                    Last analyzed: {lastAnalyzed.toLocaleString()}
+                </div>
+            )}
+        </div>
         <Button onClick={run} disabled={isRunning || data.isLoading}>
           {isRunning ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Analyzing…</> : 'Run coach'}
         </Button>

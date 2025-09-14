@@ -3,42 +3,122 @@ import React, { useState } from 'react';
 import { doc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebaseConfig';
 import { useAuth } from '@/contexts/AuthContext';
-import type { UserProfile, Goal } from '@/lib/types.gym';
+import type { UserProfile, Goal, GenderOption } from '@/lib/types.gym';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
+import { Loader2, CheckCircle2 } from 'lucide-react';
 
 export function CoachProfileForm({ initial }: { initial: UserProfile }) {
   const { user } = useAuth();
   const [form, setForm] = useState<UserProfile>(initial);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
 
   async function save() {
     if (!user) return;
-    await setDoc(doc(db, 'users', user.id, 'profile', 'profile'), form, { merge: true });
+    try {
+      setSaving(true);
+      await setDoc(doc(db, 'users', user.id, 'profile', 'profile'), form, { merge: true });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } finally {
+      setSaving(false);
+    }
   }
+
+  const gender = form.gender ?? 'Prefer not to say';
 
   return (
     <Card>
       <CardHeader><CardTitle>Coach Profile</CardTitle></CardHeader>
       <CardContent className="grid grid-cols-2 gap-4">
-        <div><Label>Goal</Label>
-          <Select value={form.goal} onValueChange={(v)=>setForm({ ...form, goal: v as Goal })}>
+        {/* Goal */}
+        <div>
+          <Label>Goal</Label>
+          <Select value={form.goal} onValueChange={(v) => setForm({ ...form, goal: v as Goal })}>
             <SelectTrigger><SelectValue placeholder="Goal" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="Hypertrophy">Hypertrophy</SelectItem>
               <SelectItem value="Strength">Strength</SelectItem>
+              <SelectItem value="Strength+Hypertrophy">Strength + Hypertrophy</SelectItem>
               <SelectItem value="Fat Loss">Fat Loss</SelectItem>
               <SelectItem value="General Fitness">General Fitness</SelectItem>
             </SelectContent>
           </Select>
         </div>
-        <div><Label>Age</Label><Input type="number" value={form.age ?? ''} onChange={e=>setForm({...form, age: Number(e.target.value)})}/></div>
-        <div><Label>Gender</Label><Input value={form.gender ?? ''} onChange={e=>setForm({...form, gender: e.target.value as any})}/></div>
-        <div><Label>Days/week target</Label><Input type="number" value={form.daysPerWeekTarget ?? ''} onChange={e=>setForm({...form, daysPerWeekTarget: Number(e.target.value)})}/></div>
-        <div className="col-span-2"><Label>Constraints</Label><Input value={(form.constraints||[]).join(', ')} onChange={e=>setForm({...form, constraints: e.target.value.split(',').map(s=>s.trim()).filter(Boolean)})}/></div>
-        <div className="col-span-2"><Button onClick={save}>Save profile</Button></div>
+
+        <div>
+          <Label>Age</Label>
+          <Input type="number" value={form.age ?? ''} onChange={(e) => setForm({ ...form, age: Number(e.target.value) })} />
+        </div>
+
+        {/* Gender */}
+        <div>
+          <Label>Gender</Label>
+          <Select
+            value={gender}
+            onValueChange={(v) => setForm({
+              ...form,
+              gender: v as GenderOption,
+              genderSelfDescribe: v === 'Self-describe' ? (form.genderSelfDescribe ?? '') : undefined,
+            })}
+          >
+            <SelectTrigger><SelectValue placeholder="Select gender" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="Man">Man</SelectItem>
+              <SelectItem value="Woman">Woman</SelectItem>
+              <SelectItem value="Nonbinary">Nonbinary</SelectItem>
+              <SelectItem value="Self-describe">Prefer to self-describe</SelectItem>
+              <SelectItem value="Prefer not to say">Decline to state</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div>
+          <Label>Days/week target</Label>
+          <Input
+            type="number"
+            value={form.daysPerWeekTarget ?? ''}
+            onChange={(e) => setForm({ ...form, daysPerWeekTarget: Number(e.target.value) })}
+          />
+        </div>
+
+        {form.gender === 'Self-describe' && (
+          <div className="col-span-2">
+            <Label>Please self-describe</Label>
+            <Input
+              placeholder="Enter your gender"
+              value={form.genderSelfDescribe ?? ''}
+              onChange={(e) => setForm({ ...form, genderSelfDescribe: e.target.value })}
+            />
+          </div>
+        )}
+
+        <div className="col-span-2">
+          <Label>Constraints</Label>
+          <Input
+            placeholder="e.g., Lower back sensitivity, Home gym"
+            value={(form.constraints || []).join(', ')}
+            onChange={(e) =>
+              setForm({
+                ...form,
+                constraints: e.target.value.split(',').map((s) => s.trim()).filter(Boolean),
+              })
+            }
+          />
+        </div>
+
+        <div className="col-span-2 flex items-center gap-3">
+          <Button onClick={save} disabled={saving}>
+            {saving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving…</> : 'Save profile'}
+          </Button>
+          {saved && <span className="text-sm text-emerald-600 flex items-center gap-1" aria-live="polite">
+            <CheckCircle2 className="h-4 w-4" /> Saved
+          </span>}
+        </div>
       </CardContent>
     </Card>
   );

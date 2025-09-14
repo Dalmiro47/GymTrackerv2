@@ -1,7 +1,20 @@
-export type Goal = 'Hypertrophy' | 'Strength' | 'Fat Loss' | 'General Fitness';
+export type Goal =
+  | 'Hypertrophy'
+  | 'Strength'
+  | 'Strength+Hypertrophy' // NEW
+  | 'Fat Loss'
+  | 'General Fitness';
+
+export type GenderOption =
+  | 'Man'
+  | 'Woman'
+  | 'Nonbinary'
+  | 'Self-describe'
+  | 'Prefer not to say';
 
 export interface UserProfile {
-  gender?: 'Male' | 'Female' | 'Other';
+  gender?: GenderOption;
+  genderSelfDescribe?: string; // used when gender === 'Self-describe'
   age?: number;
   heightCm?: number;
   weightKg?: number;

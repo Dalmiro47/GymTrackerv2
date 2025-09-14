@@ -14,6 +14,7 @@ export function useCoachRun({ profile, routineSummary, trainingSummary }:{
   const { user } = useAuth();
   const [isRunning, setRunning] = useState(false);
   const [advice, setAdvice] = useState<CoachAdvice | null>(null);
+  const [createdAt, setCreatedAt] = useState<number | null>(null);
   const weekKey = format(new Date(), 'RRRR-ww');
   const inputHash = useMemo(() => hashString(JSON.stringify({ profile, routineSummary, trainingSummary })), [profile, routineSummary, trainingSummary]);
 
@@ -27,6 +28,7 @@ export function useCoachRun({ profile, routineSummary, trainingSummary }:{
       const data:any = cached.data();
       if (data.inputHash === inputHash && data.advice) {
         setAdvice(data.advice as CoachAdvice);
+        setCreatedAt(data.createdAt ?? null);
         setRunning(false);
         return;
       }
@@ -45,11 +47,13 @@ export function useCoachRun({ profile, routineSummary, trainingSummary }:{
 
     const json = await res.json();
     if (json?.advice) {
+      const now = Date.now();
       setAdvice(json.advice as CoachAdvice);
-      await setDoc(ref, { inputHash, createdAt: Date.now(), advice: json.advice }, { merge: true });
+      setCreatedAt(now);
+      await setDoc(ref, { inputHash, createdAt: now, advice: json.advice }, { merge: true });
     }
     setRunning(false);
   }, [user, profile, inputHash, routineSummary, trainingSummary, weekKey]);
 
-  return { advice, run, isRunning, inputHash, weekKey };
+  return { advice, run, isRunning, inputHash, weekKey, createdAt };
 }
