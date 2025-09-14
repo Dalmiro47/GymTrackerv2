@@ -1,5 +1,5 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { doc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebaseConfig';
 import { useAuth } from '@/contexts/AuthContext';
@@ -12,25 +12,33 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@
 import { Loader2, CheckCircle2 } from 'lucide-react';
 import { stripUndefined } from '@/lib/clean';
 
-export function CoachProfileForm({ initial }: { initial: UserProfile }) {
+export function CoachProfileForm({ initial, title = 'Profile' }: { initial: UserProfile; title?: string }) {
   const { user } = useAuth();
   const [form, setForm] = useState<UserProfile>(initial);
+  const [baseline, setBaseline] = useState<UserProfile>(initial); // for dirty check
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
+  useEffect(() => setBaseline(initial), [initial]);
+
+  const gender = form.gender ?? 'Prefer not to say';
+
+  const isDirty = useMemo(() => {
+    const A = JSON.stringify(stripUndefined(baseline));
+    const B = JSON.stringify(stripUndefined(form));
+    return A !== B;
+  }, [baseline, form]);
+
   async function save() {
-    if (!user) return;
+    if (!user || !isDirty) return;
     try {
       setSaving(true);
-      // 🔒 No `undefined` allowed in Firestore
       const payload = stripUndefined({
         ...form,
-        // If gender is not "Self-describe", don't send genderSelfDescribe at all
-        ...(form.gender === 'Self-describe'
-          ? {}
-          : { genderSelfDescribe: undefined }),
+        ...(form.gender === 'Self-describe' ? {} : { genderSelfDescribe: undefined }),
       });
       await setDoc(doc(db, 'users', user.id, 'profile', 'profile'), payload, { merge: true });
+      setBaseline(form);         // reset dirty baseline
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } finally {
@@ -38,11 +46,9 @@ export function CoachProfileForm({ initial }: { initial: UserProfile }) {
     }
   }
 
-  const gender = form.gender ?? 'Prefer not to say';
-
   return (
     <Card>
-      <CardHeader><CardTitle>Coach Profile</CardTitle></CardHeader>
+      <CardHeader><CardTitle>{title}</CardTitle></CardHeader>
       <CardContent className="grid grid-cols-2 gap-4">
         {/* Goal */}
         <div>
@@ -78,12 +84,11 @@ export function CoachProfileForm({ initial }: { initial: UserProfile }) {
             value={gender}
             onValueChange={(v) => {
               const g = v as GenderOption;
-              setForm((prev) => {
+              setForm(prev => {
                 const next = { ...prev, gender: g };
                 if (g === 'Self-describe') {
                   if (next.genderSelfDescribe == null) next.genderSelfDescribe = '';
                 } else {
-                  // 🚫 remove the field rather than setting undefined
                   delete (next as any).genderSelfDescribe;
                 }
                 return next;
@@ -108,7 +113,6 @@ export function CoachProfileForm({ initial }: { initial: UserProfile }) {
             value={form.daysPerWeekTarget ?? ''}
             onChange={(e) => {
               const val = e.target.value;
-              // clamp 1..7, allow clearing
               const n = val === '' ? undefined : Math.min(7, Math.max(1, Number(val)));
               setForm({ ...form, daysPerWeekTarget: n });
             }}
@@ -143,7 +147,7 @@ export function CoachProfileForm({ initial }: { initial: UserProfile }) {
         </div>
 
         <div className="col-span-2 flex items-center gap-3">
-          <Button onClick={save} disabled={saving}>
+          <Button onClick={save} disabled={saving || !isDirty}>
             {saving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving…</> : 'Save profile'}
           </Button>
           {saved && (

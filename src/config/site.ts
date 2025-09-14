@@ -1,5 +1,5 @@
 import type { NavItem } from '@/types';
-import { LayoutDashboard, Dumbbell, ListChecks, ClipboardEdit, Sparkles, Settings as SettingsIcon } from 'lucide-react';
+import { LayoutDashboard, Dumbbell, ListChecks, ClipboardEdit, Sparkles, User } from 'lucide-react';
 
 export const siteConfig = {
   name: "DDS Gym Tracker",
@@ -44,9 +44,9 @@ export const navItems: NavItem[] = [
     label: 'Routines',
   },
   {
-    title: 'Settings',
-    href: '/settings/profile',
-    icon: SettingsIcon,
-    label: 'Settings',
+    title: 'Profile',
+    href: '/profile',
+    icon: User,
+    label: 'Profile',
   },
 ];

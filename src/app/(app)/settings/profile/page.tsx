@@ -30,12 +30,15 @@ export default function SettingsProfilePage() {
     );
   }
 
+  const first = (user?.name ?? 'Your').split(' ')[0];
+  const title = `${first} Profile`;
+
   return (
     <div className="container mx-auto space-y-6 py-6">
       <h1 className="text-2xl font-semibold flex items-center gap-2">
         <Settings className="h-5 w-5" /> Profile Settings
       </h1>
-      <CoachProfileForm initial={profile} />
+      <CoachProfileForm initial={profile} title={title} />
     </div>
   );
 }
