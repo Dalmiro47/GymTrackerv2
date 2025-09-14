@@ -81,7 +81,7 @@ export function CoachProfileForm({ initial, title = 'Profile' }: { initial: User
           />
         </div>
 
-        {/* Gender */}
+        {/* Gender (col 1) */}
         <div>
           <Label>Gender</Label>
           <Select
@@ -110,6 +110,19 @@ export function CoachProfileForm({ initial, title = 'Profile' }: { initial: User
           </Select>
         </div>
 
+        {/* Self-describe (col 2, same row as Gender when selected) */}
+        {form.gender === 'Self-describe' && (
+          <div>
+            <Label>Please self-describe</Label>
+            <Input
+              placeholder="Enter your gender"
+              value={form.genderSelfDescribe ?? ''}
+              onChange={(e) => setForm({ ...form, genderSelfDescribe: e.target.value })}
+            />
+          </div>
+        )}
+
+        {/* Days/week target (next cell after the gender/self-describe pair) */}
         <div>
           <Label>Days/week target</Label>
           <Input
@@ -123,7 +136,7 @@ export function CoachProfileForm({ initial, title = 'Profile' }: { initial: User
           />
         </div>
 
-        {/* NEW: Time per session */}
+        {/* Approx. time per session */}
         <div>
           <Label>Approx. time per session (min)</Label>
           <Input
@@ -135,22 +148,14 @@ export function CoachProfileForm({ initial, title = 'Profile' }: { initial: User
             onChange={(e) => {
               const val = e.target.value;
               const n = val === '' ? undefined : Number(val);
-              setForm({ ...form, sessionTimeTargetMin: Number.isFinite(n as number) ? (n as number) : undefined });
+              setForm({
+                ...form,
+                sessionTimeTargetMin: Number.isFinite(n as number) ? (n as number) : undefined,
+              });
             }}
             placeholder="e.g. 60"
           />
         </div>
-
-        {form.gender === 'Self-describe' && (
-          <div className="col-span-2">
-            <Label>Please self-describe</Label>
-            <Input
-              placeholder="Enter your gender"
-              value={form.genderSelfDescribe ?? ''}
-              onChange={(e) => setForm({ ...form, genderSelfDescribe: e.target.value })}
-            />
-          </div>
-        )}
 
         <div className="col-span-2">
           <Label>Constraints</Label>
