@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { Loader2, CheckCircle2 } from 'lucide-react';
+import { stripUndefined } from '@/lib/clean';
 
 export function CoachProfileForm({ initial }: { initial: UserProfile }) {
   const { user } = useAuth();
@@ -21,7 +22,15 @@ export function CoachProfileForm({ initial }: { initial: UserProfile }) {
     if (!user) return;
     try {
       setSaving(true);
-      await setDoc(doc(db, 'users', user.id, 'profile', 'profile'), form, { merge: true });
+      // 🔒 No `undefined` allowed in Firestore
+      const payload = stripUndefined({
+        ...form,
+        // If gender is not "Self-describe", don't send genderSelfDescribe at all
+        ...(form.gender === 'Self-describe'
+          ? {}
+          : { genderSelfDescribe: undefined }),
+      });
+      await setDoc(doc(db, 'users', user.id, 'profile', 'profile'), payload, { merge: true });
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } finally {
@@ -52,7 +61,14 @@ export function CoachProfileForm({ initial }: { initial: UserProfile }) {
 
         <div>
           <Label>Age</Label>
-          <Input type="number" value={form.age ?? ''} onChange={(e) => setForm({ ...form, age: Number(e.target.value) })} />
+          <Input
+            type="number"
+            value={form.age ?? ''}
+            onChange={(e) => {
+              const val = e.target.value;
+              setForm({ ...form, age: val === '' ? undefined : Number(val) });
+            }}
+          />
         </div>
 
         {/* Gender */}
@@ -60,11 +76,19 @@ export function CoachProfileForm({ initial }: { initial: UserProfile }) {
           <Label>Gender</Label>
           <Select
             value={gender}
-            onValueChange={(v) => setForm({
-              ...form,
-              gender: v as GenderOption,
-              genderSelfDescribe: v === 'Self-describe' ? (form.genderSelfDescribe ?? '') : undefined,
-            })}
+            onValueChange={(v) => {
+              const g = v as GenderOption;
+              setForm((prev) => {
+                const next = { ...prev, gender: g };
+                if (g === 'Self-describe') {
+                  if (next.genderSelfDescribe == null) next.genderSelfDescribe = '';
+                } else {
+                  // 🚫 remove the field rather than setting undefined
+                  delete (next as any).genderSelfDescribe;
+                }
+                return next;
+              });
+            }}
           >
             <SelectTrigger><SelectValue placeholder="Select gender" /></SelectTrigger>
             <SelectContent>
@@ -82,7 +106,12 @@ export function CoachProfileForm({ initial }: { initial: UserProfile }) {
           <Input
             type="number"
             value={form.daysPerWeekTarget ?? ''}
-            onChange={(e) => setForm({ ...form, daysPerWeekTarget: Number(e.target.value) })}
+            onChange={(e) => {
+              const val = e.target.value;
+              // clamp 1..7, allow clearing
+              const n = val === '' ? undefined : Math.min(7, Math.max(1, Number(val)));
+              setForm({ ...form, daysPerWeekTarget: n });
+            }}
           />
         </div>
 
@@ -105,7 +134,9 @@ export function CoachProfileForm({ initial }: { initial: UserProfile }) {
             onChange={(e) =>
               setForm({
                 ...form,
-                constraints: e.target.value.split(',').map((s) => s.trim()).filter(Boolean),
+                constraints: e.target.value
+                  ? e.target.value.split(',').map((s) => s.trim()).filter(Boolean)
+                  : [],
               })
             }
           />
@@ -115,9 +146,11 @@ export function CoachProfileForm({ initial }: { initial: UserProfile }) {
           <Button onClick={save} disabled={saving}>
             {saving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving…</> : 'Save profile'}
           </Button>
-          {saved && <span className="text-sm text-emerald-600 flex items-center gap-1" aria-live="polite">
-            <CheckCircle2 className="h-4 w-4" /> Saved
-          </span>}
+          {saved && (
+            <span className="text-sm text-emerald-600 flex items-center gap-1" aria-live="polite">
+              <CheckCircle2 className="h-4 w-4" /> Saved
+            </span>
+          )}
         </div>
       </CardContent>
     </Card>

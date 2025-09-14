@@ -1,12 +1,12 @@
 'use client';
 import React from 'react';
+import Link from 'next/link';
 import { useCoachData } from '@/hooks/use-coach-data';
 import { useCoachRun } from '@/hooks/use-coach-run';
 import { Button } from '@/components/ui/button';
 import { Loader2, Sparkles } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { CoachSuggestions } from '@/components/coach/CoachSuggestions';
-import { CoachProfileForm } from '@/components/coach/CoachProfileForm';
 
 export default function CoachPage() {
   const data = useCoachData({ weeks: 8 });
@@ -20,19 +20,25 @@ export default function CoachPage() {
     <div className="container mx-auto space-y-6 py-6">
       <div className="flex items-center justify-between">
         <div>
-            <h1 className="text-2xl font-semibold flex items-center gap-2"><Sparkles className="h-5 w-5" /> Coach</h1>
-            {lastAnalyzed && Number.isFinite(lastAnalyzed.getTime()) && lastAnalyzed.getFullYear() > 2000 && (
-                <div className="text-xs text-muted-foreground mt-1">
-                    Last analyzed: {lastAnalyzed.toLocaleString()}
-                </div>
-            )}
+          <h1 className="text-2xl font-semibold flex items-center gap-2">
+            <Sparkles className="h-5 w-5" /> Coach
+          </h1>
+          {lastAnalyzed && Number.isFinite(lastAnalyzed.getTime()) && lastAnalyzed.getFullYear() > 2000 && (
+            <div className="text-xs text-muted-foreground mt-1">
+              Last analyzed: {lastAnalyzed.toLocaleString()}
+            </div>
+          )}
+          <p className="text-sm text-muted-foreground mt-2">
+            Manage your profile in{' '}
+            <Link href="/settings/profile" className="underline">
+              Settings → Profile
+            </Link>.
+          </p>
         </div>
         <Button onClick={run} disabled={isRunning || data.isLoading}>
           {isRunning ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Analyzing…</> : 'Run coach'}
         </Button>
       </div>
-
-      {data.profile && <CoachProfileForm initial={data.profile} />}
 
       {advice ? (
         <>
