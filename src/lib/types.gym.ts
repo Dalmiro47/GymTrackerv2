@@ -20,6 +20,8 @@ export interface UserProfile {
   weightKg?: number;
   trainingAge?: 'Beginner' | 'Intermediate' | 'Advanced';
   daysPerWeekTarget?: number;
+  /** NEW: target session duration in minutes (e.g. 60) */
+  sessionTimeTargetMin?: number;
   goal: Goal;
   constraints?: string[];
 }

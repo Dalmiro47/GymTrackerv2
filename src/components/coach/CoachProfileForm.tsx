@@ -38,7 +38,7 @@ export function CoachProfileForm({ initial, title = 'Profile' }: { initial: User
         ...(form.gender === 'Self-describe' ? {} : { genderSelfDescribe: undefined }),
       });
       await setDoc(doc(db, 'users', user.id, 'profile', 'profile'), payload, { merge: true });
-      setBaseline(form);         // reset dirty baseline
+      setBaseline(form); // reset dirty baseline
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } finally {
@@ -116,6 +116,24 @@ export function CoachProfileForm({ initial, title = 'Profile' }: { initial: User
               const n = val === '' ? undefined : Math.min(7, Math.max(1, Number(val)));
               setForm({ ...form, daysPerWeekTarget: n });
             }}
+          />
+        </div>
+
+        {/* NEW: Time per session */}
+        <div>
+          <Label>Approx. time per session (min)</Label>
+          <Input
+            type="number"
+            inputMode="numeric"
+            min={20}
+            max={180}
+            value={form.sessionTimeTargetMin ?? ''}
+            onChange={(e) => {
+              const val = e.target.value;
+              const n = val === '' ? undefined : Math.min(180, Math.max(20, Number(val)));
+              setForm({ ...form, sessionTimeTargetMin: n });
+            }}
+            placeholder="e.g. 60"
           />
         </div>
 

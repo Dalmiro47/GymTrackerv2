@@ -23,6 +23,9 @@ SCOPE: ${JSON.stringify(scope)}
 POLICY
 - Respect stated constraints. If gender === "Self-describe", use genderSelfDescribe. If "Prefer not to say", ignore gender.
 - Training is largely gender-neutral; do not change fundamentals solely based on gender. Only adjust where clearly relevant.
+- If UserProfile.sessionTimeTargetMin is provided, do not suggest changes that would likely exceed that time per session.
+  * Prefer substitutions, set/reps/RIR adjustments, superset/triset efficiency, or rest-time guidance over adding exercises.
+  * Assume average set durations incl. rest: compounds ~2–3 min/set, accessories ~1.5–2.5 min/set, short isolation ~1–1.5 min/set, unless TrainingSummary indicates otherwise.
 - Goal mapping:
   * Hypertrophy: 10–20 hard sets/muscle/week, reps 6–12, RIR 1–3.
   * Strength: 6–12 sets for main lifts, reps 3–6, RIR 2–3.
@@ -40,6 +43,7 @@ POLICY
 SCOPE RULES
 - If scope.mode === "day":
   * Only propose routineTweaks for the routine day whose id matches scope.dayId (compare against RoutineSummary.days[*].id).
+  * Keep the estimated total time for this session within UserProfile.sessionTimeTargetMin when present.
   * Do NOT suggest changes on other days; do not change weekly frequency across the whole plan.
   * Prefer at most 2 targeted tweaks for that day (e.g., replace/add/change sets/reps).
   * Next 4 weeks should frame notes as microcycle focus for that day (e.g., "Week 1 on Monday: increase hamstring accessory sets...").

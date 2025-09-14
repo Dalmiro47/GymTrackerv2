@@ -11,7 +11,10 @@ import { CoachSuggestions } from '@/components/coach/CoachSuggestions';
 export default function CoachPage() {
   const data = useCoachData({ weeks: 8 });
   const { advice, run, isRunning, createdAt } = useCoachRun({
-    profile: data.profile, routineSummary: data.routineSummary, trainingSummary: data.summary,
+    profile: data.profile,
+    routineSummary: data.routineSummary,
+    trainingSummary: data.summary,
+    preload: true, // <- load cached on mount
   });
 
   const lastAnalyzed = advice ? new Date(createdAt ?? 0) : null;

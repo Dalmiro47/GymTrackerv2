@@ -1,5 +1,5 @@
 'use client';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { collection, doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebaseConfig';
 import { useAuth } from '@/contexts/AuthContext';
@@ -17,11 +17,13 @@ export function useCoachRun({
   routineSummary,
   trainingSummary,
   scope = { mode: 'global' },
+  preload = false, // NEW
 }: {
   profile: UserProfile | null;
   routineSummary: any;
   trainingSummary: any;
   scope?: CoachScope;
+  preload?: boolean;
 }) {
   const { user } = useAuth();
   const [isRunning, setRunning] = useState(false);
@@ -36,6 +38,23 @@ export function useCoachRun({
     () => hashString(JSON.stringify({ profile, routineSummary, trainingSummary, scope })),
     [profile, routineSummary, trainingSummary, scope]
   );
+
+  // NEW: preload cached advice when arriving on the page
+  useEffect(() => {
+    (async () => {
+      if (!preload || !user || !profile) return;
+      const uid = user.id;
+      const ref = doc(collection(db, 'users', uid, 'coachAdvice'), docId);
+      const snap = await getDoc(ref);
+      if (snap.exists()) {
+        const data: any = snap.data();
+        if (data?.advice) {
+          setAdvice(data.advice as CoachAdvice);
+          setCreatedAt(data.createdAt ?? null);
+        }
+      }
+    })();
+  }, [preload, user, profile, docId]);
 
   const run = useCallback(async () => {
     if (!user || !profile) return;
