@@ -27,7 +27,7 @@ import {
   limit,
   deleteField,
 } from 'firebase/firestore';
-import { parseISO } from 'date-fns';
+import { parseISO, startOfMonth, endOfMonth, format as fmt } from 'date-fns';
 import { stripUndefinedDeep } from '@/lib/sanitize';
 import { validWorkingSets, pickBestSet, isBetterPR } from '@/lib/pr';
 
@@ -163,6 +163,35 @@ export const getLoggedDateStrings = async (userId: string): Promise<string[]> =>
   } catch (error: any) {
     console.error(`[SERVICE] getLoggedDateStrings: Error fetching logged dates for userId ${userId}:`, error);
     return []; 
+  }
+};
+
+// New: fetch only the log doc IDs (yyyy-MM-dd) inside a given month.
+export const getLoggedDateStringsInMonth = async (
+  userId: string,
+  month: Date
+): Promise<string[]> => {
+  if (!userId) return [];
+  const logsCollectionRef = collection(db, getUserWorkoutLogsCollectionPath(userId));
+
+  // IDs are 'yyyy-MM-dd', so we can use lexicographic range on the "date" field.
+  const start = fmt(startOfMonth(month), 'yyyy-MM-dd');
+  const end = fmt(endOfMonth(month), 'yyyy-MM-dd');
+
+  try {
+    const q = query(
+      logsCollectionRef,
+      where('date', '>=', start),
+      where('date', '<=', end),
+      orderBy('date', 'asc')
+    );
+    const snap = await getDocs(q);
+    const dates: string[] = [];
+    snap.forEach(doc => dates.push(doc.id));
+    return dates;
+  } catch (e) {
+    console.error('[SERVICE] getLoggedDateStringsInMonth error:', e);
+    return [];
   }
 };
 
@@ -387,3 +416,5 @@ export const updatePerformanceEntryOnLogDelete = async (
     }
   }
 };
+
+    

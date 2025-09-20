@@ -6,9 +6,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Calendar as ShadCNCalendar } from "@/components/ui/calendar"; // ShadCN Calendar
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
-import { getWorkoutLog, getLoggedDateStrings } from '@/services/trainingLogService';
+import { getWorkoutLog, getLoggedDateStringsInMonth } from '@/services/trainingLogService';
 import type { WorkoutLog, LoggedSet } from '@/types';
-import { format, parseISO, startOfMonth, endOfMonth, isWithinInterval, getMonth, getYear, isValid } from 'date-fns';
+import { format, parseISO, startOfMonth, getMonth, getYear, isValid } from 'date-fns';
 import { Loader2, CalendarIcon, ListChecks, ExternalLink, PlusCircle } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import Link from 'next/link';
@@ -47,16 +47,15 @@ function getMonthlySummaryMessage(
 export function WorkoutCalendarSection() {
   const { user } = useAuth();
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
-  const [displayedMonth, setDisplayedMonth] = useState<Date>(new Date());
+  const [displayedMonth, setDisplayedMonth] = useState<Date>(startOfMonth(new Date()));
   const [selectedLog, setSelectedLog] = useState<WorkoutLog | null>(null);
   const [isLoadingLogDetails, setIsLoadingLogDetails] = useState(false);
   const [loggedDayStrings, setLoggedDayStrings] = useState<string[]>([]);
   const [isLoadingLoggedDays, setIsLoadingLoggedDays] = useState(true);
-  const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const today = new Date();
 
-
-  const fetchLoggedDates = useCallback(async () => {
+  // Fetch the month’s underlines whenever month/user changes
+  const fetchMonthDates = useCallback(async () => {
     if (!user?.id) {
       setLoggedDayStrings([]);
       setIsLoadingLoggedDays(false);
@@ -64,22 +63,24 @@ export function WorkoutCalendarSection() {
     }
     setIsLoadingLoggedDays(true);
     try {
-      const dates = await getLoggedDateStrings(user.id);
+      const dates = await getLoggedDateStringsInMonth(user.id, displayedMonth);
       setLoggedDayStrings(dates);
-    } catch (error) {
-      console.error("Failed to load logged dates:", error);
+    } catch (err) {
+      console.error('Failed to load month dates:', err);
       setLoggedDayStrings([]);
     } finally {
       setIsLoadingLoggedDays(false);
     }
-  }, [user?.id]);
+  }, [user?.id, displayedMonth]);
 
+  // Initial + on month change
   useEffect(() => {
-    fetchLoggedDates();
-  }, [fetchLoggedDates]);
+    fetchMonthDates();
+  }, [fetchMonthDates]);
 
+  // Fetch details for the selected day (run when selectedDate changes)
   useEffect(() => {
-    const fetchLogForSelectedDate = async () => {
+    const load = async () => {
       if (!selectedDate || !user?.id) {
         setSelectedLog(null);
         return;
@@ -89,15 +90,14 @@ export function WorkoutCalendarSection() {
         const dateId = format(selectedDate, 'yyyy-MM-dd');
         const log = await getWorkoutLog(user.id, dateId);
         setSelectedLog(log);
-      } catch (error) {
-        console.error("Error fetching log for selected date:", error);
+      } catch (e) {
+        console.error('Error fetching selected log:', e);
         setSelectedLog(null);
       } finally {
         setIsLoadingLogDetails(false);
       }
     };
-
-    fetchLogForSelectedDate();
+    load();
   }, [selectedDate, user?.id]);
 
   const daysWithLogs = useMemo(() => {
@@ -117,9 +117,8 @@ export function WorkoutCalendarSection() {
 
   const handleDateSelect = (date: Date | undefined) => {
     setSelectedDate(date);
-    // Update displayedMonth if the selected date is in a different month
     if (date && (getMonth(date) !== getMonth(displayedMonth) || getYear(date) !== getYear(displayedMonth))) {
-      setDisplayedMonth(startOfMonth(date));
+      setDisplayedMonth(startOfMonth(date)); // triggers month refetch
     }
   };
   
@@ -156,7 +155,7 @@ export function WorkoutCalendarSection() {
                   selected={selectedDate}
                   onSelect={handleDateSelect}
                   month={displayedMonth}
-                  onMonthChange={setDisplayedMonth}
+                  onMonthChange={(m) => setDisplayedMonth(startOfMonth(m))}
                   modifiers={{ logged: daysWithLogs }}
                   modifiersClassNames={{ logged: 'day-is-logged' }}
                   className="rounded-md border bg-card shadow"
@@ -258,3 +257,5 @@ export function WorkoutCalendarSection() {
     </Card>
   );
 }
+
+    

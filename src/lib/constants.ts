@@ -1,6 +1,7 @@
 
 import type { LucideIcon } from 'lucide-react';
 import { UserCircle, PersonStanding, Footprints, Shield, Zap, MoveVertical, Waves, HeartPulse, HelpCircle } from 'lucide-react';
+import { Dumbbell } from 'lucide-react';
 
 export const MUSCLE_GROUPS_LIST = [
   "Chest", "Back", "Legs", "Shoulders", "Biceps", "Triceps", "Abs", "Cardio", "Other"
@@ -9,13 +10,13 @@ export const MUSCLE_GROUPS_LIST = [
 export type MuscleGroup = typeof MUSCLE_GROUPS_LIST[number];
 
 export const MUSCLE_GROUP_ICONS: Record<MuscleGroup, LucideIcon> = {
-  Chest: UserCircle,
-  Back: PersonStanding,
-  Legs: Footprints,
-  Shoulders: Shield,
-  Biceps: Zap,
-  Triceps: MoveVertical,
-  Abs: Waves,
+  Chest: Dumbbell,
+  Back: Dumbbell,
+  Legs: Dumbbell,
+  Shoulders: Dumbbell,
+  Biceps: Dumbbell,
+  Triceps: Dumbbell,
+  Abs: Dumbbell,
   Cardio: HeartPulse,
   Other: HelpCircle,
 };
