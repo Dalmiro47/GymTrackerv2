@@ -18,7 +18,13 @@ export function PageHeader({ title, description, children }: PageHeaderProps) {
             </p>
           )}
         </div>
-        {children && <div className="flex shrink-0 gap-2">{children}</div>}
+
+        {/* Allow actions to expand on mobile; keep desktop behavior */}
+        {children && (
+          <div className="w-full md:w-auto">
+            {children}
+          </div>
+        )}
       </div>
     </div>
   );
