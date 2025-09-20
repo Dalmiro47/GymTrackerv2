@@ -311,8 +311,8 @@ function TrainingLogPageContent() {
                   ) : (
                     <Trash2 className="mr-2 h-4 w-4" />
                   )}
-                  <span className="hidden [380px]:inline">Delete Day's Log</span>
-                  <span className="[380px]:hidden">Delete</span>
+                  <span className="hidden min-[380px]:inline">Delete Day&apos;s Log</span>
+                  <span className="min-[380px]:hidden">Delete</span>
                 </Button>
               </AlertDialogTrigger>
               <AlertDialogContent>
@@ -641,3 +641,6 @@ export default function TrainingLogPage() {
 
     
 
+
+
+    
