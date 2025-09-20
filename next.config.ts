@@ -2,11 +2,25 @@
 import type { NextConfig } from 'next';
 import withPWA from '@ducanh2912/next-pwa';
 
+const nextConfig: NextConfig = {
+  typescript: { ignoreBuildErrors: true },
+  eslint: { ignoreDuringBuilds: true },
+  images: {
+    remotePatterns: [{ protocol: 'https', hostname: 'placehold.co', pathname: '/**' }],
+  },
+  experimental: {},
+  allowedDevOrigins: ['*.cloudworkstations.dev'],
+};
+
+// Only enable PWA on production builds to avoid Turbopack dev issues
+const isProd = process.env.NODE_ENV === 'production';
+
 const pwa = withPWA({
   dest: 'public',
   register: true,
   skipWaiting: true,
-  disable: process.env.NODE_ENV === 'development',
+  // keep this if you like, but gating by NODE_ENV on the wrapper is the key
+  disable: !isProd,
   workboxOptions: {
     runtimeCaching: [
       {
@@ -43,14 +57,5 @@ const pwa = withPWA({
   },
 });
 
-const nextConfig: NextConfig = {
-  typescript: { ignoreBuildErrors: true },
-  eslint: { ignoreDuringBuilds: true },
-  images: {
-    remotePatterns: [{ protocol: 'https', hostname: 'placehold.co', pathname: '/**' }],
-  },
-  experimental: {},
-  allowedDevOrigins: ['*.cloudworkstations.dev'],
-};
-
-export default pwa(nextConfig);
+// In dev (Turbopack), export plain config; in prod, export PWA-enhanced config
+export default isProd ? pwa(nextConfig) : nextConfig;
