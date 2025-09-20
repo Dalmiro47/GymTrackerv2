@@ -1,6 +1,4 @@
-
 import type { NextConfig } from 'next';
-import withPWA from '@ducanh2912/next-pwa';
 
 const nextConfig: NextConfig = {
   typescript: { ignoreBuildErrors: true },
@@ -12,50 +10,54 @@ const nextConfig: NextConfig = {
   allowedDevOrigins: ['*.cloudworkstations.dev'],
 };
 
-// Only enable PWA on production builds to avoid Turbopack dev issues
-const isProd = process.env.NODE_ENV === 'production';
+// Export an async config so we can conditionally import in prod only.
+export default async (): Promise<NextConfig> => {
+  const isProd = process.env.NODE_ENV === 'production';
 
-const pwa = withPWA({
-  dest: 'public',
-  register: true,
-  skipWaiting: true,
-  // keep this if you like, but gating by NODE_ENV on the wrapper is the key
-  disable: !isProd,
-  workboxOptions: {
-    runtimeCaching: [
-      {
-        urlPattern: ({ request }) =>
-          ['style', 'script', 'worker', 'image', 'font'].includes(request.destination),
-        handler: 'StaleWhileRevalidate',
-        options: {
-          cacheName: 'static-assets',
-          expiration: { maxEntries: 200, maxAgeSeconds: 60 * 60 * 24 * 30 },
-        },
-      },
-      {
-        urlPattern: /^https?:\/\/[^/]+\/api\/.*$/i,
-        handler: 'NetworkFirst',
-        options: {
-          cacheName: 'api-cache',
-          networkTimeoutSeconds: 5,
-          expiration: { maxEntries: 100, maxAgeSeconds: 60 * 60 * 24 * 7 },
-        },
-      },
-      {
-        urlPattern: ({ request }) => request.mode === 'navigate',
-        handler: 'NetworkFirst',
-        options: {
-          cacheName: 'pages-cache',
-          networkTimeoutSeconds: 5,
-          expiration: { maxEntries: 50, maxAgeSeconds: 60 * 60 * 24 * 7 },
-        },
-      },
-    ],
-  },
-  fallbacks: {
-    document: '/offline.html',
-  },
-});
+  if (!isProd) {
+    // Dev: NO PWA plugin, no webpack fields => Turbopack is happy
+    return nextConfig;
+  }
 
-// In dev (Turbopack), export plain config; in prod, export PWA-enhanced config
-export default isProd ? pwa(nextConfig) : nextConfig;
+  // Prod: import and apply the PWA plugin
+  const { default: withPWA } = await import('@ducanh2912/next-pwa');
+
+  return withPWA({
+    dest: 'public',
+    register: true,
+    skipWaiting: true,
+    disable: false, // prod enabled
+    workboxOptions: {
+      runtimeCaching: [
+        {
+          urlPattern: ({ request }) =>
+            ['style', 'script', 'worker', 'image', 'font'].includes(request.destination),
+          handler: 'StaleWhileRevalidate',
+          options: {
+            cacheName: 'static-assets',
+            expiration: { maxEntries: 200, maxAgeSeconds: 60 * 60 * 24 * 30 },
+          },
+        },
+        {
+          urlPattern: /^https?:\/\/[^/]+\/api\/.*$/i,
+          handler: 'NetworkFirst',
+          options: {
+            cacheName: 'api-cache',
+            networkTimeoutSeconds: 5,
+            expiration: { maxEntries: 100, maxAgeSeconds: 60 * 60 * 24 * 7 },
+          },
+        },
+        {
+          urlPattern: ({ request }) => request.mode === 'navigate',
+          handler: 'NetworkFirst',
+          options: {
+            cacheName: 'pages-cache',
+            networkTimeoutSeconds: 5,
+            expiration: { maxEntries: 50, maxAgeSeconds: 60 * 60 * 24 * 7 },
+          },
+        },
+      ],
+    },
+    fallbacks: { document: '/offline.html' },
+  })(nextConfig);
+};
