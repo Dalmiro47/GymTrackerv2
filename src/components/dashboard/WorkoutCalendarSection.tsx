@@ -13,15 +13,35 @@ import { Loader2, CalendarIcon, ListChecks, ExternalLink, PlusCircle } from 'luc
 import { ScrollArea } from '@/components/ui/scroll-area';
 import Link from 'next/link';
 
-function getMonthlySummaryMessage(logCount: number): string {
+function getMonthlySummaryMessage(
+  logCount: number,
+  displayedMonth: Date,
+  today: Date
+): string {
+  const sameMonth =
+    displayedMonth.getFullYear() === today.getFullYear() &&
+    displayedMonth.getMonth() === today.getMonth();
+
+  // Current month → keep the existing motivating copy
+  if (sameMonth) {
+    if (logCount === 0) {
+      return "No workouts yet this month—your future self is waiting. Let’s get moving! 💪";
+    }
+    if (logCount <= 5) {
+      return `Great start! You’ve logged ${logCount} session${logCount > 1 ? "s" : ""} this month. Keep the momentum going!`;
+    }
+    return `Wow—${logCount} sessions already! You’re turning gains into a habit. Keep crushing it! 🚀`;
+  }
+
+  // Past (or non-current) month → use past-tense summary
+  const monthLabel = format(displayedMonth, "MMMM yyyy");
   if (logCount === 0) {
-    return "No workouts yet this month—your future self is waiting. Let’s get moving! 💪";
+    return `No workouts logged in ${monthLabel}.`;
   }
   if (logCount <= 5) {
-    return `Great start! You’ve logged ${logCount} session${logCount > 1 ? "s" : ""} this month. Keep the momentum going!`;
+    return `You logged ${logCount} session${logCount > 1 ? "s" : ""} in ${monthLabel}. Solid effort.`;
   }
-  // 6 or more
-  return `Wow—${logCount} sessions already! You’re turning gains into a habit. Keep crushing it! 🚀`;
+  return `You logged ${logCount} sessions in ${monthLabel}—nice consistency!`;
 }
 
 export function WorkoutCalendarSection() {
@@ -103,7 +123,10 @@ export function WorkoutCalendarSection() {
     }
   };
   
-  const monthlySummaryMessage = getMonthlySummaryMessage(logsInCurrentDisplayedMonth);
+  const monthlySummaryMessage = useMemo(
+    () => getMonthlySummaryMessage(logsInCurrentDisplayedMonth, displayedMonth, today),
+    [logsInCurrentDisplayedMonth, displayedMonth, today]
+  );
 
   return (
     <Card className="shadow-xl overflow-hidden">
