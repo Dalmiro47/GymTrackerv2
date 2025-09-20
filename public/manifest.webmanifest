@@ -1,6 +1,6 @@
 {
   "name": "DDS Gym Tracker",
-  "short_name": "GymTracker",
+  "short_name": "DDS Gym",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
