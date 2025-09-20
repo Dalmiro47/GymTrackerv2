@@ -2,7 +2,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
-import { Button } from '@/components/ui/button';
+import { Button, type ButtonProps } from '@/components/ui/button';
 import { Loader2, Sparkles } from 'lucide-react';
 import { useCoachRun } from '@/hooks/use-coach-run';
 import { useCoachData } from '@/hooks/use-coach-data';
@@ -12,11 +12,14 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { cn } from '@/lib/utils';
 
 export function CoachInline({
   routineContext,
+  buttonProps,
 }: {
   routineContext?: { dayId: string; dayName?: string } | null;
+  buttonProps?: ButtonProps;
 }) {
   // Always call hooks in the same order to satisfy React rules:
   const data = useCoachData({ weeks: 6 });
@@ -46,7 +49,7 @@ export function CoachInline({
               role="button"
               aria-disabled="true"
             >
-              <Button variant="outline" size="sm" disabled>
+              <Button variant="outline" size="sm" disabled {...buttonProps} className={cn("w-full", buttonProps?.className)}>
                 <Sparkles className="mr-2 h-4 w-4" />
                 Coach
               </Button>
@@ -71,7 +74,7 @@ export function CoachInline({
   return (
     <Sheet>
       <SheetTrigger asChild>
-        <Button variant="outline" size="sm">
+        <Button variant="outline" size="sm" {...buttonProps} className={cn("w-full", buttonProps?.className)}>
           <Sparkles className="mr-2 h-4 w-4" />
           Coach
         </Button>
