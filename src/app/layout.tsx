@@ -8,6 +8,7 @@ export const metadata: Metadata = {
   title: "DDS Gym Tracker",
   description: "A gym tracker built by Dalmiro.",
   manifest: "/manifest.webmanifest",
+  themeColor: "#0B1220",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
