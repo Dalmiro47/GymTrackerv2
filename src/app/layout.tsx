@@ -1,11 +1,25 @@
+
 import type { Metadata } from 'next';
 import './globals.css';
 import { Toaster } from '@/components/ui/toaster';
 import { AuthProvider } from '@/contexts/AuthContext';
 
 export const metadata: Metadata = {
-  title: 'DDS Gym Tracker - Track Your Fitness Journey',
-  description: 'Manage exercises, build routines, and log your workouts with DDS Gym Tracker.',
+  title: "DDS Gym Tracker",
+  description: "A gym tracker built by Dalmiro.",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "DDS Gym Tracker",
+  },
+  icons: {
+    icon: [
+      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/icon-512.png", sizes: "512x512", type: "image/png" }
+    ],
+    apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png" }]
+  }
 };
 
 export default function RootLayout({
