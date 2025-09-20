@@ -1,5 +1,5 @@
 
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { Toaster } from '@/components/ui/toaster';
 import { AuthProvider } from '@/contexts/AuthContext';
@@ -8,7 +8,6 @@ export const metadata: Metadata = {
   title: "DDS Gym Tracker",
   description: "A gym tracker built by Dalmiro.",
   manifest: "/manifest.webmanifest",
-  themeColor: "#0B1220",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
@@ -21,6 +20,10 @@ export const metadata: Metadata = {
     ],
     apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png" }]
   }
+};
+
+export const viewport: Viewport = {
+  themeColor: "#0B1220",
 };
 
 export default function RootLayout({
