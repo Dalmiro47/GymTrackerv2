@@ -27,18 +27,22 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <div
         aria-hidden
         className="pointer-events-none"
-        style={{ height: "calc(64px + env(safe-area-inset-top))" }}
+        style={{ height: "calc(48px + env(safe-area-inset-top))" }}
       />
 
       <div className="flex">
         {/* Desktop sidebar (if you show it) */}
-        <div className="hidden md:block sticky"
-            style={{
-                top: 'calc(64px + env(safe-area-inset-top))',
-                height: 'calc(100dvh - (64px + env(safe-area-inset-top)))'
-            }}>
+        <div
+          className="hidden md:block sticky"
+          style={{
+            top: "calc(48px + env(safe-area-inset-top))",
+            height: "calc(100dvh - (48px + env(safe-area-inset-top)))",
+            width: "240px",
+          }}
+        >
           <AppSidebar isOpen={true} setIsOpen={() => {}} />
         </div>
+
 
         {/* Mobile sidebar (toggled via header menu) */}
         <div className="md:hidden">
