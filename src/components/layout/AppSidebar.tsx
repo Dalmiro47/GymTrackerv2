@@ -27,16 +27,22 @@ export function AppSidebar({ isOpen, setIsOpen }: AppSidebarProps) {
       )}
 
       <aside
+        id="primary-sidebar"
         className={cn(
-          "fixed inset-y-0 left-0 z-40 flex h-full w-64 transform flex-col border-r bg-sidebar text-sidebar-foreground shadow-lg transition-transform duration-300 ease-in-out md:static md:z-auto md:translate-x-0",
+          "fixed inset-y-0 left-0 z-40 flex h-full transform flex-col border-r bg-sidebar text-sidebar-foreground shadow-lg",
+          "transition-transform duration-300 ease-in-out will-change-transform backface-hidden",
+          "md:static md:z-auto md:translate-x-0",
           isOpen ? "translate-x-0" : "-translate-x-full"
         )}
+        style={{ width: 'var(--sidebar-width)' }}
       >
-        <div className="flex h-16 items-center justify-between border-b border-sidebar-border px-4">
-          <Logo className="text-sidebar-primary-foreground" />
-          <Button variant="ghost" size="icon" className="md:hidden text-sidebar-foreground" onClick={() => setIsOpen(false)} aria-label="Close sidebar">
-            <X className="h-6 w-6" />
-          </Button>
+        <div className="sticky top-0 z-10 bg-sidebar border-b border-sidebar-border">
+          <div className="h-12 flex items-center px-4 justify-between">
+            <Logo iconSize={18} textSize="text-lg" />
+            <Button variant="ghost" size="icon" className="md:hidden text-sidebar-foreground" onClick={() => setIsOpen(false)} aria-label="Close sidebar">
+              <X className="h-6 w-6" />
+            </Button>
+          </div>
         </div>
         <nav className="flex-1 space-y-2 p-4">
           {navItems.map((item) => (
