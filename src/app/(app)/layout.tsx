@@ -19,7 +19,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="bg-background min-h-[100dvh]" style={{ ['--sidebar-width' as any]: '240px' }}>
+    <div className="bg-background min-h-[100dvh]" style={{ ['--sidebar-width' as any]: '16rem' }}>
       <AppHeader onMenuClick={() => setSidebarOpen((v) => !v)} />
 
       <div className="flex">
@@ -52,12 +52,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             {children}
           </main>
         </div>
-      </div>
-
-      {/* ---- TOP COVER BAR (desktop only) ---- */}
-      <div className="hidden md:block fixed left-0 top-0 h-12 z-[39]" style={{ width: 'var(--sidebar-width)' }}>
-        {/* match your sidebar bg token */}
-        <div className="h-full w-full bg-[#0B1220]" />
       </div>
     </div>
   );

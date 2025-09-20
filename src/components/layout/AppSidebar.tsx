@@ -28,9 +28,10 @@ export function AppSidebar({ isOpen, setIsOpen }: AppSidebarProps) {
 
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-40 flex h-full w-64 transform flex-col border-r bg-sidebar text-sidebar-foreground shadow-lg transition-transform duration-300 ease-in-out md:static md:z-auto md:translate-x-0",
+          "fixed inset-y-0 left-0 z-40 flex h-full transform flex-col border-r bg-sidebar text-sidebar-foreground shadow-lg transition-transform duration-300 ease-in-out md:static md:z-auto md:translate-x-0",
           isOpen ? "translate-x-0" : "-translate-x-full"
         )}
+        style={{ width: 'var(--sidebar-width)' }}
       >
         <div className="sticky top-0 z-10 bg-sidebar border-b border-sidebar-border">
           <div className="h-12 flex items-center px-4 justify-between">
