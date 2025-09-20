@@ -32,7 +32,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
       <div className="flex">
         {/* Desktop sidebar (if you show it) */}
-        <div className="hidden md:block">
+        <div className="hidden md:block sticky"
+            style={{
+                top: 'calc(64px + env(safe-area-inset-top))',
+                height: 'calc(100dvh - (64px + env(safe-area-inset-top)))'
+            }}>
           <AppSidebar isOpen={true} setIsOpen={() => {}} />
         </div>
 
