@@ -15,7 +15,7 @@ export function AppHeader({ onMenuClick }: AppHeaderProps) {
                  left-0 md:left-[var(--sidebar-width)]"
       style={{ paddingTop: "env(safe-area-inset-top)" }}
     >
-      <div className="h-12 flex items-center justify-between px-4 md:px-6">
+      <div className="h-[var(--appbar-height)] flex items-center justify-between px-4 md:px-6">
         <div className="flex items-center gap-2">
           <Button
             variant="ghost"
@@ -23,6 +23,8 @@ export function AppHeader({ onMenuClick }: AppHeaderProps) {
             onClick={onMenuClick}
             className="md:hidden"
             aria-label="Toggle sidebar"
+            aria-controls="primary-sidebar"
+            aria-expanded={false}
           >
             <Menu className="h-5 w-5" />
           </Button>

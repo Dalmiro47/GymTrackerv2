@@ -46,7 +46,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <div
             aria-hidden
             className="pointer-events-none"
-            style={{ height: "calc(48px + env(safe-area-inset-top))" }}
+            style={{ height: "var(--appbar-offset)" }}
           />
           <main className="p-4 md:p-6 lg:p-8">
             {children}
