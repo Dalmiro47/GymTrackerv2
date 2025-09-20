@@ -342,6 +342,7 @@ function TrainingLogPageContent() {
             <Button
               onClick={async () => await saveCurrentLog()}
               disabled={isSavingLog || isLoadingLog || isDeletingLog}
+              aria-busy={isSavingLog}
               className="col-span-2 w-full sm:col-span-1 sm:w-auto sm:min-w-[170px] bg-accent hover:bg-accent/90"
               size="sm"
               aria-label="Save day's log"
@@ -560,7 +561,7 @@ function TrainingLogPageContent() {
           </div>
 
         </CardContent>
-        <CardFooter className="flex justify-end gap-2 pt-6 border-t">
+        <CardFooter className="hidden sm:flex justify-end gap-2 pt-6 border-t">
           <AlertDialog open={isDeleteConfirmOpen} onOpenChange={setIsDeleteConfirmOpen}>
             <AlertDialogTrigger asChild>
               <Button 
@@ -639,3 +640,4 @@ export default function TrainingLogPage() {
     
 
     
+
