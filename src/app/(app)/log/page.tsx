@@ -282,57 +282,78 @@ function TrainingLogPageContent() {
   return (
     <div className="space-y-6">
       <PageHeader title="Training Log" description="Record your daily workouts and track progress.">
-        {/* responsive container for actions */}
-        <div className="flex w-full flex-col sm:flex-row sm:flex-wrap gap-2 sm:justify-end">
-          {/* Coach button should be full width on mobile */}
-          <div className="w-full sm:w-auto">
-            <CoachInline routineContext={routineDay} />
-          </div>
+        {/* Mobile-first: 2-up row (Coach/Delete) + full-width Save; desktop: inline to the right */}
+        <div className="w-full sm:w-auto">
+          <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:justify-end">
+            {/* Coach */}
+            <div className="col-span-1">
+              <CoachInline
+                routineContext={routineDay}
+                buttonProps={{
+                  className: "w-full sm:w-auto",
+                  size: "sm", // compact on mobile
+                }}
+              />
+            </div>
       
-          {/* Delete button: full width on mobile */}
-          <AlertDialog open={isDeleteConfirmOpen} onOpenChange={setIsDeleteConfirmOpen}>
-            <AlertDialogTrigger asChild>
-              <Button
-                variant="outline"
-                className="w-full sm:w-auto border-destructive text-destructive hover:bg-destructive/10"
-                disabled={isDeletingLog || isLoadingLog || !canDeleteLog || isSavingLog}
-              >
-                {isDeletingLog ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
-                Delete Day's Log
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle className="flex items-center">
-                  <AlertTriangle className="mr-2 h-5 w-5 text-destructive" />
-                  Confirm Deletion
-                </AlertDialogTitle>
-                <AlertDialogDescription>
-                  Are you sure you want to delete the entire log for {format(selectedDate, 'PPP')}? This action cannot be undone.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction 
-                  onClick={handleDeleteConfirmed} 
-                  className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
-                  disabled={isDeletingLog}
+            {/* Delete (AlertDialog preserved) */}
+            <AlertDialog open={isDeleteConfirmOpen} onOpenChange={setIsDeleteConfirmOpen}>
+              <AlertDialogTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full sm:w-auto border-destructive text-destructive hover:bg-destructive/10"
+                  disabled={isDeletingLog || isLoadingLog || !canDeleteLog || isSavingLog}
+                  aria-label="Delete day's log"
                 >
-                  {isDeletingLog ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Delete Log"}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-          </AlertDialog>
+                  {isDeletingLog ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Trash2 className="mr-2 h-4 w-4" />
+                  )}
+                  <span className="hidden [380px]:inline">Delete Day's Log</span>
+                  <span className="[380px]:hidden">Delete</span>
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle className="flex items-center">
+                    <AlertTriangle className="mr-2 h-5 w-5 text-destructive" />
+                    Confirm Deletion
+                  </AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Are you sure you want to delete the entire log for {format(selectedDate, 'PPP')}? This action cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction 
+                    onClick={handleDeleteConfirmed} 
+                    className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+                    disabled={isDeletingLog}
+                  >
+                    {isDeletingLog ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Delete Log"}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+            </AlertDialog>
       
-          {/* Save button: full width on mobile, keep a nice min-width on desktop */}
-          <Button
-            onClick={async () => await saveCurrentLog()}
-            disabled={isSavingLog || isLoadingLog || isDeletingLog}
-            className="w-full sm:w-auto sm:min-w-[170px] bg-accent hover:bg-accent/90"
-          >
-            {isSavingLog ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-            Save Day's Log
-          </Button>
+            {/* Primary Save CTA — full width on mobile, nice min width on desktop */}
+            <Button
+              onClick={async () => await saveCurrentLog()}
+              disabled={isSavingLog || isLoadingLog || isDeletingLog}
+              className="col-span-2 w-full sm:col-span-1 sm:w-auto sm:min-w-[170px] bg-accent hover:bg-accent/90"
+              size="sm"
+              aria-label="Save day's log"
+            >
+              {isSavingLog ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Save className="mr-2 h-4 w-4" />
+              )}
+              Save Day's Log
+            </Button>
+          </div>
         </div>
       </PageHeader>
 
