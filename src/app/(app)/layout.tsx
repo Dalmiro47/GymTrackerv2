@@ -20,39 +20,38 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="bg-background min-h-[100dvh]">
-      {/* Fixed header */}
       <AppHeader onMenuClick={() => setSidebarOpen((v) => !v)} />
 
-      {/* Spacer = header visual height + safe area */}
-      <div
-        aria-hidden
-        className="pointer-events-none"
-        style={{ height: "calc(48px + env(safe-area-inset-top))" }}
-      />
-
       <div className="flex">
-        {/* Desktop sidebar (if you show it) */}
+        {/* Desktop sidebar */}
         <div
           className="hidden md:block sticky"
           style={{
-            top: "calc(48px + env(safe-area-inset-top))",
-            height: "calc(100dvh - (48px + env(safe-area-inset-top)))",
+            top: 0, // <-- sidebar touches the very top now
+            height: "100dvh",
             width: "240px",
           }}
         >
           <AppSidebar isOpen={true} setIsOpen={() => {}} />
         </div>
 
-
-        {/* Mobile sidebar (toggled via header menu) */}
+        {/* Mobile sidebar (overlay) */}
         <div className="md:hidden">
           <AppSidebar isOpen={sidebarOpen} setIsOpen={setSidebarOpen} />
         </div>
 
-        {/* MAIN CONTENT — IMPORTANT: no overflow-y-auto here */}
-        <main className="flex-1 w-full p-4 md:p-6 lg:p-8">
-          {children}
-        </main>
+        {/* Content column */}
+        <div className="flex-1 w-full">
+          {/* Spacer only for the content area */}
+          <div
+            aria-hidden
+            className="pointer-events-none"
+            style={{ height: "calc(48px + env(safe-area-inset-top))" }}
+          />
+          <main className="p-4 md:p-6 lg:p-8">
+            {children}
+          </main>
+        </div>
       </div>
     </div>
   );
