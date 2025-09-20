@@ -1,10 +1,10 @@
 "use client";
 
-import React from 'react';
-import { AppSidebar } from '@/components/layout/AppSidebar';
-import { AppHeader } from '@/components/layout/AppHeader';
-import { useRequireAuth } from '@/hooks/use-require-auth';
-import { Loader2 } from 'lucide-react';
+import React from "react";
+import { AppSidebar } from "@/components/layout/AppSidebar";
+import { AppHeader } from "@/components/layout/AppHeader";
+import { useRequireAuth } from "@/hooks/use-require-auth";
+import { Loader2 } from "lucide-react";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useRequireAuth();
@@ -12,18 +12,37 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   if (isLoading || !isAuthenticated) {
     return (
-      <div className="flex h-screen items-center justify-center bg-background">
+      <div className="min-h-[100dvh] flex items-center justify-center bg-background">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
       </div>
     );
   }
 
   return (
-    <div className="flex h-screen bg-background">
-      <AppSidebar isOpen={sidebarOpen} setIsOpen={setSidebarOpen} />
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <AppHeader onMenuClick={() => setSidebarOpen(!sidebarOpen)} />
-        <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8">
+    <div className="bg-background min-h-[100dvh]">
+      {/* Fixed header */}
+      <AppHeader onMenuClick={() => setSidebarOpen((v) => !v)} />
+
+      {/* Spacer = header visual height + safe area */}
+      <div
+        aria-hidden
+        className="pointer-events-none"
+        style={{ height: "calc(64px + env(safe-area-inset-top))" }}
+      />
+
+      <div className="flex">
+        {/* Desktop sidebar (if you show it) */}
+        <div className="hidden md:block">
+          <AppSidebar isOpen={true} setIsOpen={() => {}} />
+        </div>
+
+        {/* Mobile sidebar (toggled via header menu) */}
+        <div className="md:hidden">
+          <AppSidebar isOpen={sidebarOpen} setIsOpen={setSidebarOpen} />
+        </div>
+
+        {/* MAIN CONTENT — IMPORTANT: no overflow-y-auto here */}
+        <main className="flex-1 w-full p-4 md:p-6 lg:p-8">
           {children}
         </main>
       </div>
