@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -211,12 +212,16 @@ export const useTrainingLog = (initialDate: Date) => {
 
   React.useEffect(() => {
     if (!selectedDate) return;
-    const m1 = displayedMonth.getMonth();
-    const y1 = displayedMonth.getFullYear();
-    if (selectedDate.getMonth() !== m1 || selectedDate.getFullYear() !== y1) {
-      setDisplayedMonth(startOfMonth(selectedDate));
-    }
-  }, [selectedDate, displayedMonth]);
+    setDisplayedMonth(prev => {
+      if (
+        prev.getMonth() === selectedDate.getMonth() &&
+        prev.getFullYear() === selectedDate.getFullYear()
+      ) {
+        return prev; // no change
+      }
+      return startOfMonth(selectedDate);
+    });
+  }, [selectedDate]);
 
   useEffect(() => {
     if (authIsLoading || isLoadingExercises) {
