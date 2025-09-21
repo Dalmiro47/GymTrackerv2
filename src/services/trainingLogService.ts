@@ -195,6 +195,50 @@ export const getLoggedDateStringsInMonth = async (
   }
 };
 
+export type MonthLogFlags = {
+  logged: string[];  // non-deload days (isDeload !== true)
+  deload: string[];  // deload days (isDeload === true)
+};
+
+export const getMonthLogFlags = async (
+  userId: string,
+  month: Date
+): Promise<MonthLogFlags> => {
+  if (!userId) return { logged: [], deload: [] };
+
+  const logsCollectionRef = collection(db, getUserWorkoutLogsCollectionPath(userId));
+  const start = fmt(startOfMonth(month), 'yyyy-MM-dd');
+  const end = fmt(endOfMonth(month), 'yyyy-MM-dd');
+
+  try {
+    const q = query(
+      logsCollectionRef,
+      where('date', '>=', start),
+      where('date', '<=', end),
+      orderBy('date', 'asc')
+    );
+    const snap = await getDocs(q);
+
+    const logged: string[] = [];
+    const deload: string[] = [];
+
+    snap.forEach(docSnap => {
+      const id = docSnap.id; // "yyyy-MM-dd"
+      const data = docSnap.data() as WorkoutLog;
+      if (data?.isDeload === true) {
+        deload.push(id);
+      } else {
+        logged.push(id);
+      }
+    });
+
+    return { logged, deload };
+  } catch (e) {
+    console.error('[SERVICE] getMonthLogFlags error:', e);
+    return { logged: [], deload: [] };
+  }
+};
+
 export const saveExercisePerformanceEntry = async (
   userId: string,
   exerciseId: string,
@@ -417,4 +461,5 @@ export const updatePerformanceEntryOnLogDelete = async (
   }
 };
 
+    
     

@@ -143,3 +143,40 @@ html {
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
 }
+
+/* Deload underline */
+.day-is-deload {
+  position: relative;
+}
+.day-is-deload::after {
+  content: '';
+  position: absolute;
+  bottom: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 60%;
+  height: 3px;
+  /* Use accent for deload to contrast with primary (normal) */
+  @apply bg-accent;
+  border-radius: 1px;
+}
+
+/* Selected/today variants for contrast */
+.rdp-day_selected.day-is-deload::after {
+  @apply bg-primary-foreground;
+}
+.rdp-day_today:not(.rdp-day_selected).day-is-deload::after {
+  @apply bg-accent; /* already accent; keep for clarity */
+}
+.rdp-day_today.rdp-day_selected.day-is-deload::after {
+  @apply bg-primary-foreground;
+}
+
+/* Outside-month deloads: muted gray, thin */
+.rdp-day_outside .day-is-deload::after {
+  background-color: hsl(var(--muted-foreground)) !important;
+  opacity: 0.9 !important;
+  height: 2px !important;
+}
+
+    

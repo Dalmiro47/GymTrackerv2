@@ -9,7 +9,7 @@ import {
   getWorkoutLog as fetchLogService,
   saveWorkoutLog as saveLogService,
   deleteWorkoutLog as deleteLogService,
-  getLoggedDateStringsInMonth,
+  getMonthLogFlags,
   updatePerformanceEntryOnLogDelete,
   getLastNonDeloadPerformance,
   saveExercisePerformanceEntry,
@@ -68,6 +68,7 @@ export const useTrainingLog = (initialDate: Date) => {
   const [isLoadingExercises, setIsLoadingExercises] = useState(true);
 
   const [loggedDayStrings, setLoggedDayStrings] = useState<string[]>([]);
+  const [deloadDayStrings, setDeloadDayStrings] = useState<string[]>([]);
   const [isLoadingLoggedDayStrings, setIsLoadingLoggedDayStrings] = useState(true);
 
   const [isDeload, setIsDeload] = useState(false);
@@ -82,21 +83,31 @@ export const useTrainingLog = (initialDate: Date) => {
   React.useEffect(() => {
     if (!user?.id) {
       setLoggedDayStrings([]);
+      setDeloadDayStrings([]);
+      setIsLoadingLoggedDayStrings(false);
       return;
     }
+    setIsLoadingLoggedDayStrings(true);
     let alive = true;
+  
     (async () => {
       try {
-        const dates = await getLoggedDateStringsInMonth(user.id, displayedMonth);
-        if (alive) setLoggedDayStrings(dates);
+        const { logged, deload } = await getMonthLogFlags(user.id, displayedMonth);
+        if (!alive) return;
+        setLoggedDayStrings(logged);
+        setDeloadDayStrings(deload);
       } catch (e) {
-        console.error('[useTrainingLog] Failed to fetch month dates:', e);
-        if (alive) setLoggedDayStrings([]);
+        console.error('[useTrainingLog] Failed to fetch month flags:', e);
+        if (alive) {
+          setLoggedDayStrings([]);
+          setDeloadDayStrings([]);
+        }
+      } finally {
+        if (alive) setIsLoadingLoggedDayStrings(false);
       }
     })();
-    return () => {
-      alive = false;
-    };
+  
+    return () => { alive = false; };
   }, [user?.id, displayedMonth]);
 
   const fetchExercisePerformanceData = useCallback(async (exerciseId: string, routineId?: string): Promise<ExercisePerformanceEntry | null> => {
@@ -601,8 +612,9 @@ export const useTrainingLog = (initialDate: Date) => {
                 }
             }
           }
-          const dates = await getLoggedDateStringsInMonth(user.id, displayedMonth);
-          setLoggedDayStrings(dates);
+          const { logged, deload } = await getMonthLogFlags(user.id, displayedMonth);
+          setLoggedDayStrings(logged);
+          setDeloadDayStrings(deload);
           toast({ title: "Log Saved", description: `Workout for ${formattedDateId} saved.` });
       } else {
           const existingLogDocument = await fetchLogService(user.id, finalLogToSave.id);
@@ -611,8 +623,9 @@ export const useTrainingLog = (initialDate: Date) => {
               for (const exInDeletedLog of existingLogDocument.exercises) { 
                   await updatePerformanceEntryOnLogDelete(user.id, exInDeletedLog.exerciseId, finalLogToSave.id);
               }
-              const dates = await getLoggedDateStringsInMonth(user.id, displayedMonth);
-              setLoggedDayStrings(dates);
+              const { logged, deload } = await getMonthLogFlags(user.id, displayedMonth);
+              setLoggedDayStrings(logged);
+              setDeloadDayStrings(deload);
               toast({ title: "Log Cleared", description: `Empty log for ${formattedDateId} was cleared.`});
           } else {
               toast({ title: "Log Not Saved", description: "Log is empty."});
@@ -675,8 +688,9 @@ export const useTrainingLog = (initialDate: Date) => {
       };
   
       await saveLogService(user.id, payload.id, payload);
-      const dates = await getLoggedDateStringsInMonth(user.id, displayedMonth);
-      setLoggedDayStrings(dates);
+      const { logged, deload } = await getMonthLogFlags(user.id, displayedMonth);
+      setLoggedDayStrings(logged);
+      setDeloadDayStrings(deload);
   
       if (!payload.isDeload) {
           await saveExercisePerformanceEntry(
@@ -732,8 +746,9 @@ export const useTrainingLog = (initialDate: Date) => {
       setIsDeload(false);
 
       toast({ title: "Log Deleted", description: `Workout for ${logIdToDelete} has been deleted.` });
-      const dates = await getLoggedDateStringsInMonth(user.id, displayedMonth);
-      setLoggedDayStrings(dates);
+      const { logged, deload } = await getMonthLogFlags(user.id, displayedMonth);
+      setLoggedDayStrings(logged);
+      setDeloadDayStrings(deload);
     } catch (error: any) {
       toast({ title: "Error Deleting Log", description: `Could not delete log. ${error.message}`, variant: "destructive" });
       if (user?.id) { 
@@ -755,7 +770,8 @@ export const useTrainingLog = (initialDate: Date) => {
     isLoadingRoutines,
     availableExercises,
     isLoadingExercises,
-    loggedDayStrings, 
+    loggedDayStrings,
+    deloadDayStrings, 
     isLoadingLoggedDayStrings,
     handleSelectRoutine,
     addExerciseToLog,
@@ -775,6 +791,9 @@ export const useTrainingLog = (initialDate: Date) => {
     setDisplayedMonth,
   };
 };
+
+
+    
 
 
     

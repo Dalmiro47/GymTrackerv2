@@ -141,6 +141,7 @@ function TrainingLogPageContent() {
     availableExercises, 
     isLoadingExercises, 
     loggedDayStrings,
+    deloadDayStrings,
     handleSelectRoutine,
     addExerciseToLog,
     removeExerciseFromLog,
@@ -154,7 +155,6 @@ function TrainingLogPageContent() {
     replaceExerciseInLog,
     isDeload,
     setIsDeload,
-    updateExerciseSetStructureOverride,
     displayedMonth,
     setDisplayedMonth,
   } = useTrainingLog(initialDate);
@@ -169,19 +169,14 @@ function TrainingLogPageContent() {
   const today = new Date();
 
 
-  const daysWithLogs = useMemo(() => {
-    if (!loggedDayStrings || loggedDayStrings.length === 0) {
-      return [];
-    }
-    const parsedDates = loggedDayStrings.map(dateStr => {
-      const parsed = parseISO(dateStr);
-      if (isNaN(parsed.getTime())) { 
-        return null; 
-      }
-      return parsed;
-    }).filter(date => date !== null) as Date[]; 
-    return parsedDates;
-  }, [loggedDayStrings]);
+  const daysWithLogs = useMemo(
+    () => loggedDayStrings.map(s => parseISO(s)).filter(d => !isNaN(d.getTime())),
+    [loggedDayStrings]
+  );
+  const daysWithDeload = useMemo(
+    () => deloadDayStrings.map(s => parseISO(s)).filter(d => !isNaN(d.getTime())),
+    [deloadDayStrings]
+  );
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -238,10 +233,10 @@ function TrainingLogPageContent() {
 
   const canDeleteLog = useMemo(() => {
     const formattedCurrentDate = format(selectedDate, 'yyyy-MM-dd');
-    const existsOnBackend = loggedDayStrings.includes(formattedCurrentDate);
+    const existsOnBackend = loggedDayStrings.includes(formattedCurrentDate) || deloadDayStrings.includes(formattedCurrentDate);
 
     return currentLog && (currentLog.exercises.length > 0 || (currentLog.notes && currentLog.notes.trim() !== '') || existsOnBackend);
-  }, [currentLog, selectedDate, loggedDayStrings]);
+  }, [currentLog, selectedDate, loggedDayStrings, deloadDayStrings]);
   
   const routineSelectValue = currentLog?.routineId || "";
 
@@ -386,8 +381,8 @@ function TrainingLogPageContent() {
                   }}
                   month={displayedMonth}
                   onMonthChange={(m) => setDisplayedMonth(startOfMonth(m))}
-                  modifiers={{ logged: daysWithLogs }}
-                  modifiersClassNames={{ logged: 'day-is-logged' }} 
+                  modifiers={{ logged: daysWithLogs, deload: daysWithDeload }}
+                  modifiersClassNames={{ logged: 'day-is-logged', deload: 'day-is-deload' }} 
                   weekStartsOn={1}
                   toDate={today}
                   disabled={{ after: today }}
@@ -646,6 +641,8 @@ export default function TrainingLogPage() {
     
 
 
+
+    
 
     
 

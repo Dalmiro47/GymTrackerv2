@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Calendar as ShadCNCalendar } from "@/components/ui/calendar"; // ShadCN Calendar
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
-import { getWorkoutLog, getLoggedDateStringsInMonth } from '@/services/trainingLogService';
+import { getWorkoutLog, getMonthLogFlags } from '@/services/trainingLogService';
 import type { WorkoutLog, LoggedSet } from '@/types';
 import { format, parseISO, startOfMonth, getMonth, getYear, isValid } from 'date-fns';
 import { Loader2, CalendarIcon, ListChecks, ExternalLink, PlusCircle } from 'lucide-react';
@@ -51,6 +51,7 @@ export function WorkoutCalendarSection() {
   const [selectedLog, setSelectedLog] = useState<WorkoutLog | null>(null);
   const [isLoadingLogDetails, setIsLoadingLogDetails] = useState(false);
   const [loggedDayStrings, setLoggedDayStrings] = useState<string[]>([]);
+  const [deloadDayStrings, setDeloadDayStrings] = useState<string[]>([]);
   const [isLoadingLoggedDays, setIsLoadingLoggedDays] = useState(true);
   const today = new Date();
 
@@ -58,16 +59,19 @@ export function WorkoutCalendarSection() {
   const fetchMonthDates = useCallback(async () => {
     if (!user?.id) {
       setLoggedDayStrings([]);
+      setDeloadDayStrings([]);
       setIsLoadingLoggedDays(false);
       return;
     }
     setIsLoadingLoggedDays(true);
     try {
-      const dates = await getLoggedDateStringsInMonth(user.id, displayedMonth);
-      setLoggedDayStrings(dates);
+      const { logged, deload } = await getMonthLogFlags(user.id, displayedMonth);
+      setLoggedDayStrings(logged);
+      setDeloadDayStrings(deload);
     } catch (err) {
       console.error('Failed to load month dates:', err);
       setLoggedDayStrings([]);
+      setDeloadDayStrings([]);
     } finally {
       setIsLoadingLoggedDays(false);
     }
@@ -100,20 +104,18 @@ export function WorkoutCalendarSection() {
     load();
   }, [selectedDate, user?.id]);
 
-  const daysWithLogs = useMemo(() => {
-    if (!loggedDayStrings || loggedDayStrings.length === 0) return [];
-    return loggedDayStrings.map(dateStr => parseISO(dateStr)).filter(date => !isNaN(date.getTime()));
-  }, [loggedDayStrings]);
+  const daysWithLogs = useMemo(() => loggedDayStrings.map(d => parseISO(d)).filter(d => !isNaN(d.getTime())), [loggedDayStrings]);
+  const daysWithDeload = useMemo(() => deloadDayStrings.map(d => parseISO(d)).filter(d => !isNaN(d.getTime())), [deloadDayStrings]);
 
   const logsInCurrentDisplayedMonth = useMemo(() => {
-    if (!loggedDayStrings || !displayedMonth) return 0;
-    return loggedDayStrings.filter(dateStr => {
-      const logDate = parseISO(dateStr);
-      return !isNaN(logDate.getTime()) && 
-             logDate.getFullYear() === displayedMonth.getFullYear() &&
-             logDate.getMonth() === displayedMonth.getMonth();
+    const all = [...loggedDayStrings, ...deloadDayStrings];
+    return all.filter(dateStr => {
+      const d = parseISO(dateStr);
+      return !isNaN(d.getTime()) &&
+        d.getFullYear() === displayedMonth.getFullYear() &&
+        d.getMonth() === displayedMonth.getMonth();
     }).length;
-  }, [loggedDayStrings, displayedMonth]);
+  }, [loggedDayStrings, deloadDayStrings, displayedMonth]);
 
   const handleDateSelect = (date: Date | undefined) => {
     setSelectedDate(date);
@@ -156,8 +158,8 @@ export function WorkoutCalendarSection() {
                   onSelect={handleDateSelect}
                   month={displayedMonth}
                   onMonthChange={(m) => setDisplayedMonth(startOfMonth(m))}
-                  modifiers={{ logged: daysWithLogs }}
-                  modifiersClassNames={{ logged: 'day-is-logged' }}
+                  modifiers={{ logged: daysWithLogs, deload: daysWithDeload }}
+                  modifiersClassNames={{ logged: 'day-is-logged', deload: 'day-is-deload' }}
                   className="rounded-md border bg-card shadow"
                   weekStartsOn={1}
                   toDate={today}
@@ -258,4 +260,5 @@ export function WorkoutCalendarSection() {
   );
 }
 
+    
     
