@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import React, { useState, useMemo, useEffect, Suspense } from 'react';
@@ -142,6 +143,7 @@ function TrainingLogPageContent() {
     isLoadingExercises, 
     loggedDayStrings,
     deloadDayStrings,
+    isLoadingLoggedDayStrings,
     handleSelectRoutine,
     addExerciseToLog,
     removeExerciseFromLog,
@@ -370,41 +372,45 @@ function TrainingLogPageContent() {
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-auto p-0">
-                <Calendar
-                  mode="single"
-                  selected={selectedDate}
-                  onSelect={(date) => {
-                    if (date) {
-                      setSelectedDate(date);
-                    }
-                    setIsCalendarOpen(false); 
-                  }}
-                  month={displayedMonth}
-                  onMonthChange={(m) => setDisplayedMonth(startOfMonth(m))}
-                  modifiers={{ logged: daysWithLogs, deload: daysWithDeload }}
-                  modifiersClassNames={{ logged: 'day-is-logged', deload: 'day-is-deload' }}
-                  components={{
-                    DayContent: (props) => {
-                      const { date, activeModifiers } = props;
-                      const isDeload = !!activeModifiers?.deload;
-                      const isLogged = !!activeModifiers?.logged;
-
-                      const label = [
-                        date.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }),
-                        isDeload ? '— Deload day' : (isLogged ? '— Workout logged' : '')
-                      ].filter(Boolean).join(' ');
-
-                      return (
-                        <span title={label} aria-label={label} style={{ display: 'inline-block', width: '100%' }}>
-                          {date.getDate()}
-                        </span>
-                      );
-                    },
-                  }}
-                  weekStartsOn={1}
-                  toDate={today}
-                  disabled={{ after: today }}
-                />
+                {isLoadingLoggedDayStrings ? (
+                  <div className="flex items-center justify-center w-[308px] h-[328px]" aria-busy="true">
+                    <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                  </div>
+                ) : (
+                  <Calendar
+                    key={format(displayedMonth, 'yyyy-MM')}
+                    mode="single"
+                    selected={selectedDate}
+                    onSelect={(date) => {
+                      if (date) {
+                        setSelectedDate(date);
+                      }
+                      setIsCalendarOpen(false); 
+                    }}
+                    month={displayedMonth}
+                    onMonthChange={(m) => setDisplayedMonth(startOfMonth(m))}
+                    modifiers={{ logged: daysWithLogs, deload: daysWithDeload }}
+                    modifiersClassNames={{ logged: 'day-is-logged', deload: 'day-is-deload' }}
+                    components={{
+                      DayContent: ({ date, activeModifiers }) => {
+                        const isDeload = !!activeModifiers?.deload;
+                        const isLogged = !!activeModifiers?.logged;
+                        const label = [
+                          date.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }),
+                          isDeload ? '— Deload day' : (isLogged ? '— Workout logged' : '')
+                        ].filter(Boolean).join(' ');
+                        return (
+                          <span title={label} aria-label={label} style={{ display: 'inline-block', width: '100%' }}>
+                            {date.getDate()}
+                          </span>
+                        );
+                      },
+                    }}
+                    weekStartsOn={1}
+                    toDate={today}
+                    disabled={{ after: today }}
+                  />
+                )}
                 <div className="p-3 border-t">
                   <div className="mt-0 flex items-center justify-center gap-4 text-xs text-muted-foreground">
                     <span className="inline-flex items-center gap-1.5">
@@ -665,3 +671,4 @@ export default function TrainingLogPage() {
     </Suspense>
   );
 }
+
