@@ -127,3 +127,19 @@ html {
 .rdp-day_today.rdp-day_selected.day-is-logged::after {
   @apply bg-primary-foreground; /* Same as selected and logged, takes precedence */
 }
+
+/* iOS Safari: prevent input-focus auto-zoom (requires >=16px font-size) */
+@supports (-webkit-touch-callout: none) {
+  input,
+  select,
+  textarea,
+  button {
+    font-size: 16px !important;
+  }
+}
+
+/* Avoid text inflation / weird resizing on iOS */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
