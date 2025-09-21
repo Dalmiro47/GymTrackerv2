@@ -382,11 +382,44 @@ function TrainingLogPageContent() {
                   month={displayedMonth}
                   onMonthChange={(m) => setDisplayedMonth(startOfMonth(m))}
                   modifiers={{ logged: daysWithLogs, deload: daysWithDeload }}
-                  modifiersClassNames={{ logged: 'day-is-logged', deload: 'day-is-deload' }} 
+                  modifiersClassNames={{ logged: 'day-is-logged', deload: 'day-is-deload' }}
+                  components={{
+                    DayContent: (props) => {
+                      const isDeload = !!props.activeModifiers?.deload;
+                      const isLogged = !!props.activeModifiers?.logged;
+                      const labelBits = [
+                        props.date.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }),
+                        isDeload ? '— Deload day' : (isLogged ? '— Workout logged' : '')
+                      ].filter(Boolean);
+                
+                      return (
+                        <span
+                          {...props}
+                          title={labelBits.join(' ')}
+                          aria-label={labelBits.join(' ')}
+                          style={{ display: 'inline-block', width: '100%' }}
+                        >
+                          {props.date.getDate()}
+                        </span>
+                      );
+                    },
+                  }}
                   weekStartsOn={1}
                   toDate={today}
                   disabled={{ after: today }}
                 />
+                <div className="p-3 border-t">
+                  <div className="mt-0 flex items-center justify-center gap-4 text-xs text-muted-foreground">
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="inline-block h-[3px] w-5 rounded bg-[hsl(var(--primary))]" />
+                      Logged
+                    </span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="inline-block h-[3px] w-5 rounded bg-[hsl(var(--accent))]" />
+                      Deload
+                    </span>
+                  </div>
+                </div>
               </PopoverContent>
             </Popover>
           </div>
@@ -635,15 +668,3 @@ export default function TrainingLogPage() {
     </Suspense>
   );
 }
-
-    
-
-    
-
-
-
-    
-
-    
-
-    

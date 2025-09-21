@@ -152,19 +152,52 @@ export function WorkoutCalendarSection() {
                   <Loader2 className="h-8 w-8 animate-spin text-primary" />
                 </div>
               ) : (
-                <ShadCNCalendar
-                  mode="single"
-                  selected={selectedDate}
-                  onSelect={handleDateSelect}
-                  month={displayedMonth}
-                  onMonthChange={(m) => setDisplayedMonth(startOfMonth(m))}
-                  modifiers={{ logged: daysWithLogs, deload: daysWithDeload }}
-                  modifiersClassNames={{ logged: 'day-is-logged', deload: 'day-is-deload' }}
-                  className="rounded-md border bg-card shadow"
-                  weekStartsOn={1}
-                  toDate={today}
-                  disabled={{ after: today }}
-                />
+                <>
+                  <ShadCNCalendar
+                    mode="single"
+                    selected={selectedDate}
+                    onSelect={handleDateSelect}
+                    month={displayedMonth}
+                    onMonthChange={(m) => setDisplayedMonth(startOfMonth(m))}
+                    modifiers={{ logged: daysWithLogs, deload: daysWithDeload }}
+                    modifiersClassNames={{ logged: 'day-is-logged', deload: 'day-is-deload' }}
+                    components={{
+                      DayContent: (props) => {
+                        const isDeload = !!props.activeModifiers?.deload;
+                        const isLogged = !!props.activeModifiers?.logged;
+                        const labelBits = [
+                          props.date.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }),
+                          isDeload ? '— Deload day' : (isLogged ? '— Workout logged' : '')
+                        ].filter(Boolean);
+                  
+                        return (
+                          <span
+                            {...props}
+                            title={labelBits.join(' ')}
+                            aria-label={labelBits.join(' ')}
+                            style={{ display: 'inline-block', width: '100%' }}
+                          >
+                            {props.date.getDate()}
+                          </span>
+                        );
+                      },
+                    }}
+                    className="rounded-md border bg-card shadow"
+                    weekStartsOn={1}
+                    toDate={today}
+                    disabled={{ after: today }}
+                  />
+                  <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground">
+                    <span className="inline-flex items-center gap-1">
+                      <span className="inline-block h-[3px] w-5 rounded bg-[hsl(var(--primary))]" />
+                      Logged
+                    </span>
+                    <span className="inline-flex items-center gap-1">
+                      <span className="inline-block h-[3px] w-5 rounded bg-[hsl(var(--accent))]" />
+                      Deload
+                    </span>
+                  </div>
+                </>
               )}
               <p className="text-sm text-muted-foreground mt-3 text-center px-2">
                 {monthlySummaryMessage}
@@ -259,6 +292,3 @@ export function WorkoutCalendarSection() {
     </Card>
   );
 }
-
-    
-    
