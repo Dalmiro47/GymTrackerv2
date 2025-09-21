@@ -23,7 +23,7 @@ import type { LoggedExercise, Exercise, MuscleGroup, SetStructure } from '@/type
 import { LoggedExerciseCard } from '@/components/training-log/LoggedExerciseCard';
 import { AddExerciseDialog } from '@/components/training-log/AddExerciseDialog';
 import { ReplaceExerciseDialog } from '@/components/training-log/ReplaceExerciseDialog';
-import { format, parseISO, isValid as isDateValid } from 'date-fns';
+import { format, parseISO, isValid as isDateValid, startOfMonth } from 'date-fns';
 import { Loader2 } from 'lucide-react';
 import {
   AlertDialog,
@@ -155,6 +155,8 @@ function TrainingLogPageContent() {
     isDeload,
     setIsDeload,
     updateExerciseSetStructureOverride,
+    displayedMonth,
+    setDisplayedMonth,
   } = useTrainingLog(initialDate);
 
   const [isAddExerciseDialogOpen, setIsAddExerciseDialogOpen] = useState(false);
@@ -382,6 +384,8 @@ function TrainingLogPageContent() {
                     }
                     setIsCalendarOpen(false); 
                   }}
+                  month={displayedMonth}
+                  onMonthChange={(m) => setDisplayedMonth(startOfMonth(m))}
                   modifiers={{ logged: daysWithLogs }}
                   modifiersClassNames={{ logged: 'day-is-logged' }} 
                   weekStartsOn={1}
@@ -642,5 +646,7 @@ export default function TrainingLogPage() {
     
 
 
+
+    
 
     
