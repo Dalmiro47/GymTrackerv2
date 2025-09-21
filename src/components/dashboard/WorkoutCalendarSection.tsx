@@ -163,21 +163,18 @@ export function WorkoutCalendarSection() {
                     modifiersClassNames={{ logged: 'day-is-logged', deload: 'day-is-deload' }}
                     components={{
                       DayContent: (props) => {
-                        const isDeload = !!props.activeModifiers?.deload;
-                        const isLogged = !!props.activeModifiers?.logged;
-                        const labelBits = [
-                          props.date.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }),
+                        const { date, activeModifiers } = props;
+                        const isDeload = !!activeModifiers?.deload;
+                        const isLogged = !!activeModifiers?.logged;
+
+                        const label = [
+                          date.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }),
                           isDeload ? '— Deload day' : (isLogged ? '— Workout logged' : '')
-                        ].filter(Boolean);
-                  
+                        ].filter(Boolean).join(' ');
+
                         return (
-                          <span
-                            {...props}
-                            title={labelBits.join(' ')}
-                            aria-label={labelBits.join(' ')}
-                            style={{ display: 'inline-block', width: '100%' }}
-                          >
-                            {props.date.getDate()}
+                          <span title={label} aria-label={label} style={{ display: 'inline-block', width: '100%' }}>
+                            {date.getDate()}
                           </span>
                         );
                       },
@@ -187,12 +184,12 @@ export function WorkoutCalendarSection() {
                     toDate={today}
                     disabled={{ after: today }}
                   />
-                  <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground">
-                    <span className="inline-flex items-center gap-1">
+                  <div className="mt-2 flex items-center justify-center gap-3 text-xs text-muted-foreground">
+                    <span className="inline-flex items-center gap-1.5">
                       <span className="inline-block h-[3px] w-5 rounded bg-[hsl(var(--primary))]" />
                       Logged
                     </span>
-                    <span className="inline-flex items-center gap-1">
+                    <span className="inline-flex items-center gap-1.5">
                       <span className="inline-block h-[3px] w-5 rounded bg-[hsl(var(--accent))]" />
                       Deload
                     </span>

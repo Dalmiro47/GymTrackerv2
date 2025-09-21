@@ -385,21 +385,18 @@ function TrainingLogPageContent() {
                   modifiersClassNames={{ logged: 'day-is-logged', deload: 'day-is-deload' }}
                   components={{
                     DayContent: (props) => {
-                      const isDeload = !!props.activeModifiers?.deload;
-                      const isLogged = !!props.activeModifiers?.logged;
-                      const labelBits = [
-                        props.date.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }),
+                      const { date, activeModifiers } = props;
+                      const isDeload = !!activeModifiers?.deload;
+                      const isLogged = !!activeModifiers?.logged;
+
+                      const label = [
+                        date.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }),
                         isDeload ? '— Deload day' : (isLogged ? '— Workout logged' : '')
-                      ].filter(Boolean);
-                
+                      ].filter(Boolean).join(' ');
+
                       return (
-                        <span
-                          {...props}
-                          title={labelBits.join(' ')}
-                          aria-label={labelBits.join(' ')}
-                          style={{ display: 'inline-block', width: '100%' }}
-                        >
-                          {props.date.getDate()}
+                        <span title={label} aria-label={label} style={{ display: 'inline-block', width: '100%' }}>
+                          {date.getDate()}
                         </span>
                       );
                     },
