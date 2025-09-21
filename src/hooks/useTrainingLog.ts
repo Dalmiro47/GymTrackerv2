@@ -601,7 +601,8 @@ export const useTrainingLog = (initialDate: Date) => {
                 }
             }
           }
-          await getLoggedDateStringsInMonth(user.id, displayedMonth);
+          const dates = await getLoggedDateStringsInMonth(user.id, displayedMonth);
+          setLoggedDayStrings(dates);
           toast({ title: "Log Saved", description: `Workout for ${formattedDateId} saved.` });
       } else {
           const existingLogDocument = await fetchLogService(user.id, finalLogToSave.id);
@@ -610,7 +611,8 @@ export const useTrainingLog = (initialDate: Date) => {
               for (const exInDeletedLog of existingLogDocument.exercises) { 
                   await updatePerformanceEntryOnLogDelete(user.id, exInDeletedLog.exerciseId, finalLogToSave.id);
               }
-              await getLoggedDateStringsInMonth(user.id, displayedMonth);
+              const dates = await getLoggedDateStringsInMonth(user.id, displayedMonth);
+              setLoggedDayStrings(dates);
               toast({ title: "Log Cleared", description: `Empty log for ${formattedDateId} was cleared.`});
           } else {
               toast({ title: "Log Not Saved", description: "Log is empty."});
@@ -673,7 +675,8 @@ export const useTrainingLog = (initialDate: Date) => {
       };
   
       await saveLogService(user.id, payload.id, payload);
-      await getLoggedDateStringsInMonth(user.id, displayedMonth);
+      const dates = await getLoggedDateStringsInMonth(user.id, displayedMonth);
+      setLoggedDayStrings(dates);
   
       if (!payload.isDeload) {
           await saveExercisePerformanceEntry(
@@ -729,7 +732,8 @@ export const useTrainingLog = (initialDate: Date) => {
       setIsDeload(false);
 
       toast({ title: "Log Deleted", description: `Workout for ${logIdToDelete} has been deleted.` });
-      await getLoggedDateStringsInMonth(user.id, displayedMonth);
+      const dates = await getLoggedDateStringsInMonth(user.id, displayedMonth);
+      setLoggedDayStrings(dates);
     } catch (error: any) {
       toast({ title: "Error Deleting Log", description: `Could not delete log. ${error.message}`, variant: "destructive" });
       if (user?.id) { 
