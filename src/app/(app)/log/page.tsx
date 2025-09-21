@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import React, { useState, useMemo, useEffect, Suspense } from 'react';
@@ -23,7 +24,7 @@ import type { LoggedExercise, Exercise, MuscleGroup, SetStructure } from '@/type
 import { LoggedExerciseCard } from '@/components/training-log/LoggedExerciseCard';
 import { AddExerciseDialog } from '@/components/training-log/AddExerciseDialog';
 import { ReplaceExerciseDialog } from '@/components/training-log/ReplaceExerciseDialog';
-import { format, parseISO, isValid as isDateValid } from 'date-fns';
+import { format, parseISO, isValid as isDateValid, startOfMonth } from 'date-fns';
 import { Loader2 } from 'lucide-react';
 import {
   AlertDialog,
@@ -141,6 +142,8 @@ function TrainingLogPageContent() {
     availableExercises, 
     isLoadingExercises, 
     loggedDayStrings,
+    deloadDayStrings,
+    isLoadingLoggedDayStrings,
     handleSelectRoutine,
     addExerciseToLog,
     removeExerciseFromLog,
@@ -154,7 +157,8 @@ function TrainingLogPageContent() {
     replaceExerciseInLog,
     isDeload,
     setIsDeload,
-    updateExerciseSetStructureOverride,
+    displayedMonth,
+    setDisplayedMonth,
   } = useTrainingLog(initialDate);
 
   const [isAddExerciseDialogOpen, setIsAddExerciseDialogOpen] = useState(false);
@@ -167,19 +171,14 @@ function TrainingLogPageContent() {
   const today = new Date();
 
 
-  const daysWithLogs = useMemo(() => {
-    if (!loggedDayStrings || loggedDayStrings.length === 0) {
-      return [];
-    }
-    const parsedDates = loggedDayStrings.map(dateStr => {
-      const parsed = parseISO(dateStr);
-      if (isNaN(parsed.getTime())) { 
-        return null; 
-      }
-      return parsed;
-    }).filter(date => date !== null) as Date[]; 
-    return parsedDates;
-  }, [loggedDayStrings]);
+  const daysWithLogs = useMemo(
+    () => loggedDayStrings.map(s => parseISO(s)).filter(d => !isNaN(d.getTime())),
+    [loggedDayStrings]
+  );
+  const daysWithDeload = useMemo(
+    () => deloadDayStrings.map(s => parseISO(s)).filter(d => !isNaN(d.getTime())),
+    [deloadDayStrings]
+  );
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -236,10 +235,10 @@ function TrainingLogPageContent() {
 
   const canDeleteLog = useMemo(() => {
     const formattedCurrentDate = format(selectedDate, 'yyyy-MM-dd');
-    const existsOnBackend = loggedDayStrings.includes(formattedCurrentDate);
+    const existsOnBackend = loggedDayStrings.includes(formattedCurrentDate) || deloadDayStrings.includes(formattedCurrentDate);
 
     return currentLog && (currentLog.exercises.length > 0 || (currentLog.notes && currentLog.notes.trim() !== '') || existsOnBackend);
-  }, [currentLog, selectedDate, loggedDayStrings]);
+  }, [currentLog, selectedDate, loggedDayStrings, deloadDayStrings]);
   
   const routineSelectValue = currentLog?.routineId || "";
 
@@ -373,21 +372,57 @@ function TrainingLogPageContent() {
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-auto p-0">
-                <Calendar
-                  mode="single"
-                  selected={selectedDate}
-                  onSelect={(date) => {
-                    if (date) {
-                      setSelectedDate(date);
-                    }
-                    setIsCalendarOpen(false); 
-                  }}
-                  modifiers={{ logged: daysWithLogs }}
-                  modifiersClassNames={{ logged: 'day-is-logged' }} 
-                  weekStartsOn={1}
-                  toDate={today}
-                  disabled={{ after: today }}
-                />
+                {isLoadingLoggedDayStrings ? (
+                  <div className="flex items-center justify-center w-[308px] h-[328px]" aria-busy="true">
+                    <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                  </div>
+                ) : (
+                  <Calendar
+                    key={format(displayedMonth, 'yyyy-MM')}
+                    mode="single"
+                    selected={selectedDate}
+                    onSelect={(date) => {
+                      if (date) {
+                        setSelectedDate(date);
+                      }
+                      setIsCalendarOpen(false); 
+                    }}
+                    month={displayedMonth}
+                    onMonthChange={(m) => setDisplayedMonth(startOfMonth(m))}
+                    modifiers={{ logged: daysWithLogs, deload: daysWithDeload }}
+                    modifiersClassNames={{ logged: 'day-is-logged', deload: 'day-is-deload' }}
+                    components={{
+                      DayContent: ({ date, activeModifiers }) => {
+                        const isDeload = !!activeModifiers?.deload;
+                        const isLogged = !!activeModifiers?.logged;
+                        const label = [
+                          date.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }),
+                          isDeload ? '— Deload day' : (isLogged ? '— Workout logged' : '')
+                        ].filter(Boolean).join(' ');
+                        return (
+                          <span title={label} aria-label={label} style={{ display: 'inline-block', width: '100%' }}>
+                            {date.getDate()}
+                          </span>
+                        );
+                      },
+                    }}
+                    weekStartsOn={1}
+                    toDate={today}
+                    disabled={{ after: today }}
+                  />
+                )}
+                <div className="p-3 border-t">
+                  <div className="mt-0 flex items-center justify-center gap-4 text-xs text-muted-foreground">
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="inline-block h-[3px] w-5 rounded bg-[hsl(var(--primary))]" />
+                      Logged
+                    </span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="inline-block h-[3px] w-5 rounded bg-[hsl(var(--accent))]" />
+                      Deload
+                    </span>
+                  </div>
+                </div>
               </PopoverContent>
             </Popover>
           </div>
@@ -637,10 +672,3 @@ export default function TrainingLogPage() {
   );
 }
 
-    
-
-    
-
-
-
-    

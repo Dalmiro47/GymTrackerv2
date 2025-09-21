@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Calendar as ShadCNCalendar } from "@/components/ui/calendar"; // ShadCN Calendar
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
-import { getWorkoutLog, getLoggedDateStringsInMonth } from '@/services/trainingLogService';
+import { getWorkoutLog, getMonthLogFlags } from '@/services/trainingLogService';
 import type { WorkoutLog, LoggedSet } from '@/types';
 import { format, parseISO, startOfMonth, getMonth, getYear, isValid } from 'date-fns';
 import { Loader2, CalendarIcon, ListChecks, ExternalLink, PlusCircle } from 'lucide-react';
@@ -51,6 +51,7 @@ export function WorkoutCalendarSection() {
   const [selectedLog, setSelectedLog] = useState<WorkoutLog | null>(null);
   const [isLoadingLogDetails, setIsLoadingLogDetails] = useState(false);
   const [loggedDayStrings, setLoggedDayStrings] = useState<string[]>([]);
+  const [deloadDayStrings, setDeloadDayStrings] = useState<string[]>([]);
   const [isLoadingLoggedDays, setIsLoadingLoggedDays] = useState(true);
   const today = new Date();
 
@@ -58,16 +59,19 @@ export function WorkoutCalendarSection() {
   const fetchMonthDates = useCallback(async () => {
     if (!user?.id) {
       setLoggedDayStrings([]);
+      setDeloadDayStrings([]);
       setIsLoadingLoggedDays(false);
       return;
     }
     setIsLoadingLoggedDays(true);
     try {
-      const dates = await getLoggedDateStringsInMonth(user.id, displayedMonth);
-      setLoggedDayStrings(dates);
+      const { logged, deload } = await getMonthLogFlags(user.id, displayedMonth);
+      setLoggedDayStrings(logged);
+      setDeloadDayStrings(deload);
     } catch (err) {
       console.error('Failed to load month dates:', err);
       setLoggedDayStrings([]);
+      setDeloadDayStrings([]);
     } finally {
       setIsLoadingLoggedDays(false);
     }
@@ -100,20 +104,18 @@ export function WorkoutCalendarSection() {
     load();
   }, [selectedDate, user?.id]);
 
-  const daysWithLogs = useMemo(() => {
-    if (!loggedDayStrings || loggedDayStrings.length === 0) return [];
-    return loggedDayStrings.map(dateStr => parseISO(dateStr)).filter(date => !isNaN(date.getTime()));
-  }, [loggedDayStrings]);
+  const daysWithLogs = useMemo(() => loggedDayStrings.map(d => parseISO(d)).filter(d => !isNaN(d.getTime())), [loggedDayStrings]);
+  const daysWithDeload = useMemo(() => deloadDayStrings.map(d => parseISO(d)).filter(d => !isNaN(d.getTime())), [deloadDayStrings]);
 
   const logsInCurrentDisplayedMonth = useMemo(() => {
-    if (!loggedDayStrings || !displayedMonth) return 0;
-    return loggedDayStrings.filter(dateStr => {
-      const logDate = parseISO(dateStr);
-      return !isNaN(logDate.getTime()) && 
-             logDate.getFullYear() === displayedMonth.getFullYear() &&
-             logDate.getMonth() === displayedMonth.getMonth();
+    const all = [...loggedDayStrings, ...deloadDayStrings];
+    return all.filter(dateStr => {
+      const d = parseISO(dateStr);
+      return !isNaN(d.getTime()) &&
+        d.getFullYear() === displayedMonth.getFullYear() &&
+        d.getMonth() === displayedMonth.getMonth();
     }).length;
-  }, [loggedDayStrings, displayedMonth]);
+  }, [loggedDayStrings, deloadDayStrings, displayedMonth]);
 
   const handleDateSelect = (date: Date | undefined) => {
     setSelectedDate(date);
@@ -150,19 +152,49 @@ export function WorkoutCalendarSection() {
                   <Loader2 className="h-8 w-8 animate-spin text-primary" />
                 </div>
               ) : (
-                <ShadCNCalendar
-                  mode="single"
-                  selected={selectedDate}
-                  onSelect={handleDateSelect}
-                  month={displayedMonth}
-                  onMonthChange={(m) => setDisplayedMonth(startOfMonth(m))}
-                  modifiers={{ logged: daysWithLogs }}
-                  modifiersClassNames={{ logged: 'day-is-logged' }}
-                  className="rounded-md border bg-card shadow"
-                  weekStartsOn={1}
-                  toDate={today}
-                  disabled={{ after: today }}
-                />
+                <>
+                  <ShadCNCalendar
+                    mode="single"
+                    selected={selectedDate}
+                    onSelect={handleDateSelect}
+                    month={displayedMonth}
+                    onMonthChange={(m) => setDisplayedMonth(startOfMonth(m))}
+                    modifiers={{ logged: daysWithLogs, deload: daysWithDeload }}
+                    modifiersClassNames={{ logged: 'day-is-logged', deload: 'day-is-deload' }}
+                    components={{
+                      DayContent: (props) => {
+                        const { date, activeModifiers } = props;
+                        const isDeload = !!activeModifiers?.deload;
+                        const isLogged = !!activeModifiers?.logged;
+
+                        const label = [
+                          date.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }),
+                          isDeload ? '— Deload day' : (isLogged ? '— Workout logged' : '')
+                        ].filter(Boolean).join(' ');
+
+                        return (
+                          <span title={label} aria-label={label} style={{ display: 'inline-block', width: '100%' }}>
+                            {date.getDate()}
+                          </span>
+                        );
+                      },
+                    }}
+                    className="rounded-md border bg-card shadow"
+                    weekStartsOn={1}
+                    toDate={today}
+                    disabled={{ after: today }}
+                  />
+                  <div className="mt-2 flex items-center justify-center gap-3 text-xs text-muted-foreground">
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="inline-block h-[3px] w-5 rounded bg-[hsl(var(--primary))]" />
+                      Logged
+                    </span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <span className="inline-block h-[3px] w-5 rounded bg-[hsl(var(--accent))]" />
+                      Deload
+                    </span>
+                  </div>
+                </>
               )}
               <p className="text-sm text-muted-foreground mt-3 text-center px-2">
                 {monthlySummaryMessage}
@@ -257,5 +289,3 @@ export function WorkoutCalendarSection() {
     </Card>
   );
 }
-
-    
