@@ -17,6 +17,9 @@ interface SetInputRowProps {
   onInteract: () => void;
 }
 
+const formatWeight = (n?: number | null) =>
+  n == null ? '' : (Number.isInteger(n) ? String(n) : n.toFixed(1));
+
 export function SetInputRow({
   set, index, onSetChange, onRemoveSet, isProvisional, onInteract
 }: SetInputRowProps) {
@@ -43,7 +46,10 @@ export function SetInputRow({
         onMouseDownCapture={(e) => e.stopPropagation()}
         onTouchStartCapture={(e) => e.stopPropagation()}
         onClickCapture={(e) => e.stopPropagation()}
-        onKeyDownCapture={(e) => e.stopPropagation()}
+        onKeyDown={(e) => {
+          const block = ['e', 'E', '+', '-', '.'];
+          if (block.includes(e.key)) e.preventDefault();
+        }}
         className={cn(
           "h-9 text-sm text-center placeholder:text-center",
           isProvisional && "bg-muted/40 dark:bg-muted/20 placeholder:text-muted-foreground/70 opacity-80"
@@ -56,18 +62,21 @@ export function SetInputRow({
       <Input
         type="number"
         inputMode="decimal"
-        step="0.25"
+        step="0.5"
         draggable={false}
         placeholder="Weight"
         aria-label={`Weight for set ${index + 1}`}
-        value={set.weight === null ? '' : String(set.weight)}
+        value={formatWeight(set.weight)}
         onChange={(e) => change('weight', e.target.value)}
         onWheel={(e) => (e.currentTarget as HTMLInputElement).blur()}
         onPointerDownCapture={(e) => e.stopPropagation()}
         onMouseDownCapture={(e) => e.stopPropagation()}
         onTouchStartCapture={(e) => e.stopPropagation()}
         onClickCapture={(e) => e.stopPropagation()}
-        onKeyDownCapture={(e) => e.stopPropagation()}
+        onKeyDown={(e) => {
+          const block = ['e', 'E', '+', '-'];
+          if (block.includes(e.key)) e.preventDefault();
+        }}
         className={cn(
           "h-9 text-sm text-center placeholder:text-center",
           isProvisional && "bg-muted/40 dark:bg-muted/20 placeholder:text-muted-foreground/70 opacity-80"
@@ -84,3 +93,5 @@ export function SetInputRow({
     </div>
   );
 }
+
+    

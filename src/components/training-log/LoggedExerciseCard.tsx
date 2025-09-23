@@ -19,6 +19,47 @@ import { SetStructurePicker } from '../SetStructurePicker';
 import { Separator } from '../ui/separator';
 import { SET_STRUCTURE_COLORS } from '@/types/setStructure';
 
+// top of file, near other utils
+const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(min, n));
+
+function sanitizeRepsInput(raw: string): number | null {
+  if (raw.trim() === '') return null;
+  // allow digits only, strip everything else
+  const digits = raw.replace(/\D+/g, '').slice(0, 2); // at most 2 digits
+  if (!digits) return null;
+  const n = clamp(parseInt(digits, 10), 0, 99);
+  return Number.isFinite(n) ? n : null;
+}
+
+function sanitizeWeightInput(raw: string): number | null {
+  if (raw.trim() === '') return null;
+
+  // allow pattern: 1–3 digits, optional ".5"
+  // ignore any other characters (e/E/+/-/..)
+  // keep only digits and a single dot, then normalize to ".5" if present
+  let cleaned = raw.replace(/[^0-9.]/g, '');
+  // split and rebuild
+  const [intPartRaw, decRaw = ''] = cleaned.split('.');
+  const intPart = (intPartRaw || '').replace(/\D/g, '').slice(0, 3); // 3 digits max
+
+  if (!intPart) return null;
+
+  // decimal allowed only ".5"
+  const hasDot = cleaned.includes('.');
+  const weightStr = hasDot ? `${intPart}${decRaw.startsWith('5') ? '.5' : ''}` : intPart;
+
+  const n = Number(weightStr);
+  if (!Number.isFinite(n)) return null;
+
+  // final clamp for safety
+  const clamped = clamp(n, 0, 999);
+  // snap to nearest 0.5 just in case something slips through
+  const snapped = Math.round(clamped * 2) / 2;
+
+  // force .0 or .5 only
+  return snapped;
+}
+
 interface LoggedExerciseCardProps {
   loggedExercise: LoggedExercise;
   onUpdateSets: (sets: LoggedSet[]) => void;
@@ -164,16 +205,28 @@ export function LoggedExerciseCard({
     }, 150);
   }
 
-  const handleSetChange = (index: number, field: keyof Omit<LoggedSet, 'id' | 'isProvisional'>, value: string) => {
+  const handleSetChange = (
+    index: number,
+    field: keyof Omit<LoggedSet, 'id' | 'isProvisional'>,
+    rawValue: string
+  ) => {
     onMarkAsInteracted();
+  
     setLocalSets(prev => {
-        const next = [...prev];
-        const n = value === '' ? null : Number(value);
-        if (next[index]) {
-            next[index] = { ...next[index], [field]: (Number.isFinite(n) ? n : null), isProvisional: false };
-        }
-        pushUp(next); // Debounce parent update
-        return next; // Local immediately reflects typing
+      const next = [...prev];
+  
+      let parsed: number | null;
+      if (field === 'reps') {
+        parsed = sanitizeRepsInput(rawValue);
+      } else { // 'weight'
+        parsed = sanitizeWeightInput(rawValue);
+      }
+  
+      if (next[index]) {
+        next[index] = { ...next[index], [field]: parsed, isProvisional: false };
+      }
+      pushUp(next); // debounce parent update
+      return next;
     });
   };
 
@@ -374,3 +427,5 @@ export function LoggedExerciseCard({
     </div>
   );
 }
+
+    
