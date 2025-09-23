@@ -30,10 +30,12 @@ import {
 import { parseISO, startOfMonth, endOfMonth, format as fmt } from 'date-fns';
 import { stripUndefinedDeep } from '@/lib/sanitize';
 import { validWorkingSets, pickBestSet, isBetterPR } from '@/lib/pr';
+import { snapToHalf } from '@/lib/rounding';
 
 const getUserWorkoutLogsCollectionPath = (userId: string) => `users/${userId}/workoutLogs`;
 const getUserPerformanceEntriesCollectionPath = (userId: string) => `users/${userId}/performanceEntries`;
 
+const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(min, n));
 
 export const saveWorkoutLog = async (userId: string, date: string, workoutLogPayload: WorkoutLog): Promise<void> => {
   if (!userId) throw new Error("User ID is required.");
@@ -65,11 +67,22 @@ export const saveWorkoutLog = async (userId: string, date: string, workoutLogPay
       return {
         ...exerciseToSave,
         sets: ex.sets.map(s => {
-          const { isProvisional, ...restOfSet } = s; // Also remove from set
-          return { 
-             id: restOfSet.id,
-             reps: restOfSet.reps === null || isNaN(Number(restOfSet.reps)) ? 0 : Number(restOfSet.reps),
-             weight: restOfSet.weight === null || isNaN(Number(restOfSet.weight)) ? 0 : Number(restOfSet.weight),
+          const { isProvisional, ...restOfSet } = s;
+        
+          // reps: 0..99 integer
+          const repsNum = Number(restOfSet.reps);
+          const reps =
+            Number.isFinite(repsNum) ? clamp(Math.trunc(Math.abs(repsNum)), 0, 99) : 0;
+        
+          // weight: 0..999 snapped to .0/.5 only
+          const wNum = Number(restOfSet.weight);
+          let weight = Number.isFinite(wNum) ? clamp(Math.abs(wNum), 0, 999) : 0;
+          weight = snapToHalf(weight) ?? 0;
+        
+          return {
+            id: restOfSet.id,
+            reps,
+            weight,
           };
         })
       } as LoggedExercise;
@@ -460,6 +473,3 @@ export const updatePerformanceEntryOnLogDelete = async (
     }
   }
 };
-
-    
-    

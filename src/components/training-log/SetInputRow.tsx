@@ -7,6 +7,8 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { formatWeightHalf } from '@/lib/rounding';
+
 
 interface SetInputRowProps {
   set: LoggedSet;
@@ -17,12 +19,9 @@ interface SetInputRowProps {
   onInteract: () => void;
 }
 
-export function SetInputRow({
-  set, index, onSetChange, onRemoveSet, isProvisional, onInteract
-}: SetInputRowProps) {
-
+export function SetInputRow({ set, index, onSetChange, onRemoveSet, isProvisional, onInteract }: SetInputRowProps) {
   const change = (field: 'reps'|'weight', v: string) => {
-    onSetChange(index, field, v);
+    onSetChange(index, field, v); // allow '' to go through -> becomes null in parent
     onInteract();
   };
 
@@ -30,20 +29,25 @@ export function SetInputRow({
     <div className="grid grid-cols-[2rem_1fr_auto_1fr_auto_2.25rem] items-center gap-2" data-dndkit-no-drag>
       <span className="font-medium text-sm text-muted-foreground text-center">{index + 1}.</span>
 
+      {/* Reps: integers only, 2 digits max handled upstream */}
       <Input
         type="number"
         inputMode="numeric"
         draggable={false}
         placeholder="Reps"
         aria-label={`Reps for set ${index + 1}`}
-        value={set.reps === null ? '' : String(set.reps)}
+        value={set.reps == null ? '' : String(set.reps)}
         onChange={(e) => change('reps', e.target.value)}
         onWheel={(e) => (e.currentTarget as HTMLInputElement).blur()}
         onPointerDownCapture={(e) => e.stopPropagation()}
         onMouseDownCapture={(e) => e.stopPropagation()}
         onTouchStartCapture={(e) => e.stopPropagation()}
         onClickCapture={(e) => e.stopPropagation()}
-        onKeyDownCapture={(e) => e.stopPropagation()}
+        onKeyDown={(e) => {
+          // block scientific notation and signs for reps
+          const block = ['e', 'E', '+', '-', '.'];
+          if (block.includes(e.key)) e.preventDefault();
+        }}
         className={cn(
           "h-9 text-sm text-center placeholder:text-center",
           isProvisional && "bg-muted/40 dark:bg-muted/20 placeholder:text-muted-foreground/70 opacity-80"
@@ -53,26 +57,32 @@ export function SetInputRow({
 
       <span className="text-muted-foreground text-center">x</span>
 
+      {/* Weight: integers or .5 only */}
       <Input
         type="number"
         inputMode="decimal"
-        step="0.25"
+        step="0.5"
         draggable={false}
         placeholder="Weight"
         aria-label={`Weight for set ${index + 1}`}
-        value={set.weight === null ? '' : String(set.weight)}
-        onChange={(e) => change('weight', e.target.value)}
+        value={formatWeightHalf(set.weight)}
+        onChange={(e) => change('weight', e.target.value)}  // '' allowed
         onWheel={(e) => (e.currentTarget as HTMLInputElement).blur()}
         onPointerDownCapture={(e) => e.stopPropagation()}
         onMouseDownCapture={(e) => e.stopPropagation()}
         onTouchStartCapture={(e) => e.stopPropagation()}
         onClickCapture={(e) => e.stopPropagation()}
-        onKeyDownCapture={(e) => e.stopPropagation()}
+        onKeyDown={(e) => {
+          // block scientific notation and signs; allow '.' for typing ".5"
+          const block = ['e', 'E', '+', '-'];
+          if (block.includes(e.key)) e.preventDefault();
+        }}
         className={cn(
           "h-9 text-sm text-center placeholder:text-center",
           isProvisional && "bg-muted/40 dark:bg-muted/20 placeholder:text-muted-foreground/70 opacity-80"
         )}
         min="0"
+        max="999"
       />
 
       <span className="text-muted-foreground">kg</span>
