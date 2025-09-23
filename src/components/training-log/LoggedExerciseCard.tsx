@@ -18,9 +18,8 @@ import { SetStructureBadge } from '../SetStructureBadge';
 import { SetStructurePicker } from '../SetStructurePicker';
 import { Separator } from '../ui/separator';
 import { SET_STRUCTURE_COLORS } from '@/types/setStructure';
-import { snapToStep } from '@/lib/rounding';
+import { snapToHalf } from '@/lib/rounding';
 
-// top of file, near other utils
 const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(min, n));
 
 function sanitizeRepsInput(raw: string): number | null {
@@ -30,25 +29,6 @@ function sanitizeRepsInput(raw: string): number | null {
   if (!digits) return null;
   const n = clamp(parseInt(digits, 10), 0, 99);
   return Number.isFinite(n) ? n : null;
-}
-
-function sanitizeWeightInput(raw: string): number | null {
-  if (raw.trim() === '') return null;
-  // allow digits and one dot
-  let cleaned = raw.replace(/[^0-9.]/g, '');
-  const parts = cleaned.split('.');
-  if (parts.length > 2) {
-    cleaned = `${parts[0]}.${parts.slice(1).join('')}`;
-  }
-
-  const n = Number(cleaned);
-  if (!Number.isFinite(n)) return null;
-
-  // Clamp, then snap to nearest 0.25
-  const clamped = clamp(n, 0, 999);
-  const snapped = snapToStep(clamped, 0.25, 'nearest');
-
-  return snapped;
 }
 
 interface LoggedExerciseCardProps {
@@ -210,7 +190,8 @@ export function LoggedExerciseCard({
       if (field === 'reps') {
         parsed = sanitizeRepsInput(rawValue);
       } else { // 'weight'
-        parsed = sanitizeWeightInput(rawValue);
+        const num = rawValue === '' ? null : Number(rawValue);
+        parsed = (num != null) ? snapToHalf(num) : null;
       }
   
       if (next[index]) {
@@ -418,5 +399,3 @@ export function LoggedExerciseCard({
     </div>
   );
 }
-
-    

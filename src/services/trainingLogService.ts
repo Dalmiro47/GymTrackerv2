@@ -30,7 +30,7 @@ import {
 import { parseISO, startOfMonth, endOfMonth, format as fmt } from 'date-fns';
 import { stripUndefinedDeep } from '@/lib/sanitize';
 import { validWorkingSets, pickBestSet, isBetterPR } from '@/lib/pr';
-import { snapToStep } from '@/lib/rounding';
+import { snapToHalf } from '@/lib/rounding';
 
 const getUserWorkoutLogsCollectionPath = (userId: string) => `users/${userId}/workoutLogs`;
 const getUserPerformanceEntriesCollectionPath = (userId: string) => `users/${userId}/performanceEntries`;
@@ -74,10 +74,10 @@ export const saveWorkoutLog = async (userId: string, date: string, workoutLogPay
           const reps =
             Number.isFinite(repsNum) ? clamp(Math.trunc(Math.abs(repsNum)), 0, 99) : 0;
         
-          // weight: 0..999 snapped to nearest 0.25
-          let wNum = Number(restOfSet.weight);
+          // weight: 0..999 snapped to .0/.5 only
+          const wNum = Number(restOfSet.weight);
           let weight = Number.isFinite(wNum) ? clamp(Math.abs(wNum), 0, 999) : 0;
-          weight = snapToStep(weight, 0.25, 'nearest');
+          weight = snapToHalf(weight) ?? 0;
         
           return {
             id: restOfSet.id,
@@ -473,5 +473,3 @@ export const updatePerformanceEntryOnLogDelete = async (
     }
   }
 };
-
-    
