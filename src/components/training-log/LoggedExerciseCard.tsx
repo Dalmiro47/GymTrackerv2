@@ -18,6 +18,7 @@ import { SetStructureBadge } from '../SetStructureBadge';
 import { SetStructurePicker } from '../SetStructurePicker';
 import { Separator } from '../ui/separator';
 import { SET_STRUCTURE_COLORS } from '@/types/setStructure';
+import { snapToStep } from '@/lib/rounding';
 
 // top of file, near other utils
 const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(min, n));
@@ -33,30 +34,20 @@ function sanitizeRepsInput(raw: string): number | null {
 
 function sanitizeWeightInput(raw: string): number | null {
   if (raw.trim() === '') return null;
-
-  // allow pattern: 1–3 digits, optional ".5"
-  // ignore any other characters (e/E/+/-/..)
-  // keep only digits and a single dot, then normalize to ".5" if present
+  // allow digits and one dot
   let cleaned = raw.replace(/[^0-9.]/g, '');
-  // split and rebuild
-  const [intPartRaw, decRaw = ''] = cleaned.split('.');
-  const intPart = (intPartRaw || '').replace(/\D/g, '').slice(0, 3); // 3 digits max
+  const parts = cleaned.split('.');
+  if (parts.length > 2) {
+    cleaned = `${parts[0]}.${parts.slice(1).join('')}`;
+  }
 
-  if (!intPart) return null;
-
-  // decimal allowed only ".5"
-  const hasDot = cleaned.includes('.');
-  const weightStr = hasDot ? `${intPart}${decRaw.startsWith('5') ? '.5' : ''}` : intPart;
-
-  const n = Number(weightStr);
+  const n = Number(cleaned);
   if (!Number.isFinite(n)) return null;
 
-  // final clamp for safety
+  // Clamp, then snap to nearest 0.25
   const clamped = clamp(n, 0, 999);
-  // snap to nearest 0.5 just in case something slips through
-  const snapped = Math.round(clamped * 2) / 2;
+  const snapped = snapToStep(clamped, 0.25, 'nearest');
 
-  // force .0 or .5 only
   return snapped;
 }
 
