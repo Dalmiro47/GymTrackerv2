@@ -1,7 +1,7 @@
 // Snap to a step (nearest by default). Fixes float noise and clamps precision.
 export function snapToStep(
   value: number,
-  step = 0.5,
+  step = 0.25,
   mode: 'nearest' | 'floor' | 'ceil' = 'nearest'
 ): number {
   if (!Number.isFinite(value)) return 0;
@@ -10,7 +10,6 @@ export function snapToStep(
     mode === 'floor' ? Math.floor(q) * step :
     mode === 'ceil'  ? Math.ceil(q)  * step :
                        Math.round(q) * step;
-  // normalize precision: 0.25 → 2 decimals, 0.5 → 1 decimal
-  const decimals = step === 0.25 ? 2 : step === 0.5 ? 1 : 3;
-  return Number(snapped.toFixed(decimals));
+  // keep at most 2 decimals for 0.25 increments (avoids 90.249999...)
+  return Number(snapped.toFixed(2));
 }

@@ -7,6 +7,8 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { snapToStep } from '@/lib/rounding';
+
 
 interface SetInputRowProps {
   set: LoggedSet;
@@ -17,8 +19,13 @@ interface SetInputRowProps {
   onInteract: () => void;
 }
 
-const formatWeight = (n?: number | null) =>
-  n == null ? '' : (Number.isInteger(n) ? String(n) : n.toFixed(1));
+function formatWeightForInput(w: number | null): string {
+  if (w == null) return '';
+  // Assume it’s already snapped; present up to 2 dp, trimming trailing zeros.
+  const s = w.toFixed(2);        // e.g. "90.50", "90.25", "90.00"
+  return s.replace(/\.?0+$/, ''); // -> "90.5", "90.25", "90"
+}
+
 
 export function SetInputRow({
   set, index, onSetChange, onRemoveSet, isProvisional, onInteract
@@ -62,11 +69,11 @@ export function SetInputRow({
       <Input
         type="number"
         inputMode="decimal"
-        step="0.5"
+        step="0.25"
         draggable={false}
         placeholder="Weight"
         aria-label={`Weight for set ${index + 1}`}
-        value={formatWeight(set.weight)}
+        value={formatWeightForInput(set.weight)}
         onChange={(e) => change('weight', e.target.value)}
         onWheel={(e) => (e.currentTarget as HTMLInputElement).blur()}
         onPointerDownCapture={(e) => e.stopPropagation()}
@@ -82,6 +89,7 @@ export function SetInputRow({
           isProvisional && "bg-muted/40 dark:bg-muted/20 placeholder:text-muted-foreground/70 opacity-80"
         )}
         min="0"
+        max="999"
       />
 
       <span className="text-muted-foreground">kg</span>
