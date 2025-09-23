@@ -7,8 +7,8 @@ const nextConfig: NextConfig = {
   images: {
     remotePatterns: [{ protocol: 'https', hostname: 'placehold.co', pathname: '/**' }],
   },
-  experimental: {},
   allowedDevOrigins: ['*.cloudworkstations.dev'],
+  experimental: {},
 };
 
 // Export an async config so we can conditionally import in prod only.
