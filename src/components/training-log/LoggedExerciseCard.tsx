@@ -178,26 +178,31 @@ export function LoggedExerciseCard({
 
   const handleSetChange = (
     index: number,
-    field: keyof Omit<LoggedSet, 'id' | 'isProvisional'>,
-    rawValue: string
+    field: 'reps' | 'weight',
+    value: string
   ) => {
     onMarkAsInteracted();
   
     setLocalSets(prev => {
       const next = [...prev];
+      if (!next[index]) return prev;
   
-      let parsed: number | null;
-      if (field === 'reps') {
-        parsed = sanitizeRepsInput(rawValue);
-      } else { // 'weight'
-        const num = rawValue === '' ? null : Number(rawValue);
-        parsed = (num != null) ? snapToHalf(num) : null;
+      if (field === 'weight') {
+        // empty string → null (so clearing works)
+        const val =
+          value === '' ? null :
+          // if "12." transient state, store as number 12 (no decimal) locally;
+          // it'll be snapped again on save
+          Number.isFinite(Number(value)) ? snapToHalf(Number(value)) : null;
+  
+        next[index] = { ...next[index], weight: val, isProvisional: false };
+      } else {
+        // reps logic (already limited to 2 digits elsewhere)
+        const n = value === '' ? null : sanitizeRepsInput(value);
+        next[index] = { ...next[index], reps: Number.isFinite(n) ? n : null, isProvisional: false };
       }
   
-      if (next[index]) {
-        next[index] = { ...next[index], [field]: parsed, isProvisional: false };
-      }
-      pushUp(next); // debounce parent update
+      pushUp(next);
       return next;
     });
   };
