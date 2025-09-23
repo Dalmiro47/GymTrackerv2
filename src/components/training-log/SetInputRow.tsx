@@ -85,7 +85,7 @@ export function SetInputRow({ set, index, onSetChange, onRemoveSet, isProvisiona
           }
 
           // keep only digits + optional single dot
-          const cleaned = raw.replace(/[^\\d.]/g, '');
+          const cleaned = raw.replace(/[^\d.]/g, '');
           const parts = cleaned.split('.');
           let intPart = parts[0] ?? '';
           let decPart = parts.length > 1 ? parts[1] : '';
@@ -143,3 +143,4 @@ export function SetInputRow({ set, index, onSetChange, onRemoveSet, isProvisiona
     </div>
   );
 }
+
