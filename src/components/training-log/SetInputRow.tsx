@@ -1,13 +1,13 @@
 
 "use client";
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import type { LoggedSet } from '@/types';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { formatWeightHalf } from '@/lib/rounding';
+import { formatWeightHalf, snapToHalf } from '@/lib/rounding';
 
 
 interface SetInputRowProps {
@@ -20,6 +20,13 @@ interface SetInputRowProps {
 }
 
 export function SetInputRow({ set, index, onSetChange, onRemoveSet, isProvisional, onInteract }: SetInputRowProps) {
+  const [weightDisplay, setWeightDisplay] = useState(formatWeightHalf(set.weight));
+
+  useEffect(() => {
+    // Sync local display state if the prop changes from outside
+    setWeightDisplay(formatWeightHalf(set.weight));
+  }, [set.weight]);
+  
   const change = (field: 'reps'|'weight', v: string) => {
     onSetChange(index, field, v); // allow '' to go through -> becomes null in parent
     onInteract();
@@ -59,14 +66,70 @@ export function SetInputRow({ set, index, onSetChange, onRemoveSet, isProvisiona
 
       {/* Weight: integers or .5 only */}
       <Input
-        type="number"
+        type="text"
         inputMode="decimal"
-        step="0.5"
+        maxLength={5}
         draggable={false}
         placeholder="Weight"
         aria-label={`Weight for set ${index + 1}`}
-        value={formatWeightHalf(set.weight)}
-        onChange={(e) => change('weight', e.target.value)}  // '' allowed
+        value={weightDisplay}
+        onChange={(e) => {
+          const raw = e.target.value;
+
+          // allow clearing
+          if (raw === '') {
+            setWeightDisplay('');
+            onSetChange(index, 'weight', '');
+            onInteract();
+            return;
+          }
+
+          // keep only digits + optional single dot
+          const cleaned = raw.replace(/[^\d.]/g, '');
+          const parts = cleaned.split('.');
+          let intPart = parts[0] ?? '';
+          let decPart = parts.length > 1 ? parts[1] : '';
+
+          // limit to max 3 digits before decimal
+          if (intPart.length > 3) intPart = intPart.slice(0, 3);
+
+          // if there is a decimal and it isn't ".5", SNAP to nearest .5 immediately
+          if (decPart.length > 0 && decPart[0] !== '5') {
+            const n = Number(`${intPart || '0'}.${decPart}`);
+            // guard against NaN if user typed just "."
+            const snapped = isNaN(n) ? null : snapToHalf(n);
+            const nextDisplay = snapped == null ? '' : formatWeightHalf(snapped);
+
+            setWeightDisplay(nextDisplay);
+            onSetChange(index, 'weight', nextDisplay);
+            onInteract();
+            return;
+          }
+
+          // allow only ".5" as decimal while typing
+          if (decPart.length > 0) {
+            decPart = '5';
+          }
+
+          // support transient "12." state
+          let nextDisplay = intPart;
+          if (decPart) nextDisplay = `${intPart}.5`;
+          else if (cleaned.endsWith('.') && intPart !== '' && parts.length === 2 && !parts[1]) {
+            nextDisplay = `${intPart}.`;
+          }
+
+          setWeightDisplay(nextDisplay);
+          onSetChange(index, 'weight', nextDisplay);
+          onInteract();
+        }}
+        onBlur={() => {
+            // normalize transient "12." to "12" on blur
+            if (weightDisplay && weightDisplay.endsWith('.')) {
+              const trimmed = weightDisplay.slice(0, -1);
+              setWeightDisplay(trimmed);
+              onSetChange(index, 'weight', trimmed);
+            }
+        }}
         onWheel={(e) => (e.currentTarget as HTMLInputElement).blur()}
         onPointerDownCapture={(e) => e.stopPropagation()}
         onMouseDownCapture={(e) => e.stopPropagation()}
@@ -81,8 +144,6 @@ export function SetInputRow({ set, index, onSetChange, onRemoveSet, isProvisiona
           "h-9 text-sm text-center placeholder:text-center",
           isProvisional && "bg-muted/40 dark:bg-muted/20 placeholder:text-muted-foreground/70 opacity-80"
         )}
-        min="0"
-        max="999"
       />
 
       <span className="text-muted-foreground">kg</span>
