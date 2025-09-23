@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { formatWeightHalf } from '@/lib/rounding';
+import { formatWeightHalf, snapToHalf } from '@/lib/rounding';
 
 
 interface SetInputRowProps {
@@ -79,7 +79,7 @@ export function SetInputRow({ set, index, onSetChange, onRemoveSet, isProvisiona
           // allow clearing
           if (raw === '') {
             setWeightDisplay('');
-            onSetChange(index, 'weight', ''); // bubble empty string up
+            onSetChange(index, 'weight', '');
             onInteract();
             return;
           }
@@ -93,16 +93,28 @@ export function SetInputRow({ set, index, onSetChange, onRemoveSet, isProvisiona
           // limit to max 3 digits before decimal
           if (intPart.length > 3) intPart = intPart.slice(0, 3);
 
-          // allow only `.5` as decimal (ignore any other decimals while typing)
-          if (decPart.length > 0) {
-            decPart = decPart[0] === '5' ? '5' : '';
+          // if there is a decimal and it isn't ".5", SNAP to nearest .5 immediately
+          if (decPart.length > 0 && decPart[0] !== '5') {
+            const n = Number(`${intPart || '0'}.${decPart}`);
+            // guard against NaN if user typed just "."
+            const snapped = isNaN(n) ? null : snapToHalf(n);
+            const nextDisplay = snapped == null ? '' : formatWeightHalf(snapped);
+
+            setWeightDisplay(nextDisplay);
+            onSetChange(index, 'weight', nextDisplay);
+            onInteract();
+            return;
           }
 
-          // if user typed just ".", keep it only if there is an int part
+          // allow only ".5" as decimal while typing
+          if (decPart.length > 0) {
+            decPart = '5';
+          }
+
+          // support transient "12." state
           let nextDisplay = intPart;
           if (decPart) nextDisplay = `${intPart}.5`;
           else if (cleaned.endsWith('.') && intPart !== '' && parts.length === 2 && !parts[1]) {
-            // transient "12." state is allowed
             nextDisplay = `${intPart}.`;
           }
 
@@ -143,4 +155,3 @@ export function SetInputRow({ set, index, onSetChange, onRemoveSet, isProvisiona
     </div>
   );
 }
-
