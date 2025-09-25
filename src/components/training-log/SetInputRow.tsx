@@ -64,7 +64,7 @@ export function SetInputRow({ set, index, onSetChange, onRemoveSet, isProvisiona
 
       <span className="text-muted-foreground text-center">x</span>
 
-      {/* Weight: integers or .5 only */}
+      {/* Weight: integers or .5 only (accepts '.' or ',' as decimal; normalizes to '.') */}
       <Input
         type="text"
         inputMode="decimal"
@@ -84,8 +84,20 @@ export function SetInputRow({ set, index, onSetChange, onRemoveSet, isProvisiona
             return;
           }
 
-          // keep only digits + optional single dot
-          const cleaned = raw.replace(/[^\d.]/g, '');
+          // Keep only digits + at most one decimal separator (either '.' or ',')
+          // Then normalize first comma to dot for internal handling.
+          let cleaned = raw.replace(/[^\d.,]/g, '');
+          // If there are multiple separators, keep the first, drop the rest
+          const firstSepIndex = Math.max(cleaned.indexOf('.'), cleaned.indexOf(','));
+          if (firstSepIndex !== -1) {
+            // remove any additional separators after the first
+            const head = cleaned.slice(0, firstSepIndex + 1);
+            const tail = cleaned.slice(firstSepIndex + 1).replace(/[.,]/g, '');
+            cleaned = head + tail;
+          }
+          // Normalize comma → dot for parsing and display normalization
+          cleaned = cleaned.replace(',', '.');
+
           const parts = cleaned.split('.');
           let intPart = parts[0] ?? '';
           let decPart = parts.length > 1 ? parts[1] : '';
@@ -123,12 +135,12 @@ export function SetInputRow({ set, index, onSetChange, onRemoveSet, isProvisiona
           onInteract();
         }}
         onBlur={() => {
-            // normalize transient "12." to "12" on blur
-            if (weightDisplay && weightDisplay.endsWith('.')) {
-              const trimmed = weightDisplay.slice(0, -1);
-              setWeightDisplay(trimmed);
-              onSetChange(index, 'weight', trimmed);
-            }
+          // normalize transient "12." or "12," to "12" on blur
+          if (weightDisplay && (weightDisplay.endsWith('.') || weightDisplay.endsWith(','))) {
+            const trimmed = weightDisplay.slice(0, -1);
+            setWeightDisplay(trimmed);
+            onSetChange(index, 'weight', trimmed);
+          }
         }}
         onWheel={(e) => (e.currentTarget as HTMLInputElement).blur()}
         onPointerDownCapture={(e) => e.stopPropagation()}
@@ -136,7 +148,7 @@ export function SetInputRow({ set, index, onSetChange, onRemoveSet, isProvisiona
         onTouchStartCapture={(e) => e.stopPropagation()}
         onClickCapture={(e) => e.stopPropagation()}
         onKeyDown={(e) => {
-          // block scientific notation and signs; allow '.' for typing ".5"
+          // block scientific notation and signs; allow '.' and ',' for decimals
           const block = ['e', 'E', '+', '-'];
           if (block.includes(e.key)) e.preventDefault();
         }}
