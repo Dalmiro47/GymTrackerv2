@@ -10,16 +10,23 @@ interface SetStructurePickerProps {
   onChange: (value: SetStructure) => void;
   disabled?: boolean;
   className?: string;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
-export function SetStructurePicker({ value, onChange, disabled, className }: SetStructurePickerProps) {
+export function SetStructurePicker({ value, onChange, disabled, className, open, onOpenChange }: SetStructurePickerProps) {
   return (
     <Select
       value={value ?? 'normal'}
-      onValueChange={(v: SetStructure) => onChange(v)}
+      open={open}
+      onOpenChange={onOpenChange}
       disabled={disabled}
+      onValueChange={(v: SetStructure) => {
+        onChange(v);
+        onOpenChange?.(false); // Close deterministically
+      }}
     >
-      <SelectTrigger className={cn("h-8 text-xs px-2 py-1 w-full sm:w-[150px]", className)}>
+      <SelectTrigger className={cn("h-8 text-xs px-2 py-1 w-full sm:w-[150px]", className)} aria-label="Set structure">
         <SelectValue placeholder="Set Structure" />
       </SelectTrigger>
       <SelectContent>

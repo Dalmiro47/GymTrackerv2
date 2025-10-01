@@ -144,6 +144,7 @@ export function LoggedExerciseCard({
   }, [loggedExercise.setStructure, loggedExercise.setStructureOverride]);
 
   const [localStructure, setLocalStructure] = useState(effectiveSetStructure);
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   useEffect(() => {
     setLocalStructure(effectiveSetStructure);
@@ -375,13 +376,18 @@ export function LoggedExerciseCard({
           </div>
           <div className="border-t -mx-4 px-4 pt-4 sm:mx-0 sm:px-0">
             <div className="flex flex-col sm:flex-row items-center gap-3">
-              <div className="flex items-center gap-2 flex-1">
+              <div
+                className="flex items-center gap-2 flex-1"
+                onPointerDownCapture={(e) => e.stopPropagation()}
+              >
                 <span className="text-sm text-muted-foreground whitespace-nowrap">
                   Session Set Structure
                 </span>
                 <SetStructurePicker
                   className="h-10 w-44 sm:w-56"
                   value={localStructure}
+                  open={pickerOpen}
+                  onOpenChange={setPickerOpen}
                   onChange={(val) => {
                     onMarkAsInteracted();
                     setLocalStructure(val);
@@ -389,11 +395,7 @@ export function LoggedExerciseCard({
                     const base = loggedExercise.setStructure ?? 'normal';
                     const nextOverride = (val === base) ? null : val;
                     onUpdateSetStructureOverride(loggedExercise.id, nextOverride);
-
-                    queueMicrotask(() => {
-                      const el = document.activeElement as HTMLElement | null;
-                      el?.blur();
-                    });
+                    setPickerOpen(false);
                   }}
                   disabled={isSavingThisExercise || isSavingParentLog}
                 />
