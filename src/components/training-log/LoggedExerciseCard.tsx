@@ -18,18 +18,6 @@ import { SetStructureBadge } from '../SetStructureBadge';
 import { SetStructurePicker } from '../SetStructurePicker';
 import { Separator } from '../ui/separator';
 import { SET_STRUCTURE_COLORS } from '@/types/setStructure';
-import { snapToHalf } from '@/lib/rounding';
-
-const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(min, n));
-
-function sanitizeRepsInput(raw: string): number | null {
-  if (raw.trim() === '') return null;
-  // allow digits only, strip everything else
-  const digits = raw.replace(/\D+/g, '').slice(0, 2); // at most 2 digits
-  if (!digits) return null;
-  const n = clamp(parseInt(digits, 10), 0, 99);
-  return Number.isFinite(n) ? n : null;
-}
 
 const WarmupPanel: React.FC<{ loggedExercise: LoggedExercise }> = ({ loggedExercise }) => {
     const router = useRouter();
@@ -124,7 +112,6 @@ export function LoggedExerciseCard({
   const [localSets, setLocalSets] = useState<LoggedSet[]>(loggedExercise.sets);
   const [isSavingThisExercise, setIsSavingThisExercise] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
-  const [weightDisplay, setWeightDisplay] = useState('');
   
   const contentRef = useRef<HTMLDivElement | null>(null);
   const timeoutRef = useRef<number | null>(null);
@@ -196,11 +183,11 @@ export function LoggedExerciseCard({
       if (field === 'weight') {
         const val =
           value === '' ? null :
-          Number.isFinite(Number(value)) ? snapToHalf(Number(value)) : null;
+          Number.isFinite(Number(value)) ? Number(value) : null;
   
         next[index] = { ...next[index], weight: val, isProvisional: false };
       } else {
-        const n = value === '' ? null : sanitizeRepsInput(value);
+        const n = value === '' ? null : Number(value);
         next[index] = { ...next[index], reps: Number.isFinite(n) ? n : null, isProvisional: false };
       }
   
@@ -354,8 +341,6 @@ export function LoggedExerciseCard({
               onRemoveSet={() => removeSet(set.id)}
               isProvisional={set.isProvisional} 
               onInteract={onMarkAsInteracted} 
-              weightDisplay={weightDisplay}
-              setWeightDisplay={setWeightDisplay}
             />
           ))}
           
@@ -416,5 +401,3 @@ export function LoggedExerciseCard({
     </div>
   );
 }
-
-    
