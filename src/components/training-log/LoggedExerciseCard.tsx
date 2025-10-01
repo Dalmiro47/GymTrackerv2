@@ -31,17 +31,6 @@ function sanitizeRepsInput(raw: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-interface LoggedExerciseCardProps {
-  loggedExercise: LoggedExercise;
-  onUpdateSets: (sets: LoggedSet[]) => void;
-  onSaveProgress: () => Promise<void>; 
-  onRemove: () => void;
-  onReplace: () => void;
-  isSavingParentLog: boolean; 
-  onMarkAsInteracted: () => void;
-  onUpdateSetStructureOverride: (structure: SetStructure | null) => void;
-}
-
 const WarmupPanel: React.FC<{ loggedExercise: LoggedExercise }> = ({ loggedExercise }) => {
     const router = useRouter();
     const workingWeight = useMemo(() => {
@@ -121,7 +110,16 @@ export function LoggedExerciseCard({
   isSavingParentLog,
   onMarkAsInteracted,
   onUpdateSetStructureOverride,
-}: LoggedExerciseCardProps) {
+}: {
+  loggedExercise: LoggedExercise;
+  onUpdateSets: (sets: LoggedSet[]) => void;
+  onSaveProgress: () => Promise<void>; 
+  onRemove: () => void;
+  onReplace: () => void;
+  isSavingParentLog: boolean; 
+  onMarkAsInteracted: () => void;
+  onUpdateSetStructureOverride: (structure: SetStructure | null) => void;
+}) {
   const [isEditing, setIsEditing] = useState(false);
   const [localSets, setLocalSets] = useState<LoggedSet[]>(loggedExercise.sets);
   const [isSavingThisExercise, setIsSavingThisExercise] = useState(false);
@@ -188,18 +186,24 @@ export function LoggedExerciseCard({
       if (!next[index]) return prev;
   
       if (field === 'weight') {
-        // empty string → null (so clearing works)
+        let cleaned = value.replace(/[^\d.,]/g, '');
+        const firstSepIndex = Math.max(cleaned.indexOf('.'), cleaned.indexOf(','));
+        if (firstSepIndex !== -1) {
+          const head = cleaned.slice(0, firstSepIndex + 1);
+          const tail = cleaned.slice(firstSepIndex + 1).replace(/[.,]/g, '');
+          cleaned = head + tail;
+        }
+        cleaned = cleaned.replace(',', '.');
+  
+        // empty string → null
         const val =
-          value === '' ? null :
-          // if "12." transient state, store as number 12 (no decimal) locally;
-          // it'll be snapped again on save
-          Number.isFinite(Number(value)) ? snapToHalf(Number(value)) : null;
+          cleaned.trim() === '' ? null :
+          Number.isFinite(Number(cleaned)) ? snapToHalf(Number(cleaned)) : null;
   
         next[index] = { ...next[index], weight: val, isProvisional: false };
       } else {
-        // reps logic (already limited to 2 digits elsewhere)
-        const n = value === '' ? null : sanitizeRepsInput(value);
-        next[index] = { ...next[index], reps: Number.isFinite(n) ? n : null, isProvisional: false };
+        const n = sanitizeRepsInput(value);
+        next[index] = { ...next[index], reps: n, isProvisional: false };
       }
   
       pushUp(next);
