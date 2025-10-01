@@ -382,7 +382,7 @@ export function LoggedExerciseCard({
                 </span>
                 <SetStructurePicker
                   className="h-10 w-44 sm:w-56"
-                  value={loggedExercise.setStructureOverride ?? (loggedExercise.setStructure ?? 'normal')}
+                  value={effectiveSetStructure}
                   onChange={(val) => {
                     onMarkAsInteracted();
                     const base = loggedExercise.setStructure ?? 'normal';
