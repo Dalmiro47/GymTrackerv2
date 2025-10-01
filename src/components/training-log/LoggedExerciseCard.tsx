@@ -131,7 +131,6 @@ export function LoggedExerciseCard({
   }, [loggedExercise.setStructure, loggedExercise.setStructureOverride]);
 
   const [localStructure, setLocalStructure] = useState(effectiveSetStructure);
-  const [pickerOpen, setPickerOpen] = useState(false);
 
   useEffect(() => {
     setLocalStructure(effectiveSetStructure);
@@ -371,16 +370,13 @@ export function LoggedExerciseCard({
                 <SetStructurePicker
                   className="h-10 w-44 sm:w-56"
                   value={localStructure}
-                  open={pickerOpen}
-                  onOpenChange={setPickerOpen}
                   onChange={(val) => {
                     onMarkAsInteracted();
                     setLocalStructure(val);
-
+              
                     const base = loggedExercise.setStructure ?? 'normal';
                     const nextOverride = (val === base) ? null : val;
                     onUpdateSetStructureOverride(loggedExercise.id, nextOverride);
-                    setPickerOpen(false);
                   }}
                   disabled={isSavingThisExercise || isSavingParentLog}
                 />
