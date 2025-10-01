@@ -64,49 +64,10 @@ import { SET_STRUCTURE_COLORS } from '@/types/setStructure';
 import { cn } from '@/lib/utils';
 import { CoachInline } from './CoachInline';
 
-// Determine effective structure for an exercise
-function effectiveStructureFor(ex: LoggedExercise): SetStructure {
-  return (ex.setStructureOverride ?? ex.setStructure ?? 'normal') as SetStructure;
-}
-
-// Should we render a connector *after* index i?
-function getConnectorAfterIndex(
-  exercises: LoggedExercise[],
-  i: number
-): { show: boolean; color?: string } {
-  const structure = effectiveStructureFor(exercises[i]);
-  if (structure !== 'superset' && structure !== 'triset') return { show: false };
-
-  const groupSize = structure === 'superset' ? 2 : 3;
-
-  // Find the contiguous run of same structure that contains index i
-  let runStart = i;
-  while (
-    runStart - 1 >= 0 &&
-    effectiveStructureFor(exercises[runStart - 1]) === structure
-  ) {
-    runStart--;
-  }
-  let runEnd = i;
-  while (
-    runEnd + 1 < exercises.length &&
-    effectiveStructureFor(exercises[runEnd + 1]) === structure
-  ) {
-    runEnd++;
-  }
-
-  // Position inside the run (0-based)
-  const posInRun = i - runStart;
-
-  // We connect if we are NOT the last item in the current chunk
-  // chunk size is groupSize; chunks repeat within the run
-  const isLastOfChunk = (posInRun % groupSize) === groupSize - 1;
-  const show = !isLastOfChunk && i < runEnd;
-
-  if (!show) return { show: false };
-
-  const color = SET_STRUCTURE_COLORS[structure]?.border ?? 'hsl(var(--border))';
-  return { show: true, color };
+// Get the effective structure for an exercise (override, then routine default, then normal)
+function effectiveOf(ex: { setStructure?: SetStructure; setStructureOverride?: SetStructure | null } | undefined): SetStructure {
+  if (!ex) return 'normal';
+  return ex.setStructureOverride ?? ex.setStructure ?? 'normal';
 }
 
 
@@ -155,6 +116,7 @@ function TrainingLogPageContent() {
     deleteCurrentLog,
     markExerciseAsInteracted,
     replaceExerciseInLog,
+    updateExerciseSetStructureOverride,
     isDeload,
     setIsDeload,
     displayedMonth,
@@ -493,10 +455,15 @@ function TrainingLogPageContent() {
                 <SortableContext items={loggedExerciseIds} strategy={verticalListSortingStrategy}>
                   <div>
                     {currentLog.exercises.map((loggedEx, index) => {
-                      const connector = getConnectorAfterIndex(currentLog.exercises, index);
+                      const currentStructure = effectiveOf(loggedEx);
+                      const nextStructure = effectiveOf(currentLog.exercises[index + 1]);
+                      const isInGroup = currentStructure === 'superset' || currentStructure === 'triset';
+                      const groupContinues = isInGroup && currentStructure === nextStructure;
+                      const connectorColor = SET_STRUCTURE_COLORS[currentStructure]?.border;
+
                       return (
                       <React.Fragment key={loggedEx.id}>
-                        <div className={cn(!connector.show && "mb-4")}>
+                        <div className={cn(!groupContinues && "mb-4")}>
                             <LoggedExerciseCard
                               loggedExercise={loggedEx}
                               onUpdateSets={(sets) => updateExerciseInLog({ ...loggedEx, sets })}
@@ -505,14 +472,14 @@ function TrainingLogPageContent() {
                               onReplace={() => handleOpenReplaceDialog(loggedEx.id, loggedEx.muscleGroup)}
                               isSavingParentLog={isSavingLog || isDeletingLog}
                               onMarkAsInteracted={() => markExerciseAsInteracted(loggedEx.id)}
-                              onUpdateSetStructureOverride={(structure) => updateExerciseSetStructureOverride(loggedEx.id, structure)}
+                              onUpdateSetStructureOverride={updateExerciseSetStructureOverride}
                             />
                         </div>
                         {index < currentLog.exercises.length - 1 && (
                           <div
                             className={cn(
                               "relative -mx-4 my-2 sm:mx-0",
-                              connector.show && "pointer-events-none"
+                              groupContinues && "pointer-events-none"
                             )}
                           >
                            <div
@@ -522,7 +489,7 @@ function TrainingLogPageContent() {
                             >
                               <Separator
                                 className="flex-1 h-[2px]"
-                                style={connector.show ? { backgroundColor: connector.color } : undefined}
+                                style={groupContinues ? { backgroundColor: connectorColor } : undefined}
                               />
                               <Button
                                 onClick={() => handleOpenAddDialog(index + 1)}
@@ -534,20 +501,20 @@ function TrainingLogPageContent() {
                               </Button>
                               <Separator
                                 className="flex-1 h-[2px]"
-                                style={connector.show ? { backgroundColor: connector.color } : undefined}
+                                style={groupContinues ? { backgroundColor: connectorColor } : undefined}
                               />
                             </div>
-                            {connector.show && (
+                            {groupContinues && (
                               <>
                                 <span
                                   aria-hidden
                                   className="pointer-events-none absolute left-[1px] top-1/2 -translate-y-1/2 bottom-0 w-[2px] rounded-full"
-                                  style={{ backgroundColor: connector.color }}
+                                  style={{ backgroundColor: connectorColor }}
                                 />
                                 <span
                                   aria-hidden
                                   className="pointer-events-none absolute right-[1px] top-1/2 -translate-y-1/2 bottom-0 w-[2px] rounded-full"
-                                  style={{ backgroundColor: connector.color }}
+                                  style={{ backgroundColor: connectorColor }}
                                 />
                               </>
                             )}
@@ -671,4 +638,3 @@ export default function TrainingLogPage() {
     </Suspense>
   );
 }
-
