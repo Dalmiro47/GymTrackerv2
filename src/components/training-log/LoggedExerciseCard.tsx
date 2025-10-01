@@ -106,7 +106,7 @@ export function LoggedExerciseCard({
   onReplace: () => void;
   isSavingParentLog: boolean; 
   onMarkAsInteracted: () => void;
-  onUpdateSetStructureOverride: (exerciseId: string, structure: SetStructure | null) => void;
+  onUpdateSetStructureOverride: (exerciseId: string, override: SetStructure | null) => void;
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [localSets, setLocalSets] = useState<LoggedSet[]>(loggedExercise.sets);
@@ -359,28 +359,27 @@ export function LoggedExerciseCard({
             </div>
           </div>
           <div className="border-t -mx-4 px-4 pt-4 sm:mx-0 sm:px-0">
-            <div className="flex flex-col sm:flex-row items-center gap-3">
-              <div
-                className="flex items-center gap-2 flex-1"
-                onPointerDownCapture={(e) => e.stopPropagation()}
-              >
-                <span className="text-sm text-muted-foreground whitespace-nowrap">
-                  Session Set Structure
-                </span>
-                <SetStructurePicker
-                  className="h-10 w-44 sm:w-56"
-                  value={localStructure}
-                  onChange={(val) => {
-                    onMarkAsInteracted();
-                    setLocalStructure(val);
-              
-                    const base = loggedExercise.setStructure ?? 'normal';
-                    const nextOverride = (val === base) ? null : val;
-                    onUpdateSetStructureOverride(loggedExercise.id, nextOverride);
-                  }}
-                  disabled={isSavingThisExercise || isSavingParentLog}
-                />
-              </div>
+            <div
+              className="flex items-center gap-2 flex-1"
+              onPointerDownCapture={(e) => e.stopPropagation()}
+            >
+              <span className="text-sm text-muted-foreground whitespace-nowrap">
+                Session Set Structure
+              </span>
+              <SetStructurePicker
+                className="h-10 w-44 sm:w-56"
+                value={localStructure}
+                onChange={(val) => {
+                  onMarkAsInteracted();
+                  setLocalStructure(val);
+                  const base = loggedExercise.setStructure ?? "normal";
+                  const nextOverride = (val === base) ? null : val;
+                  onUpdateSetStructureOverride(loggedExercise.id, nextOverride);
+                }}
+                disabled={isSavingThisExercise || isSavingParentLog}
+              />
+            </div>
+            <div className="flex flex-col sm:flex-row items-center gap-3 mt-4">
               <Button
                 onClick={handleSaveThisExercise}
                 disabled={isSavingThisExercise || isSavingParentLog}
@@ -397,3 +396,5 @@ export function LoggedExerciseCard({
     </div>
   );
 }
+
+    
