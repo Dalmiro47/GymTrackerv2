@@ -118,7 +118,7 @@ export function LoggedExerciseCard({
   onReplace: () => void;
   isSavingParentLog: boolean; 
   onMarkAsInteracted: () => void;
-  onUpdateSetStructureOverride: (structure: SetStructure | null) => void;
+  onUpdateSetStructureOverride: (exerciseId: string, structure: SetStructure | null) => void;
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [localSets, setLocalSets] = useState<LoggedSet[]>(loggedExercise.sets);
@@ -388,7 +388,12 @@ export function LoggedExerciseCard({
 
                     const base = loggedExercise.setStructure ?? 'normal';
                     const nextOverride = (val === base) ? null : val;
-                    onUpdateSetStructureOverride(nextOverride);
+                    onUpdateSetStructureOverride(loggedExercise.id, nextOverride);
+
+                    queueMicrotask(() => {
+                      const el = document.activeElement as HTMLElement | null;
+                      el?.blur();
+                    });
                   }}
                   disabled={isSavingThisExercise || isSavingParentLog}
                 />
