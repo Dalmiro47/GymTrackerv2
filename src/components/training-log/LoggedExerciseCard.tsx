@@ -124,6 +124,7 @@ export function LoggedExerciseCard({
   const [localSets, setLocalSets] = useState<LoggedSet[]>(loggedExercise.sets);
   const [isSavingThisExercise, setIsSavingThisExercise] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
+  const [weightDisplay, setWeightDisplay] = useState('');
   
   const contentRef = useRef<HTMLDivElement | null>(null);
   const timeoutRef = useRef<number | null>(null);
@@ -142,7 +143,13 @@ export function LoggedExerciseCard({
     return loggedExercise.setStructureOverride ?? loggedExercise.setStructure ?? 'normal';
   }, [loggedExercise.setStructure, loggedExercise.setStructureOverride]);
 
-  const borderColor = SET_STRUCTURE_COLORS[effectiveSetStructure]?.border ?? 'hsl(var(--border))';
+  const [localStructure, setLocalStructure] = useState(effectiveSetStructure);
+
+  useEffect(() => {
+    setLocalStructure(effectiveSetStructure);
+  }, [effectiveSetStructure]);
+
+  const borderColor = SET_STRUCTURE_COLORS[localStructure]?.border ?? 'hsl(var(--border))';
   
   const style = useMemo<React.CSSProperties>(() => ({
     transform: CSS.Transform.toString(transform),
@@ -186,24 +193,14 @@ export function LoggedExerciseCard({
       if (!next[index]) return prev;
   
       if (field === 'weight') {
-        let cleaned = value.replace(/[^\d.,]/g, '');
-        const firstSepIndex = Math.max(cleaned.indexOf('.'), cleaned.indexOf(','));
-        if (firstSepIndex !== -1) {
-          const head = cleaned.slice(0, firstSepIndex + 1);
-          const tail = cleaned.slice(firstSepIndex + 1).replace(/[.,]/g, '');
-          cleaned = head + tail;
-        }
-        cleaned = cleaned.replace(',', '.');
-  
-        // empty string → null
         const val =
-          cleaned.trim() === '' ? null :
-          Number.isFinite(Number(cleaned)) ? snapToHalf(Number(cleaned)) : null;
+          value === '' ? null :
+          Number.isFinite(Number(value)) ? snapToHalf(Number(value)) : null;
   
         next[index] = { ...next[index], weight: val, isProvisional: false };
       } else {
-        const n = sanitizeRepsInput(value);
-        next[index] = { ...next[index], reps: n, isProvisional: false };
+        const n = value === '' ? null : sanitizeRepsInput(value);
+        next[index] = { ...next[index], reps: Number.isFinite(n) ? n : null, isProvisional: false };
       }
   
       pushUp(next);
@@ -256,7 +253,7 @@ export function LoggedExerciseCard({
         className={cn(
           "shadow-md transition-all rounded-lg border", 
           "border-[var(--card-border-color)]",
-          effectiveSetStructure !== 'normal' && "border-2",
+          localStructure !== 'normal' && "border-2",
           isDragging && "ring-2 ring-primary"
         )}
       >
@@ -275,7 +272,7 @@ export function LoggedExerciseCard({
               </button>
               <div className="flex flex-col gap-1 items-start">
                   <CardTitle className="font-headline text-lg">{loggedExercise.name}</CardTitle>
-                  <SetStructureBadge value={effectiveSetStructure} />
+                  <SetStructureBadge value={localStructure} />
               </div>
             </div>
             <div className="flex items-center">
@@ -356,6 +353,8 @@ export function LoggedExerciseCard({
               onRemoveSet={() => removeSet(set.id)}
               isProvisional={set.isProvisional} 
               onInteract={onMarkAsInteracted} 
+              weightDisplay={weightDisplay}
+              setWeightDisplay={setWeightDisplay}
             />
           ))}
           
@@ -382,9 +381,11 @@ export function LoggedExerciseCard({
                 </span>
                 <SetStructurePicker
                   className="h-10 w-44 sm:w-56"
-                  value={effectiveSetStructure}
+                  value={localStructure}
                   onChange={(val) => {
                     onMarkAsInteracted();
+                    setLocalStructure(val);
+
                     const base = loggedExercise.setStructure ?? 'normal';
                     const nextOverride = (val === base) ? null : val;
                     onUpdateSetStructureOverride(nextOverride);
@@ -408,3 +409,5 @@ export function LoggedExerciseCard({
     </div>
   );
 }
+
+    
