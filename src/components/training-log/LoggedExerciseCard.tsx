@@ -18,29 +18,6 @@ import { SetStructureBadge } from '../SetStructureBadge';
 import { SetStructurePicker } from '../SetStructurePicker';
 import { Separator } from '../ui/separator';
 import { SET_STRUCTURE_COLORS } from '@/types/setStructure';
-import { snapToHalf } from '@/lib/rounding';
-
-const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(min, n));
-
-function sanitizeRepsInput(raw: string): number | null {
-  if (raw.trim() === '') return null;
-  // allow digits only, strip everything else
-  const digits = raw.replace(/\D+/g, '').slice(0, 2); // at most 2 digits
-  if (!digits) return null;
-  const n = clamp(parseInt(digits, 10), 0, 99);
-  return Number.isFinite(n) ? n : null;
-}
-
-interface LoggedExerciseCardProps {
-  loggedExercise: LoggedExercise;
-  onUpdateSets: (sets: LoggedSet[]) => void;
-  onSaveProgress: () => Promise<void>; 
-  onRemove: () => void;
-  onReplace: () => void;
-  isSavingParentLog: boolean; 
-  onMarkAsInteracted: () => void;
-  onUpdateSetStructureOverride: (structure: SetStructure | null) => void;
-}
 
 const WarmupPanel: React.FC<{ loggedExercise: LoggedExercise }> = ({ loggedExercise }) => {
     const router = useRouter();
@@ -121,7 +98,16 @@ export function LoggedExerciseCard({
   isSavingParentLog,
   onMarkAsInteracted,
   onUpdateSetStructureOverride,
-}: LoggedExerciseCardProps) {
+}: {
+  loggedExercise: LoggedExercise;
+  onUpdateSets: (sets: LoggedSet[]) => void;
+  onSaveProgress: () => Promise<void>; 
+  onRemove: () => void;
+  onReplace: () => void;
+  isSavingParentLog: boolean; 
+  onMarkAsInteracted: () => void;
+  onUpdateSetStructureOverride: (exerciseId: string, override: SetStructure | null) => void;
+}) {
   const [isEditing, setIsEditing] = useState(false);
   const [localSets, setLocalSets] = useState<LoggedSet[]>(loggedExercise.sets);
   const [isSavingThisExercise, setIsSavingThisExercise] = useState(false);
@@ -144,7 +130,13 @@ export function LoggedExerciseCard({
     return loggedExercise.setStructureOverride ?? loggedExercise.setStructure ?? 'normal';
   }, [loggedExercise.setStructure, loggedExercise.setStructureOverride]);
 
-  const borderColor = SET_STRUCTURE_COLORS[effectiveSetStructure]?.border ?? 'hsl(var(--border))';
+  const [localStructure, setLocalStructure] = useState(effectiveSetStructure);
+
+  useEffect(() => {
+    setLocalStructure(effectiveSetStructure);
+  }, [effectiveSetStructure]);
+
+  const borderColor = SET_STRUCTURE_COLORS[localStructure]?.border ?? 'hsl(var(--border))';
   
   const style = useMemo<React.CSSProperties>(() => ({
     transform: CSS.Transform.toString(transform),
@@ -188,17 +180,13 @@ export function LoggedExerciseCard({
       if (!next[index]) return prev;
   
       if (field === 'weight') {
-        // empty string → null (so clearing works)
         const val =
           value === '' ? null :
-          // if "12." transient state, store as number 12 (no decimal) locally;
-          // it'll be snapped again on save
-          Number.isFinite(Number(value)) ? snapToHalf(Number(value)) : null;
+          Number.isFinite(Number(value)) ? Number(value) : null;
   
         next[index] = { ...next[index], weight: val, isProvisional: false };
       } else {
-        // reps logic (already limited to 2 digits elsewhere)
-        const n = value === '' ? null : sanitizeRepsInput(value);
+        const n = value === '' ? null : Number(value);
         next[index] = { ...next[index], reps: Number.isFinite(n) ? n : null, isProvisional: false };
       }
   
@@ -252,7 +240,7 @@ export function LoggedExerciseCard({
         className={cn(
           "shadow-md transition-all rounded-lg border", 
           "border-[var(--card-border-color)]",
-          effectiveSetStructure !== 'normal' && "border-2",
+          localStructure !== 'normal' && "border-2",
           isDragging && "ring-2 ring-primary"
         )}
       >
@@ -271,7 +259,7 @@ export function LoggedExerciseCard({
               </button>
               <div className="flex flex-col gap-1 items-start">
                   <CardTitle className="font-headline text-lg">{loggedExercise.name}</CardTitle>
-                  <SetStructureBadge value={effectiveSetStructure} />
+                  <SetStructureBadge value={localStructure} />
               </div>
             </div>
             <div className="flex items-center">
@@ -371,23 +359,27 @@ export function LoggedExerciseCard({
             </div>
           </div>
           <div className="border-t -mx-4 px-4 pt-4 sm:mx-0 sm:px-0">
-            <div className="flex flex-col sm:flex-row items-center gap-3">
-              <div className="flex items-center gap-2 flex-1">
-                <span className="text-sm text-muted-foreground whitespace-nowrap">
-                  Session Set Structure
-                </span>
-                <SetStructurePicker
-                  className="h-10 w-44 sm:w-56"
-                  value={loggedExercise.setStructureOverride ?? (loggedExercise.setStructure ?? 'normal')}
-                  onChange={(val) => {
-                    onMarkAsInteracted();
-                    const base = loggedExercise.setStructure ?? 'normal';
-                    const nextOverride = (val === base) ? null : val;
-                    onUpdateSetStructureOverride(nextOverride);
-                  }}
-                  disabled={isSavingThisExercise || isSavingParentLog}
-                />
-              </div>
+            <div
+              className="flex items-center gap-2 flex-1"
+              onPointerDownCapture={(e) => e.stopPropagation()}
+            >
+              <span className="text-sm text-muted-foreground whitespace-nowrap">
+                Session Set Structure
+              </span>
+              <SetStructurePicker
+                className="h-10 w-44 sm:w-56"
+                value={localStructure}
+                onChange={(val) => {
+                  onMarkAsInteracted();
+                  setLocalStructure(val);
+                  const base = loggedExercise.setStructure ?? "normal";
+                  const nextOverride = (val === base) ? null : val;
+                  onUpdateSetStructureOverride(loggedExercise.id, nextOverride);
+                }}
+                disabled={isSavingThisExercise || isSavingParentLog}
+              />
+            </div>
+            <div className="flex flex-col sm:flex-row items-center gap-3 mt-4">
               <Button
                 onClick={handleSaveThisExercise}
                 disabled={isSavingThisExercise || isSavingParentLog}
@@ -404,3 +396,5 @@ export function LoggedExerciseCard({
     </div>
   );
 }
+
+    

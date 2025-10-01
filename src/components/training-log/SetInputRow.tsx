@@ -17,15 +17,11 @@ interface SetInputRowProps {
   onRemoveSet: () => void;
   isProvisional?: boolean;
   onInteract: () => void;
+  weightDisplay: string;
+  setWeightDisplay: (value: string) => void;
 }
 
-export function SetInputRow({ set, index, onSetChange, onRemoveSet, isProvisional, onInteract }: SetInputRowProps) {
-  const [weightDisplay, setWeightDisplay] = useState(formatWeightHalf(set.weight));
-
-  useEffect(() => {
-    // Sync local display state if the prop changes from outside
-    setWeightDisplay(formatWeightHalf(set.weight));
-  }, [set.weight]);
+export function SetInputRow({ set, index, onSetChange, onRemoveSet, isProvisional, onInteract, weightDisplay, setWeightDisplay }: SetInputRowProps) {
   
   const change = (field: 'reps'|'weight', v: string) => {
     onSetChange(index, field, v); // allow '' to go through -> becomes null in parent
@@ -167,3 +163,5 @@ export function SetInputRow({ set, index, onSetChange, onRemoveSet, isProvisiona
     </div>
   );
 }
+
+    

@@ -516,7 +516,7 @@ export const useTrainingLog = (initialDate: Date) => {
   const updateExerciseSetStructureOverride = (exerciseId: string, structure: SetStructure | null) => {
     mutateBaseline((base) => {
       if (!base) return null;
-      return {
+      const updatedLog = {
         ...base,
         exercises: base.exercises.map(ex =>
           ex.id === exerciseId
@@ -524,7 +524,20 @@ export const useTrainingLog = (initialDate: Date) => {
             : ex
         )
       };
+      return updatedLog;
     });
+
+    if (user?.id && currentLog?.id) {
+      saveWorkoutLog(user.id, currentLog.id, {
+        ...currentLog,
+        exercises: currentLog.exercises.map(ex =>
+          ex.id === exerciseId ? { ...ex, setStructureOverride: structure } : ex
+        ),
+      }).catch(err => {
+          console.error("Failed to persist set structure override in background", err);
+          // Optional: implement UI to show save error
+      });
+    }
   };
   
   const applyLocalPRUpdate = useCallback((exerciseId: string, todaysSets: LoggedSet[]) => {
@@ -791,6 +804,9 @@ export const useTrainingLog = (initialDate: Date) => {
     setDisplayedMonth,
   };
 };
+
+
+    
 
 
     
