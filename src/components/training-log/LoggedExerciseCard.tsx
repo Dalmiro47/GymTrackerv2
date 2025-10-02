@@ -140,7 +140,6 @@ export function LoggedExerciseCard({
   }, [loggedExercise.setStructure, loggedExercise.setStructureOverride]);
 
   const [localStructure, setLocalStructure] = useState(effectiveSetStructure);
-  const [pickerOpen, setPickerOpen] = useState(false);
 
   useEffect(() => {
     setLocalStructure(effectiveSetStructure);
@@ -190,14 +189,11 @@ export function LoggedExerciseCard({
       if (!next[index]) return prev;
   
       if (field === 'weight') {
-        const val =
-          value === '' ? null :
-          Number.is.Finite(Number(value)) ? Number(value) : null;
-  
-        next[index] = { ...next[index], weight: val, isProvisional: false };
+        const n = value === '' ? null : Number(value);
+        next[index] = { ...next[index], weight: Number.isFinite(n as number) ? (n as number) : null, isProvisional: false };
       } else {
         const n = value === '' ? null : Number(value);
-        next[index] = { ...next[index], reps: Number.is.Finite(n) ? n : null, isProvisional: false };
+        next[index] = { ...next[index], reps: Number.isFinite(n as number) ? (n as number) : null, isProvisional: false };
       }
   
       pushUp(next);
@@ -391,8 +387,7 @@ export function LoggedExerciseCard({
                 onChange={(val) => {
                   onMarkAsInteracted();
                   setLocalStructure(val);
-
-                  const base = loggedExercise.setStructure ?? "normal";
+                  const base = loggedExercise.setStructure ?? 'normal';
                   const nextOverride = (val === base) ? null : val;
                   onUpdateSetStructureOverride(loggedExercise.id, nextOverride);
                 }}
@@ -416,7 +411,3 @@ export function LoggedExerciseCard({
     </div>
   );
 }
-
-    
-
-    
