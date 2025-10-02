@@ -457,8 +457,10 @@ function TrainingLogPageContent() {
                     {currentLog.exercises.map((loggedEx, index) => {
                       const currentStructure = effectiveOf(loggedEx);
                       const nextStructure = effectiveOf(currentLog.exercises[index + 1]);
+                      const prevStructure = effectiveOf(currentLog.exercises[index - 1]);
                       const isInGroup = currentStructure === 'superset' || currentStructure === 'triset';
-                      const groupContinues = isInGroup && currentStructure === nextStructure;
+                      const isBlockStart = currentStructure !== prevStructure;
+                      const groupContinues = isInGroup && isBlockStart && currentStructure === nextStructure;
                       const connectorColor = SET_STRUCTURE_COLORS[currentStructure]?.border;
 
                       return (
