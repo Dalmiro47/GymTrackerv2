@@ -112,6 +112,15 @@ export function LoggedExerciseCard({
   const [localSets, setLocalSets] = useState<LoggedSet[]>(loggedExercise.sets);
   const [isSavingThisExercise, setIsSavingThisExercise] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
+  const [weightDisplays, setWeightDisplays] = useState<string[]>(
+    (loggedExercise.sets ?? []).map(s => s.weight == null ? '' : String(s.weight))
+  );
+
+  useEffect(() => {
+    setWeightDisplays((loggedExercise.sets ?? []).map(
+      s => s.weight == null ? '' : String(s.weight)
+    ));
+  }, [loggedExercise.sets]);
   
   const contentRef = useRef<HTMLDivElement | null>(null);
   const timeoutRef = useRef<number | null>(null);
@@ -180,14 +189,11 @@ export function LoggedExerciseCard({
       if (!next[index]) return prev;
   
       if (field === 'weight') {
-        const val =
-          value === '' ? null :
-          Number.isFinite(Number(value)) ? Number(value) : null;
-  
-        next[index] = { ...next[index], weight: val, isProvisional: false };
+        const n = value === '' ? null : Number(value);
+        next[index] = { ...next[index], weight: Number.isFinite(n as number) ? (n as number) : null, isProvisional: false };
       } else {
         const n = value === '' ? null : Number(value);
-        next[index] = { ...next[index], reps: Number.isFinite(n) ? n : null, isProvisional: false };
+        next[index] = { ...next[index], reps: Number.isFinite(n as number) ? (n as number) : null, isProvisional: false };
       }
   
       pushUp(next);
@@ -340,6 +346,14 @@ export function LoggedExerciseCard({
               onRemoveSet={() => removeSet(set.id)}
               isProvisional={set.isProvisional} 
               onInteract={onMarkAsInteracted} 
+              weightDisplay={weightDisplays[index] ?? ''}
+              setWeightDisplay={(val) => 
+                setWeightDisplays(prev => {
+                  const next = [...prev];
+                  next[index] = val;
+                  return next;
+                })
+              }
             />
           ))}
           
@@ -366,13 +380,14 @@ export function LoggedExerciseCard({
               <span className="text-sm text-muted-foreground whitespace-nowrap">
                 Session Set Structure
               </span>
+
               <SetStructurePicker
                 className="h-10 w-44 sm:w-56"
                 value={localStructure}
                 onChange={(val) => {
                   onMarkAsInteracted();
                   setLocalStructure(val);
-                  const base = loggedExercise.setStructure ?? "normal";
+                  const base = loggedExercise.setStructure ?? 'normal';
                   const nextOverride = (val === base) ? null : val;
                   onUpdateSetStructureOverride(loggedExercise.id, nextOverride);
                 }}
@@ -396,5 +411,3 @@ export function LoggedExerciseCard({
     </div>
   );
 }
-
-    

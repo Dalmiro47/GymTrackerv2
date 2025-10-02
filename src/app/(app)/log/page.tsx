@@ -455,11 +455,29 @@ function TrainingLogPageContent() {
                 <SortableContext items={loggedExerciseIds} strategy={verticalListSortingStrategy}>
                   <div>
                     {currentLog.exercises.map((loggedEx, index) => {
-                      const currentStructure = effectiveOf(loggedEx);
-                      const nextStructure = effectiveOf(currentLog.exercises[index + 1]);
-                      const isInGroup = currentStructure === 'superset' || currentStructure === 'triset';
-                      const groupContinues = isInGroup && currentStructure === nextStructure;
-                      const connectorColor = SET_STRUCTURE_COLORS[currentStructure]?.border;
+                        const currentStructure = effectiveOf(loggedEx);
+                        const nextStructure = effectiveOf(currentLog.exercises[index + 1]);
+
+                        // determine group size (0 = no group)
+                        const groupSize =
+                          currentStructure === 'superset' ? 2 :
+                          currentStructure === 'triset'   ? 3 : 0;
+
+                        let posInRun = 0; // 0 for first in run, 1 for second, ...
+                        if (groupSize > 0) {
+                          for (let j = index - 1; j >= 0; j--) {
+                            if (effectiveOf(currentLog.exercises[j]) === currentStructure) posInRun++;
+                            else break;
+                          }
+                        }
+
+                        // Draw connector ONLY if next is same structure AND we're not at the end of a group chunk
+                        const groupContinues =
+                          groupSize > 0 &&
+                          nextStructure === currentStructure &&
+                          (posInRun % groupSize) !== (groupSize - 1);
+                        
+                        const connectorColor = SET_STRUCTURE_COLORS[currentStructure]?.border;
 
                       return (
                       <React.Fragment key={loggedEx.id}>
