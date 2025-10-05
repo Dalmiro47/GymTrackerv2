@@ -11,6 +11,7 @@ import {
   query,
   orderBy,
   getDoc,
+  arrayUnion,
 } from 'firebase/firestore';
 import { deleteAllPerformanceEntriesForExercise } from './trainingLogService'; 
 import { stripUndefinedDeep } from '@/lib/sanitize';
@@ -20,61 +21,68 @@ import { defaultExercises } from '@/lib/defaultExercises';
 const getUserExercisesCollectionPath = (userId: string) => `users/${userId}/exercises`;
 const CURRENT_SEED_VERSION = 2; // Bump this when you add/change default exercises
 
+export type SeedResult = { addedCount: number; bumpedSeedVersion: boolean };
+
 /**
  * Ensures the user's exercise library is seeded with default exercises.
  * This function is idempotent and versioned. It will:
  * 1. Check a `seedVersion` on the user's profile.
- * 2. Only run if the user's version is less than the current version.
- * 3. Fetch all existing exercise IDs to avoid overwriting.
- * 4. Create only the default exercises that are missing.
- * 5. Update the `seedVersion` on the user's profile.
- * This prevents accidental overwriting of user-edited exercises.
+ * 2. Only run if the user's version is less than the current version or if new defaults are missing.
+ * 3. Respect a `deletedDefaultIds` array ("tombstones") in the user's profile to not re-add deleted defaults.
+ * 4. Fetch all existing exercise IDs to avoid overwriting.
+ * 5. Create only the default exercises that are missing and not tombstoned.
+ * 6. Update the `seedVersion` on the user's profile if necessary.
  */
-export async function ensureExercisesSeeded(userId: string): Promise<void> {
+export async function ensureExercisesSeeded(userId: string): Promise<SeedResult> {
   if (!userId) throw new Error("User ID is required for seeding.");
 
   const profileRef = doc(db, 'users', userId, 'profile', 'profile');
   const exercisesCol = collection(db, 'users', userId, 'exercises');
 
   try {
-    // 1. Check seed version first
+    // 1. Read profile (seedVersion + tombstones)
     const profileSnap = await getDoc(profileRef);
-    const prevSeedVersion = profileSnap.exists() ? (profileSnap.data().seedVersion ?? 0) : 0;
+    const profile = profileSnap.exists() ? profileSnap.data() : {};
+    const prevSeedVersion: number = profile.seedVersion ?? 0;
+    const deletedDefaultIds: string[] = profile.deletedDefaultIds ?? [];
 
-    if (prevSeedVersion >= CURRENT_SEED_VERSION) {
-      return; // Already seeded with the current or a newer version
-    }
-
-    // 2. Load existing exercise IDs once to prevent overwrites
+    // 2. Load existing exercise IDs once
     const existingIds = new Set<string>();
     const existingSnap = await getDocs(exercisesCol);
     existingSnap.forEach(d => existingIds.add(d.id));
 
-    // 3. Create only missing default exercises
+    // 3. Compute missing defaults that are NOT tombstoned
+    const missing = defaultExercises.filter(
+      ex => !existingIds.has(ex.id) && !deletedDefaultIds.includes(ex.id)
+    );
+
+    const bumpedSeedVersion = prevSeedVersion < CURRENT_SEED_VERSION;
+
+    // If there's nothing to add and version is up-to-date, exit early.
+    if (missing.length === 0 && !bumpedSeedVersion) {
+      return { addedCount: 0, bumpedSeedVersion: false };
+    }
+
     const batch = writeBatch(db);
-    let exercisesAdded = 0;
-    for (const ex of defaultExercises) {
-      if (!existingIds.has(ex.id)) {
-        const { id, ...payload } = ex;
-        const ref = doc(exercisesCol, id);
-        batch.set(ref, stripUndefinedDeep(payload)); // Never merge, only create
-        exercisesAdded++;
-      }
+
+    // 4. Create-only for non-tombstoned missing exercises
+    for (const ex of missing) {
+      const { id, ...payload } = ex;
+      const ref = doc(exercisesCol, id);
+      batch.set(ref, stripUndefinedDeep(payload));
     }
     
-    // Only commit if there are changes to make
-    if (exercisesAdded > 0) {
-        // 4. Write new seed version atomically with the exercise batch
-        batch.set(profileRef, { seedVersion: CURRENT_SEED_VERSION }, { merge: true });
-        await batch.commit();
-    } else {
-        // If no exercises were added but the version was old, just update the version
-        await setDoc(profileRef, { seedVersion: CURRENT_SEED_VERSION }, { merge: true });
+    // 5. Update seed version if it changed
+    if (bumpedSeedVersion) {
+      batch.set(profileRef, { seedVersion: CURRENT_SEED_VERSION }, { merge: true });
     }
+
+    await batch.commit();
+    return { addedCount: missing.length, bumpedSeedVersion };
 
   } catch (error: any) {
     console.error("Error during idempotent exercise seeding:", error);
-    // Don't re-throw, to avoid crashing the UI on a non-critical background task
+    throw new Error("Library sync failed.");
   }
 }
 
@@ -159,7 +167,6 @@ export const updateExercise = async (userId: string, exerciseId: string, exercis
   try {
     const exerciseDocRef = doc(db, getUserExercisesCollectionPath(userId), exerciseId);
     
-    // Add a flag to indicate user has edited this, to prevent future accidental overwrites
     const dataToUpdate = stripUndefinedDeep({
         ...exerciseData,
         userEdited: true, 
@@ -176,12 +183,24 @@ export const updateExercise = async (userId: string, exerciseId: string, exercis
 export const deleteExercise = async (userId: string, exerciseId: string): Promise<void> => {
   if (!userId) throw new Error("User ID is required to delete an exercise.");
   if (!exerciseId) throw new Error("Exercise ID is required to delete an exercise.");
-  try {
-    const exerciseDocRef = doc(db, getUserExercisesCollectionPath(userId), exerciseId);
-    await deleteDoc(exerciseDocRef);
-    await deleteAllPerformanceEntriesForExercise(userId, exerciseId);
-  } catch (error: any) {
-    console.error("Error deleting exercise from Firestore: ", error);
-    throw new Error("Failed to delete exercise.");
+  
+  const exerciseDocRef = doc(db, getUserExercisesCollectionPath(userId), exerciseId);
+  await deleteDoc(exerciseDocRef);
+  await deleteAllPerformanceEntriesForExercise(userId, exerciseId);
+
+  // If it was a default exercise, "tombstone" it to prevent re-seeding.
+  const isDefault = defaultExercises.some(ex => ex.id === exerciseId);
+  if (isDefault) {
+    const profileRef = doc(db, 'users', userId, 'profile', 'profile');
+    try {
+      await setDoc(
+        profileRef,
+        { deletedDefaultIds: arrayUnion(exerciseId) },
+        { merge: true }
+      );
+    } catch (error: any) {
+      console.error(`Failed to tombstone deleted default exercise ${exerciseId}:`, error);
+      // Don't re-throw; the primary deletion succeeded.
+    }
   }
 };

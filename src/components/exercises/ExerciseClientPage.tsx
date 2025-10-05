@@ -81,13 +81,14 @@ export function ExerciseClientPage() {
   const [isSeeding, setIsSeeding] = useState(false);
 
 
-  const fetchUserExercises = useCallback(async (currentUserId: string | null | undefined): Promise<Exercise[]> => {
+  const fetchUserExercises = useCallback(async (currentUserId: string | null | undefined): Promise<void> => {
     if (!currentUserId) {
-      return [];
+      setExercises([]);
+      return;
     }
     try {
       const userExercises = await getExercises(currentUserId);
-      return userExercises;
+      setExercises(userExercises);
     } catch (error: any) {
       console.error("Failed to fetch exercises:", error);
       toast({
@@ -95,30 +96,42 @@ export function ExerciseClientPage() {
         description: `Could not fetch your exercises. ${error.message || 'Please try again later.'}`,
         variant: "destructive",
       });
-      return [];
     }
   }, [toast]);
 
   useEffect(() => {
     if (user?.id) {
-      setIsSeeding(true);
-      toast({ title: "Checking your library...", description: "Syncing default exercises." });
-      ensureExercisesSeeded(user.id)
-        .then(async () => {
-          const userExercises = await fetchUserExercises(user.id);
-          setExercises(userExercises);
-        })
-        .catch(err => {
-            console.error("Seeding check failed:", err);
-            toast({ title: "Library Sync Failed", description: "Could not check for default exercises.", variant: "destructive"});
-        })
-        .finally(() => {
-          setIsSeeding(false);
-          setIsLoading(false);
-        });
+      let cancelled = false;
+      (async () => {
+        setIsSeeding(true);
+        try {
+          const { addedCount } = await ensureExercisesSeeded(user.id);
+          if (!cancelled && addedCount > 0) {
+            toast({
+              title: "Library Synced",
+              description: `Added ${addedCount} new default exercise${addedCount > 1 ? 's' : ''} to your library.`,
+            });
+          }
+        } catch (err: any) {
+          if (!cancelled) {
+            toast({
+              title: "Library Sync Failed",
+              description: err.message || "Could not check for default exercises.",
+              variant: "destructive",
+            });
+          }
+        } finally {
+          if (!cancelled) {
+            await fetchUserExercises(user.id);
+            setIsSeeding(false);
+            setIsLoading(false);
+          }
+        }
+      })();
+      return () => { cancelled = true; };
     } else if (!authContext.isLoading && !user) {
-        setExercises([]);
-        setIsLoading(false);
+      setExercises([]);
+      setIsLoading(false);
     }
   }, [user, authContext.isLoading, fetchUserExercises, toast]);
   
@@ -227,8 +240,7 @@ export function ExerciseClientPage() {
         toast({ title: "Exercise Added", description: `${formData.name} has been successfully added.` });
       }
       
-      const updatedExercisesList = await fetchUserExercises(user.id);
-      setExercises(updatedExercisesList);
+      await fetchUserExercises(user.id);
 
       setIsDialogOpen(false);
       setExerciseToEdit(null);
@@ -291,8 +303,7 @@ export function ExerciseClientPage() {
       await deleteExerciseService(user.id, exerciseToDeleteId);
       toast({ title: "Exercise Deleted", description: `${exerciseName} has been removed from your library.` });
       
-      const updatedExercisesList = await fetchUserExercises(user.id);
-      setExercises(updatedExercisesList);
+      await fetchUserExercises(user.id);
     } catch (error: any) {
       console.error("Failed to delete exercise and update routines:", error);
       toast({ title: "Delete Error", description: `Could not delete ${exerciseName}. ${error.message}`, variant: "destructive" });
@@ -382,7 +393,7 @@ export function ExerciseClientPage() {
       {isSeeding && !isLoading ? ( 
         <div className="flex justify-center items-center h-40">
           <Loader2 className="h-10 w-10 animate-spin text-primary" />
-          <p className="ml-3 text-lg text-primary font-semibold">Populating your library with default exercises...</p>
+          <p className="ml-3 text-lg text-primary font-semibold">Syncing your library...</p>
         </div>
       ) : !isLoading && isFilteringOrSearching ? (
         displayedExercises.length > 0 ? (
