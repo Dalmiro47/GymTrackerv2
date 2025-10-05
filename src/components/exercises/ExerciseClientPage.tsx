@@ -78,7 +78,6 @@ export function ExerciseClientPage() {
   const [isLoading, setIsLoading] = useState(true); 
   const [isDialogSaving, setIsDialogSaving] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [isSeeding, setIsSeeding] = useState(false);
 
 
   const fetchUserExercises = useCallback(async (currentUserId: string | null | undefined): Promise<void> => {
@@ -103,7 +102,7 @@ export function ExerciseClientPage() {
     if (user?.id) {
       let cancelled = false;
       (async () => {
-        setIsSeeding(true);
+        setIsLoading(true);
         try {
           const { addedCount } = await ensureExercisesSeeded(user.id);
           if (!cancelled && addedCount > 0) {
@@ -123,7 +122,6 @@ export function ExerciseClientPage() {
         } finally {
           if (!cancelled) {
             await fetchUserExercises(user.id);
-            setIsSeeding(false);
             setIsLoading(false);
           }
         }
@@ -340,7 +338,7 @@ export function ExerciseClientPage() {
             variant="default"
             className="bg-accent hover:bg-accent/90 text-accent-foreground"
             onClick={handleOpenAddDialog}
-            disabled={isSeeding || isLoading} 
+            disabled={isLoading} 
           >
           <PlusCircle className="mr-2 h-4 w-4" />
           Add New Exercise
@@ -365,7 +363,7 @@ export function ExerciseClientPage() {
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full rounded-lg bg-card py-2 pl-10 pr-4 shadow-sm focus:ring-primary"
             aria-label="Search exercises"
-            disabled={isSeeding || (isLoading && !exercises.length)}
+            disabled={isLoading && !exercises.length}
           />
         </div>
         <div className="relative">
@@ -373,7 +371,7 @@ export function ExerciseClientPage() {
            <Select
               value={selectedMuscleGroup}
               onValueChange={(value) => setSelectedMuscleGroup(value as MuscleGroup | 'All')}
-              disabled={isSeeding || (isLoading && !exercises.length)}
+              disabled={isLoading && !exercises.length}
             >
             <SelectTrigger className="w-full rounded-lg bg-card py-2 pl-10 pr-4 shadow-sm focus:ring-primary" aria-label="Filter by muscle group">
               <SelectValue placeholder="Filter by muscle group" />
@@ -390,12 +388,7 @@ export function ExerciseClientPage() {
         </div>
       </div>
 
-      {isSeeding && !isLoading ? ( 
-        <div className="flex justify-center items-center h-40">
-          <Loader2 className="h-10 w-10 animate-spin text-primary" />
-          <p className="ml-3 text-lg text-primary font-semibold">Syncing your library...</p>
-        </div>
-      ) : !isLoading && isFilteringOrSearching ? (
+      {!isLoading && isFilteringOrSearching ? (
         displayedExercises.length > 0 ? (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {displayedExercises.map(exercise => (
@@ -437,10 +430,10 @@ export function ExerciseClientPage() {
             </AccordionItem>
           ))}
         </Accordion>
-      ) : (!isLoading && !isSeeding && exercises.length === 0 && user) ? ( 
+      ) : (!isLoading && exercises.length === 0 && user) ? ( 
           <div className="text-center py-12">
             <p className="text-xl text-muted-foreground font-semibold mb-2">Your exercise library is empty.</p>
-            <p className="text-muted-foreground">Click "Create Routine" to get started!</p>
+            <p className="text-muted-foreground">Click "Add New Exercise" to get started!</p>
           </div>
         )
       : null }
@@ -494,3 +487,5 @@ export function ExerciseClientPage() {
     </>
   );
 }
+
+    
