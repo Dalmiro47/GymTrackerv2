@@ -13,10 +13,29 @@ export interface LiftTrend {
 
 export type CoachAdvice = {
   overview: string;
-  priorityScore: number;
-  routineTweaks: any[];
-  nextFourWeeks: Array<{ week: number; focus: string; notes: string }>;
+  priorities: string[];
+  nextFourWeeks: string[];
 };
+
+// helpful when LLM returns strings instead of arrays
+export function normalizeAdviceShape(input: any): CoachAdvice {
+  const toList = (v: any): string[] => {
+    if (Array.isArray(v)) return v.map(String).map(s => s.trim()).filter(Boolean);
+    const s = String(v ?? '');
+    // split by newline or bullet/numbered lists
+    return s
+      .split(/\r?\n|·|- |\* |\d+\.\s/g)
+      .map(t => t.trim())
+      .filter(Boolean);
+  };
+
+  return {
+    overview: String(input?.overview ?? '').trim(),
+    priorities: toList(input?.priorities),
+    nextFourWeeks: toList(input?.nextFourWeeks),
+  };
+}
+
 
 export function estimate1RM(weight:number, reps:number){
   return reps > 1 ? weight * (1 + reps / 30) : weight;
@@ -92,53 +111,43 @@ export function summarizeLogs(routines:any[], logs:WorkoutLog[], weeks=8) {
 // You already have summarizeTrainingData(...)
 export function buildCoachAdviceLite(summary: any, profile: any): CoachAdvice {
   const goal = (profile?.goal || '').toLowerCase();
-  const stallLifts = (summary?.stalledLifts || []).map((l: any) => l.name).slice(0, 2);
-  const lowVolumeGroups = (summary?.volumeGaps || []).map((g: any) => g.muscleGroup).slice(0, 2);
+  const weeklySessions = summary?.weeks?.[0]?.sessions ?? 0;
+  const avgIntensity = Math.round(((summary?.weeks?.[0]?.avgIntensity ?? 0) + Number.EPSILON) * 10) / 10;
+  const stallLifts = (summary?.stalledLifts ?? []).slice(0, 3);
+  const lowVolumeGroups = (summary?.volumeGaps ?? []).slice(0, 3);
 
   const goalLine =
-    goal.includes('hypertrophy') ? 'Prioritize moderate reps (6–12) and weekly volume.'
-    : goal.includes('strength')  ? 'Prioritize lower reps (3–6) with adequate rest.'
-    : 'Maintain a balanced approach with progressive overload.';
+    goal.includes('hypertrophy') ? 'Prioritize moderate reps (6–12) and weekly volume.' :
+    goal.includes('strength')    ? 'Prioritize lower reps (3–6) with adequate rest.' :
+                                   'Maintain a balanced approach with progressive overload.';
 
-  const overview = `Based on your goal of ${profile?.goal || 'General Fitness'}, your summary shows a solid foundation. ${goalLine}`;
+  const consistency =
+    weeklySessions >= 4 ? 'Great consistency — keep that cadence.' :
+    weeklySessions >= 3 ? 'Solid consistency — one extra session could accelerate progress.' :
+                          'Aim for ≥3 weekly sessions for meaningful progress.';
 
-  const tweaks: any[] = [];
-  if (stallLifts.length > 0) {
-    tweaks.push({
-      where: { day: 'Any' },
-      change: 'Change Sets/Reps',
-      details: `On stalled lifts like ${stallLifts.join(' & ')}, consider a brief deload or switching to a slightly different rep range (e.g., 5x5 instead of 3x8).`,
-      rationale: 'Breaks through plateaus by changing the stimulus.'
-    });
-  }
-  if (lowVolumeGroups.length > 0) {
-    tweaks.push({
-      where: { day: 'Any' },
-      change: 'Add Exercise',
-      details: `Your volume for ${lowVolumeGroups.join(' & ')} is low. Add 1-2 exercises targeting these areas per week.`,
-      rationale: 'Ensures balanced muscle development and prevents weaknesses.'
-    });
-  }
-  if (tweaks.length === 0) {
-    tweaks.push({
-      where: { day: 'All' },
-      change: 'Change Sets/Reps',
-      details: 'Your plan looks balanced. To progress, focus on adding a small amount of weight or one rep to your main lifts each week.',
-      rationale: 'Progressive overload is the primary driver of long-term gains.'
-    });
-  }
+  const overview = [
+    goalLine,
+    `Last week: ${weeklySessions} sessions, avg load index ≈ ${avgIntensity}.`,
+    consistency,
+  ].join(' ');
 
-  const nextFourWeeks = [
-    { week: 1, focus: 'Consistency', notes: 'Focus on hitting all your planned sessions and maintaining form.' },
-    { week: 2, focus: 'Progressive Overload', notes: 'Try to add a small amount of weight or one rep to your primary lifts.' },
-    { week: 3, focus: 'Volume Adjustment', notes: 'Assess recovery. If feeling good, add one set to a lagging body part.' },
-    { week: 4, focus: 'Deload or Push', notes: 'If you feel fatigued, reduce volume by 30%. If you feel strong, repeat week 3.' }
+  const priorities: string[] = [
+    lowVolumeGroups.length
+      ? `Underserved muscle groups: ${lowVolumeGroups.join(', ')} → add 4–8 quality sets/week.`
+      : 'Volume distribution looks balanced across muscle groups.',
+    stallLifts.length
+      ? `Possible stalls: ${stallLifts.join(', ')} → micro-load or reset reps/RIR targets.`
+      : 'No clear stalls detected — continue progressive loading.',
+    'Keep 1–2 RIR on first sets of key lifts; add load or reps weekly if bar speed and form allow.',
   ];
 
-  return {
-    overview,
-    priorityScore: 75,
-    routineTweaks: tweaks,
-    nextFourWeeks
-  };
+  const nextFourWeeks: string[] = [
+    'Weeks 1–2: Add +1–2 sets on the weakest muscle group; hold others steady.',
+    'Week 3: Increase load ≈2.5–5% on primaries if you finished ≥1 RIR last week.',
+    'Week 4: Deload if fatigue accumulates (−30–40% volume) or repeat week 3 if fresh.',
+    'Track top set + backoff sets; keep warm-ups consistent.',
+  ];
+
+  return { overview, priorities, nextFourWeeks };
 }

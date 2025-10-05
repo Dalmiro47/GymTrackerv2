@@ -8,7 +8,7 @@ export function CoachSuggestions({ advice }: { advice: CoachAdvice }) {
     <Card>
       <CardHeader><CardTitle>Priority suggestions</CardTitle></CardHeader>
       <CardContent className="space-y-3">
-        {advice.routineTweaks.map((t,i)=>(
+        {(advice.routineTweaks || []).map((t,i)=>(
           <div key={i} className="text-sm">
             <div className="font-medium">{t.change} — {t.where.day}{typeof t.where.slot==='number' ? ` (slot ${t.where.slot})` : ''}</div>
             <div>{t.details}</div>
@@ -16,6 +16,9 @@ export function CoachSuggestions({ advice }: { advice: CoachAdvice }) {
             <div className="text-muted-foreground">{t.rationale}</div>
           </div>
         ))}
+        {(!advice.routineTweaks || advice.routineTweaks.length === 0) && (
+            (advice as any).priorities.map((p:string, i:number)=>(<p key={i}>{p}</p>))
+        )}
       </CardContent>
     </Card>
   );

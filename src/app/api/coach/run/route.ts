@@ -2,7 +2,8 @@
 import { NextResponse } from 'next/server';
 import { stripUndefinedDeep } from '@/lib/sanitize';
 import type { FunctionDeclarationsTool } from '@google/generative-ai';
-import { summarizeLogs, buildCoachAdviceLite } from '@/lib/analysis';
+import { summarizeLogs, buildCoachAdviceLite, normalizeAdviceShape } from '@/lib/analysis';
+import type { CoachAdvice } from '@/lib/analysis';
 
 // Optional import only if you have the SDK installed
 let GoogleGenerativeAI: any, HarmCategory: any, HarmBlockThreshold: any;
@@ -23,8 +24,7 @@ const CoachAdviceParams = {
   type: 'OBJECT',
   properties: {
     overview: { type: 'STRING', description: 'Short high-level summary.' },
-    priorityScore: { type: 'NUMBER', description: '1–100 priority of these changes.' },
-    risks: { type: 'ARRAY', items: { type: 'STRING' } },
+    priorities: { type: 'ARRAY', items: { type: 'STRING' } },
     routineTweaks: {
       type: 'ARRAY',
       items: {
@@ -116,7 +116,7 @@ const CoachAdviceParams = {
       },
     },
   },
-  required: ['overview', 'priorityScore', 'routineTweaks', 'nextFourWeeks'],
+  required: ['overview', 'routineTweaks', 'nextFourWeeks'],
 };
 
 const SYSTEM_INSTRUCTION = `
@@ -176,7 +176,8 @@ export async function POST(req: Request) {
 
     if (!canUseGemini) {
       // ✅ Free path
-      const advice = buildCoachAdviceLite(summary, profile);
+      const lite = buildCoachAdviceLite(summary, profile);
+      const advice: CoachAdvice = normalizeAdviceShape(lite);
       return NextResponse.json({ advice, engine: 'lite' });
     }
 
@@ -192,14 +193,14 @@ TASK
 Call the CoachAdvice function with your structured advice.
 `.trim();
 
-    let advice: any | undefined;
+    let rawAdvice: any;
     let lastErr: any;
 
     for (const modelName of MODEL_CANDIDATES) {
       try {
         const out = await runWithModel(genAI, modelName, prompt);
-        advice = out.advice;
-        if (advice) break;
+        rawAdvice = out.advice;
+        if (rawAdvice) break;
       } catch (e: any) {
         lastErr = e;
         const msg = String(e?.message || e);
@@ -215,11 +216,13 @@ Call the CoachAdvice function with your structured advice.
       }
     }
 
-    if (!advice) {
+    if (!rawAdvice) {
       const lite = buildCoachAdviceLite(summary, profile);
-      return NextResponse.json({ advice: lite, engine: 'lite', note: lastErr?.message ?? 'LLM unavailable, used lite' }, { status: 200 });
+      const advice: CoachAdvice = normalizeAdviceShape(lite);
+      return NextResponse.json({ advice: advice, engine: 'lite', note: lastErr?.message ?? 'LLM unavailable, used lite' }, { status: 200 });
     }
-
+    
+    const advice = normalizeAdviceShape(rawAdvice);
     return NextResponse.json({ advice, engine: 'gemini' });
 
   } catch (err: any) {

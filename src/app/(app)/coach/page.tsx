@@ -51,10 +51,14 @@ export default function CoachPage() {
           <CoachSuggestions advice={advice} />
           <Card><CardHeader><CardTitle>Next 4 weeks</CardTitle></CardHeader>
           <CardContent className="grid gap-3">
-            {advice.nextFourWeeks.map((w,i)=>(
+            {(advice as any).nextFourWeeks.map((w:any,i:number)=>(
               <div key={i} className="text-sm">
+                {typeof w === 'string' ? <p>{w}</p> :
+                <>
                 <div className="font-medium">Week {w.week}: {w.focus}</div>
                 <div className="text-muted-foreground">{w.notes}</div>
+                </>
+                }
               </div>
             ))}
           </CardContent></Card>
