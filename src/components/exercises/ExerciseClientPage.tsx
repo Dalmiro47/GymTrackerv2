@@ -7,9 +7,17 @@ import type { Exercise, ExerciseData, Routine } from '@/types';
 import type { MuscleGroup } from '@/lib/constants';
 import type { ExerciseFormData } from './AddExerciseDialog';
 import { MUSCLE_GROUPS_LIST } from '@/lib/constants';
-import { defaultExercises } from '@/lib/defaultExercises';
 import { useAuth } from '@/contexts/AuthContext';
-import { addExercise, getExercises, updateExercise, deleteExercise as deleteExerciseService, addDefaultExercisesBatch } from '@/services/exerciseService';
+import { 
+  addExercise, 
+  getExercises, 
+  updateExercise, 
+  deleteExercise as deleteExerciseService, 
+  ensureExercisesSeeded,
+  getHiddenDefaultExercises,
+  restoreHiddenDefaults,
+  type SeedResult 
+} from '@/services/exerciseService';
 import { getRoutines, updateRoutine } from '@/services/routineService';
 import { stripUndefinedDeep } from '@/lib/sanitize';
 import { assertMuscleGroup } from '@/lib/muscleGroup';
@@ -20,7 +28,7 @@ import { AddExerciseDialog } from './AddExerciseDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { PlusCircle, Search, Filter, Loader2, AlertTriangle } from 'lucide-react';
+import { PlusCircle, Search, Filter, Loader2, AlertTriangle, History } from 'lucide-react';
 import {
   Accordion,
   AccordionContent,
@@ -36,9 +44,23 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useToast } from '@/hooks/use-toast';
 import { ScrollArea } from '../ui/scroll-area';
+import {
+  Dialog,
+  DialogClose,
+  DialogContent as RestoreDialogContent,
+  DialogDescription as RestoreDialogDescription,
+  DialogFooter as RestoreDialogFooter,
+  DialogHeader as RestoreDialogHeader,
+  DialogTitle as RestoreDialogTitle,
+} from '@/components/ui/dialog';
+import { Checkbox } from '../ui/checkbox';
+import { Label } from '../ui/label';
+
+type HiddenDefault = { id: string; name: string; muscleGroup: string };
 
 const groupExercisesByMuscle = (exercises: Exercise[], muscleOrder: readonly MuscleGroup[]): { muscleGroup: MuscleGroup; exercises: Exercise[] }[] => {
   const grouped = new Map<MuscleGroup, Exercise[]>();
@@ -79,17 +101,22 @@ export function ExerciseClientPage() {
   const [isLoading, setIsLoading] = useState(true); 
   const [isDialogSaving, setIsDialogSaving] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [isSeeding, setIsSeeding] = useState(false);
-  const [hasAttemptedSeedForCurrentUser, setHasAttemptedSeedForCurrentUser] = useState(false);
+
+  // State for restore functionality
+  const [hiddenDefaults, setHiddenDefaults] = useState<HiddenDefault[]>([]);
+  const [isRestoreDialogOpen, setIsRestoreDialogOpen] = useState(false);
+  const [selectedToRestore, setSelectedToRestore] = useState<string[]>([]);
+  const [isRestoring, setIsRestoring] = useState(false);
 
 
-  const fetchUserExercises = useCallback(async (currentUserId: string | null | undefined): Promise<Exercise[]> => {
+  const fetchUserExercises = useCallback(async (currentUserId: string | null | undefined): Promise<void> => {
     if (!currentUserId) {
-      return [];
+      setExercises([]);
+      return;
     }
     try {
       const userExercises = await getExercises(currentUserId);
-      return userExercises;
+      setExercises(userExercises);
     } catch (error: any) {
       console.error("Failed to fetch exercises:", error);
       toast({
@@ -97,56 +124,56 @@ export function ExerciseClientPage() {
         description: `Could not fetch your exercises. ${error.message || 'Please try again later.'}`,
         variant: "destructive",
       });
-      return [];
     }
   }, [toast]);
-
+  
+  const fetchHiddenDefaults = useCallback(async (currentUserId: string) => {
+    try {
+      const list = await getHiddenDefaultExercises(currentUserId);
+      setHiddenDefaults(list);
+    } catch (e) {
+      console.error("Failed to fetch hidden defaults:", e);
+    }
+  }, []);
 
   useEffect(() => {
-    const loadData = async () => {
-      if (user?.id) {
-        setIsLoading(true); 
-        let userExercises = await fetchUserExercises(user.id);
-
-        if (userExercises.length === 0 && !hasAttemptedSeedForCurrentUser) {
-          setHasAttemptedSeedForCurrentUser(true); 
-          setIsSeeding(true);
-          toast({ title: "Setting up your library...", description: "Adding default exercises."});
-          try {
-            await addDefaultExercisesBatch(user.id, defaultExercises);
-            userExercises = await fetchUserExercises(user.id); 
-            toast({ title: "Library Ready!", description: "Default exercises added."});
-          } catch (seedError: any) {
-            console.error("Failed to seed default exercises:", seedError);
+    if (user?.id) {
+      let cancelled = false;
+      (async () => {
+        setIsLoading(true);
+        try {
+          const { addedCount } = await ensureExercisesSeeded(user.id);
+          if (!cancelled && addedCount > 0) {
             toast({
-              title: "Error Seeding Library",
-              description: `Could not add default exercises. ${seedError.message || 'Unknown error'}`,
+              title: "Library Synced",
+              description: `Added ${addedCount} new default exercise${addedCount > 1 ? 's' : ''} to your library.`,
+            });
+          }
+        } catch (err: any) {
+          if (!cancelled) {
+            toast({
+              title: "Library Sync Failed",
+              description: err.message || "Could not check for default exercises.",
               variant: "destructive",
             });
-          } finally {
-            setIsSeeding(false);
+          }
+        } finally {
+          if (!cancelled) {
+            await Promise.all([
+              fetchUserExercises(user.id),
+              fetchHiddenDefaults(user.id),
+            ]);
+            setIsLoading(false);
           }
         }
-        setExercises(userExercises);
-        setIsLoading(false); 
-      } else if (user === null && !authContext.isLoading) { 
-        setExercises([]);
-        setIsLoading(false);
-        setIsSeeding(false);
-        setHasAttemptedSeedForCurrentUser(false); 
-      }
-    };
-
-    if (user !== undefined) { 
-        loadData();
+      })();
+      return () => { cancelled = true; };
+    } else if (!authContext.isLoading && !user) {
+      setExercises([]);
+      setHiddenDefaults([]);
+      setIsLoading(false);
     }
-    
-     return () => {
-        if(user?.id && !authContext.isLoading) { 
-          // Future: Consider more robust user change detection if needed.
-        }
-    };
-  }, [user, fetchUserExercises, toast, authContext.isLoading, hasAttemptedSeedForCurrentUser]);
+  }, [user, authContext.isLoading, fetchUserExercises, fetchHiddenDefaults, toast]);
   
   const canonicalExercises = useMemo(() => {
       return exercises.map(e => ({...e, muscleGroup: assertMuscleGroup(e.muscleGroup as any)}));
@@ -253,8 +280,7 @@ export function ExerciseClientPage() {
         toast({ title: "Exercise Added", description: `${formData.name} has been successfully added.` });
       }
       
-      const updatedExercisesList = await fetchUserExercises(user.id);
-      setExercises(updatedExercisesList);
+      await fetchUserExercises(user.id);
 
       setIsDialogOpen(false);
       setExerciseToEdit(null);
@@ -317,8 +343,8 @@ export function ExerciseClientPage() {
       await deleteExerciseService(user.id, exerciseToDeleteId);
       toast({ title: "Exercise Deleted", description: `${exerciseName} has been removed from your library.` });
       
-      const updatedExercisesList = await fetchUserExercises(user.id);
-      setExercises(updatedExercisesList);
+      await fetchUserExercises(user.id);
+      await fetchHiddenDefaults(user.id);
     } catch (error: any) {
       console.error("Failed to delete exercise and update routines:", error);
       toast({ title: "Delete Error", description: `Could not delete ${exerciseName}. ${error.message}`, variant: "destructive" });
@@ -328,11 +354,38 @@ export function ExerciseClientPage() {
     }
   };
  
-  if (authContext.isLoading) { 
+  const handleOpenRestoreDialog = () => {
+    setSelectedToRestore(hiddenDefaults.map(h => h.id));
+    setIsRestoreDialogOpen(true);
+  };
+
+  const handleConfirmRestore = async () => {
+    if (!user?.id || selectedToRestore.length === 0) return;
+    setIsRestoring(true);
+    try {
+      const { addedCount } = await restoreHiddenDefaults(user.id, selectedToRestore);
+      toast({
+        title: "Restore Successful",
+        description: addedCount > 0 ? `Restored ${addedCount} default exercise${addedCount > 1 ? 's' : ''}.` : 'No exercises were restored.'
+      });
+      setIsRestoreDialogOpen(false);
+      await fetchUserExercises(user.id);
+      await fetchHiddenDefaults(user.id);
+    } catch(e: any) {
+      toast({ title: 'Restore Failed', description: e.message || 'Could not restore default exercises.', variant: 'destructive'});
+    } finally {
+      setIsRestoring(false);
+    }
+  };
+
+
+  if (authContext.isLoading || isLoading) { 
     return (
       <div className="flex justify-center items-center h-screen">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
-        <p className="ml-4 text-xl text-primary font-semibold">Loading authentication...</p>
+        <p className="ml-4 text-xl text-primary font-semibold">
+          {authContext.isLoading ? "Loading authentication..." : "Loading your exercises..."}
+        </p>
       </div>
     );
   }
@@ -345,31 +398,30 @@ export function ExerciseClientPage() {
       </div>
     );
   }
-  
-  if (user && isLoading) { 
-     return (
-      <div className="flex justify-center items-center h-screen">
-        <Loader2 className="h-12 w-12 animate-spin text-primary" />
-        <p className="ml-4 text-xl text-primary font-semibold">
-          {isSeeding ? "Setting up your library..." : "Loading your exercises..."}
-        </p>
-      </div>
-    );
-  }
-
 
   return (
     <>
       <PageHeader title="Exercise Library" description="Browse, add, and manage your exercises.">
-         <Button
-            variant="default"
-            className="bg-accent hover:bg-accent/90 text-accent-foreground"
-            onClick={handleOpenAddDialog}
-            disabled={isSeeding || isLoading} 
-          >
-          <PlusCircle className="mr-2 h-4 w-4" />
-          Add New Exercise
-        </Button>
+         <div className="flex items-center gap-2">
+            {hiddenDefaults.length > 0 && (
+                <Button variant="outline" onClick={handleOpenRestoreDialog}>
+                  <History className="mr-2 h-4 w-4" />
+                  Restore Defaults
+                  <span className="ml-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-secondary text-secondary-foreground text-xs font-bold">
+                    {hiddenDefaults.length}
+                  </span>
+                </Button>
+            )}
+            <Button
+              variant="default"
+              className="bg-accent hover:bg-accent/90 text-accent-foreground"
+              onClick={handleOpenAddDialog}
+              disabled={isLoading} 
+            >
+              <PlusCircle className="mr-2 h-4 w-4" />
+              Add New Exercise
+            </Button>
+         </div>
       </PageHeader>
 
       <AddExerciseDialog
@@ -379,6 +431,52 @@ export function ExerciseClientPage() {
         setIsOpen={setIsDialogOpen}
         isSaving={isDialogSaving}
       />
+      
+      <Dialog open={isRestoreDialogOpen} onOpenChange={setIsRestoreDialogOpen}>
+        <RestoreDialogContent>
+          <RestoreDialogHeader>
+            <RestoreDialogTitle>Restore Hidden Default Exercises</RestoreDialogTitle>
+            <RestoreDialogDescription>Select the default exercises you want to add back to your library.</RestoreDialogDescription>
+          </RestoreDialogHeader>
+          <div className="py-4">
+            {hiddenDefaults.length > 0 ? (
+                <ScrollArea className="max-h-64 w-full rounded-md border p-4">
+                    <div className="space-y-2">
+                    {hiddenDefaults.map(ex => (
+                        <div key={ex.id} className="flex items-center space-x-2">
+                            <Checkbox 
+                                id={`restore-${ex.id}`}
+                                checked={selectedToRestore.includes(ex.id)}
+                                onCheckedChange={(checked) => {
+                                    setSelectedToRestore(prev => 
+                                        checked ? [...prev, ex.id] : prev.filter(id => id !== ex.id)
+                                    )
+                                }}
+                            />
+                            <Label htmlFor={`restore-${ex.id}`} className="flex-grow cursor-pointer">
+                                {ex.name}
+                                <span className="ml-2 text-xs text-muted-foreground">({ex.muscleGroup})</span>
+                            </Label>
+                        </div>
+                    ))}
+                    </div>
+                </ScrollArea>
+            ) : (
+                <p className="text-sm text-muted-foreground">No hidden default exercises to restore.</p>
+            )}
+          </div>
+          <RestoreDialogFooter>
+            <DialogClose asChild>
+                <Button variant="ghost" disabled={isRestoring}>Cancel</Button>
+            </DialogClose>
+            <Button onClick={handleConfirmRestore} disabled={isRestoring || selectedToRestore.length === 0}>
+                {isRestoring ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : null}
+                Restore Selected
+            </Button>
+          </RestoreDialogFooter>
+        </RestoreDialogContent>
+      </Dialog>
+
 
       <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-3">
         <div className="relative md:col-span-2">
@@ -390,7 +488,7 @@ export function ExerciseClientPage() {
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full rounded-lg bg-card py-2 pl-10 pr-4 shadow-sm focus:ring-primary"
             aria-label="Search exercises"
-            disabled={isSeeding || (isLoading && !exercises.length)}
+            disabled={isLoading && !exercises.length}
           />
         </div>
         <div className="relative">
@@ -398,7 +496,7 @@ export function ExerciseClientPage() {
            <Select
               value={selectedMuscleGroup}
               onValueChange={(value) => setSelectedMuscleGroup(value as MuscleGroup | 'All')}
-              disabled={isSeeding || (isLoading && !exercises.length)}
+              disabled={isLoading && !exercises.length}
             >
             <SelectTrigger className="w-full rounded-lg bg-card py-2 pl-10 pr-4 shadow-sm focus:ring-primary" aria-label="Filter by muscle group">
               <SelectValue placeholder="Filter by muscle group" />
@@ -415,12 +513,7 @@ export function ExerciseClientPage() {
         </div>
       </div>
 
-      {isSeeding && !isLoading ? ( 
-        <div className="flex justify-center items-center h-40">
-          <Loader2 className="h-10 w-10 animate-spin text-primary" />
-          <p className="ml-3 text-lg text-primary font-semibold">Populating your library with default exercises...</p>
-        </div>
-      ) : !isLoading && isFilteringOrSearching ? (
+      {!isLoading && isFilteringOrSearching ? (
         displayedExercises.length > 0 ? (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {displayedExercises.map(exercise => (
@@ -462,10 +555,10 @@ export function ExerciseClientPage() {
             </AccordionItem>
           ))}
         </Accordion>
-      ) : (!isLoading && !isSeeding && exercises.length === 0 && user) ? ( 
+      ) : (!isLoading && exercises.length === 0 && user) ? ( 
           <div className="text-center py-12">
             <p className="text-xl text-muted-foreground font-semibold mb-2">Your exercise library is empty.</p>
-            <p className="text-muted-foreground">Add some exercises to get started!</p>
+            <p className="text-muted-foreground">Click "Add New Exercise" to get started!</p>
           </div>
         )
       : null }

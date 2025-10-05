@@ -11,12 +11,76 @@ import {
   query,
   orderBy,
   getDoc,
+  arrayUnion,
+  updateDoc,
+  arrayRemove,
 } from 'firebase/firestore';
 import { deleteAllPerformanceEntriesForExercise } from './trainingLogService'; 
 import { stripUndefinedDeep } from '@/lib/sanitize';
 import { buildExerciseDocId } from '@/lib/ids';
+import { defaultExercises } from '@/lib/defaultExercises';
 
 const getUserExercisesCollectionPath = (userId: string) => `users/${userId}/exercises`;
+const CURRENT_SEED_VERSION = 2;
+
+export type SeedResult = { addedCount: number; bumpedSeedVersion: boolean };
+
+/**
+ * Ensures the user's exercise library is seeded with default exercises.
+ * This function is idempotent and versioned. It will:
+ * 1. Check a `seedVersion` on the user's profile.
+ * 2. Only run if the user's version is less than the current version or if new defaults are missing.
+ * 3. Respect a `deletedDefaultIds` array ("tombstones") in the user's profile to not re-add deleted defaults.
+ * 4. Fetch all existing exercise IDs to avoid overwriting.
+ * 5. Create only the default exercises that are missing and not tombstoned.
+ * 6. Update the `seedVersion` on the user's profile if necessary.
+ */
+export async function ensureExercisesSeeded(userId: string): Promise<SeedResult> {
+  if (!userId) throw new Error("User ID is required for seeding.");
+
+  const profileRef = doc(db, 'users', userId, 'profile', 'profile');
+  const exercisesCol = collection(db, 'users', userId, 'exercises');
+
+  try {
+    const profileSnap = await getDoc(profileRef);
+    const profile = profileSnap.exists() ? profileSnap.data() : {};
+    const prevSeedVersion: number = profile.seedVersion ?? 0;
+    const deletedDefaultIds: string[] = profile.deletedDefaultIds ?? [];
+
+    const existingIds = new Set<string>();
+    const existingSnap = await getDocs(exercisesCol);
+    existingSnap.forEach(d => existingIds.add(d.id));
+
+    const missing = defaultExercises.filter(
+      ex => !existingIds.has(ex.id) && !deletedDefaultIds.includes(ex.id)
+    );
+
+    const bumpedSeedVersion = prevSeedVersion < CURRENT_SEED_VERSION;
+
+    if (missing.length === 0 && !bumpedSeedVersion) {
+      return { addedCount: 0, bumpedSeedVersion: false };
+    }
+
+    const batch = writeBatch(db);
+
+    for (const ex of missing) {
+      const { id, ...payload } = ex;
+      const ref = doc(exercisesCol, id);
+      batch.set(ref, stripUndefinedDeep(payload));
+    }
+    
+    if (bumpedSeedVersion) {
+      batch.set(profileRef, { seedVersion: CURRENT_SEED_VERSION }, { merge: true });
+    }
+
+    await batch.commit();
+    return { addedCount: missing.length, bumpedSeedVersion };
+
+  } catch (error: any) {
+    console.error("Error during idempotent exercise seeding:", error);
+    throw new Error("Library sync failed.");
+  }
+}
 
 /**
  * Create a new exercise with a deterministic, human-readable document ID
@@ -41,7 +105,6 @@ export async function addExercise(userId: string, data: ExerciseData): Promise<E
     const ref = doc(db, colPath, candidateId);
     const snap = await getDoc(ref);
     if (!snap.exists()) {
-      // Build payload and remove ALL undefined deeply
       const raw = {
         name: data.name.trim(),
         muscleGroup: data.muscleGroup,
@@ -50,7 +113,6 @@ export async function addExercise(userId: string, data: ExerciseData): Promise<E
         progressiveOverload: data.progressiveOverload || '',
         instructions: data.instructions || '',
         dataAiHint: data.dataAiHint || '',
-        // warmup is optional; only include defined fields
         warmup: data.warmup
           ? {
               template: data.warmup.template,
@@ -69,7 +131,7 @@ export async function addExercise(userId: string, data: ExerciseData): Promise<E
           : undefined,
       };
 
-      const payload = stripUndefinedDeep(raw); // <-- KEY LINE
+      const payload = stripUndefinedDeep(raw);
 
       await setDoc(ref, payload);
       return { id: candidateId, ...(payload as ExerciseData) };
@@ -77,36 +139,6 @@ export async function addExercise(userId: string, data: ExerciseData): Promise<E
     candidateId = `${baseId}-${suffix++}`;
   }
 }
-
-export const addDefaultExercisesBatch = async (userId: string, defaultExercisesWithIds: Exercise[]): Promise<void> => {
-  if (!userId) throw new Error("User ID is required to add default exercises.");
-  if (!defaultExercisesWithIds || defaultExercisesWithIds.length === 0) return;
-
-  try {
-    const userExercisesColRef = collection(db, getUserExercisesCollectionPath(userId));
-    const batch = writeBatch(db);
-
-    defaultExercisesWithIds.forEach((exercise) => {
-      const { id, ...exercisePayload } = exercise; 
-      if (!id) {
-        console.warn("Skipping default exercise due to missing ID:", exercise.name);
-        return;
-      }
-      
-      const dataToSave = stripUndefinedDeep(exercisePayload);
-      
-      const exerciseDocRef = doc(userExercisesColRef, id); 
-      batch.set(exerciseDocRef, dataToSave); 
-    });
-
-    await batch.commit();
-  } catch (error: any)
-  {
-    console.error("Error adding/updating default exercises batch in Firestore: ", error);
-    throw new Error("Failed to add/update default exercises.");
-  }
-};
-
 
 export const getExercises = async (userId: string): Promise<Exercise[]> => {
   if (!userId) throw new Error("User ID is required to get exercises.");
@@ -131,8 +163,11 @@ export const updateExercise = async (userId: string, exerciseId: string, exercis
   try {
     const exerciseDocRef = doc(db, getUserExercisesCollectionPath(userId), exerciseId);
     
-    // Sanitize the object to remove any `undefined` values before sending to Firestore
-    const dataToUpdate = stripUndefinedDeep(exerciseData);
+    const dataToUpdate = stripUndefinedDeep({
+        ...exerciseData,
+        userEdited: true, 
+        updatedAt: new Date(),
+    });
     
     await setDoc(exerciseDocRef, dataToUpdate, { merge: true });
   } catch (error: any) {
@@ -144,12 +179,57 @@ export const updateExercise = async (userId: string, exerciseId: string, exercis
 export const deleteExercise = async (userId: string, exerciseId: string): Promise<void> => {
   if (!userId) throw new Error("User ID is required to delete an exercise.");
   if (!exerciseId) throw new Error("Exercise ID is required to delete an exercise.");
-  try {
-    const exerciseDocRef = doc(db, getUserExercisesCollectionPath(userId), exerciseId);
-    await deleteDoc(exerciseDocRef);
-    await deleteAllPerformanceEntriesForExercise(userId, exerciseId);
-  } catch (error: any) {
-    console.error("Error deleting exercise from Firestore: ", error);
-    throw new Error("Failed to delete exercise.");
+  
+  const exerciseDocRef = doc(db, getUserExercisesCollectionPath(userId), exerciseId);
+  await deleteDoc(exerciseDocRef);
+  await deleteAllPerformanceEntriesForExercise(userId, exerciseId);
+
+  const isDefault = defaultExercises.some(ex => ex.id === exerciseId);
+  if (isDefault) {
+    const profileRef = doc(db, 'users', userId, 'profile', 'profile');
+    try {
+      await setDoc(
+        profileRef,
+        { deletedDefaultIds: arrayUnion(exerciseId) },
+        { merge: true }
+      );
+    } catch (error: any) {
+      console.error(`Failed to tombstone deleted default exercise ${exerciseId}:`, error);
+    }
   }
 };
+
+type HiddenDefault = { id: string; name: string; muscleGroup: string };
+
+export async function getHiddenDefaultExercises(userId: string): Promise<HiddenDefault[]> {
+  const profileRef = doc(db, 'users', userId, 'profile', 'profile');
+  const snap = await getDoc(profileRef);
+  const deleted: string[] = snap.exists() ? (snap.data().deletedDefaultIds ?? []) : [];
+
+  const byId = new Map(defaultExercises.map(ex => [ex.id, ex]));
+  return deleted
+    .map(id => byId.get(id))
+    .filter((ex): ex is Exercise => !!ex)
+    .map(ex => ({ id: ex.id, name: ex.name, muscleGroup: ex.muscleGroup }));
+}
+
+export async function restoreHiddenDefaults(
+  userId: string,
+  exerciseIds: string[]
+): Promise<SeedResult> {
+  if (exerciseIds.length === 0) return { addedCount: 0, bumpedSeedVersion: false };
+
+  const profileRef = doc(db, 'users', userId, 'profile', 'profile');
+  
+  await updateDoc(profileRef, {
+    deletedDefaultIds: arrayRemove(...exerciseIds)
+  });
+
+  const result = await ensureExercisesSeeded(userId);
+  return result;
+}
+
+export async function restoreAllHiddenDefaults(userId: string): Promise<SeedResult> {
+  const hidden = await getHiddenDefaultExercises(userId);
+  return restoreHiddenDefaults(userId, hidden.map(h => h.id));
+}
