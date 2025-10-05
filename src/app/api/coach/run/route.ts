@@ -1,11 +1,24 @@
 
 import { NextResponse } from 'next/server';
-import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from '@google/generative-ai';
 import { stripUndefinedDeep } from '@/lib/sanitize';
 import type { FunctionDeclarationsTool } from '@google/generative-ai';
+import { summarizeLogs, buildCoachAdviceLite } from '@/lib/analysis';
 
-// Re-defining a simplified schema here to ensure it's self-contained.
-// Keep this aligned with src/lib/coach.schema.ts
+// Optional import only if you have the SDK installed
+let GoogleGenerativeAI: any, HarmCategory: any, HarmBlockThreshold: any;
+try {
+  // Avoid module load crash on edge runtimes without SDK
+  ({ GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } = require('@google/generative-ai'));
+} catch {}
+
+
+const MODEL_CANDIDATES = [
+    'gemini-1.5-flash',
+    'gemini-1.5-flash-latest',
+    'gemini-1.5-pro',
+    'gemini-1.5-pro-latest',
+];
+
 const CoachAdviceParams = {
   type: 'OBJECT',
   properties: {
@@ -106,7 +119,6 @@ const CoachAdviceParams = {
   required: ['overview', 'priorityScore', 'routineTweaks', 'nextFourWeeks'],
 };
 
-
 const SYSTEM_INSTRUCTION = `
 You are a certified strength & conditioning coach. Provide safe, conservative, evidence-based guidance.
 - Respect user constraints and sessionTimeTargetMin (time per session).
@@ -131,19 +143,7 @@ const tool: FunctionDeclarationsTool = {
 };
 
 
-const MODEL_CANDIDATES = [
-    'gemini-1.5-flash',
-    'gemini-1.5-flash-latest',
-    'gemini-1.5-pro',
-    'gemini-1.5-pro-latest',
-];
-
-
-async function runWithModel(modelName: string, promptText: string) {
-    const apiKey = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY;
-    if (!apiKey) throw new Error('Missing API Key for AI service');
-    
-    const genAI = new GoogleGenerativeAI(apiKey);
+async function runWithModel(genAI: any, modelName: string, promptText: string) {
     const model = genAI.getGenerativeModel({
         model: modelName,
         systemInstruction: { role: 'model', parts: [{ text: SYSTEM_INSTRUCTION }] },
@@ -167,13 +167,25 @@ async function runWithModel(modelName: string, promptText: string) {
 
 export async function POST(req: Request) {
   try {
-    const { profile, routineSummary, trainingSummary, scope } = await req.json();
+    const { profile, routineSummary, trainingSummary, scope, routines, logs } = await req.json();
 
+    const summary = trainingSummary ?? summarizeLogs(routines, logs);
+
+    const apiKey = process.env.GOOGLE_API_KEY?.trim() || process.env.GEMINI_API_KEY?.trim();
+    const canUseGemini = Boolean(apiKey && GoogleGenerativeAI);
+
+    if (!canUseGemini) {
+      // ✅ Free path
+      const advice = buildCoachAdviceLite(summary, profile);
+      return NextResponse.json({ advice, engine: 'lite' });
+    }
+
+    const genAI = new GoogleGenerativeAI(apiKey!);
     const prompt = `
 CONTEXT
 UserProfile: ${JSON.stringify(stripUndefinedDeep(profile))}
 RoutineSummary: ${JSON.stringify(routineSummary)}
-TrainingSummary: ${JSON.stringify(trainingSummary)}
+TrainingSummary: ${JSON.stringify(summary)}
 SCOPE: ${JSON.stringify(scope)}
 
 TASK
@@ -185,7 +197,7 @@ Call the CoachAdvice function with your structured advice.
 
     for (const modelName of MODEL_CANDIDATES) {
       try {
-        const out = await runWithModel(modelName, prompt);
+        const out = await runWithModel(genAI, modelName, prompt);
         advice = out.advice;
         if (advice) break;
       } catch (e: any) {
@@ -204,12 +216,11 @@ Call the CoachAdvice function with your structured advice.
     }
 
     if (!advice) {
-      const fallbackMsg = lastErr?.message || 'No advice returned from AI. Try again or check model availability.';
-      console.error('AI Coach failed on all models. Last error:', lastErr);
-      return NextResponse.json({ error: fallbackMsg }, { status: 502 });
+      const lite = buildCoachAdviceLite(summary, profile);
+      return NextResponse.json({ advice: lite, engine: 'lite', note: lastErr?.message ?? 'LLM unavailable, used lite' }, { status: 200 });
     }
 
-    return NextResponse.json({ advice });
+    return NextResponse.json({ advice, engine: 'gemini' });
 
   } catch (err: any) {
     console.error('AI Coach route error:', err);

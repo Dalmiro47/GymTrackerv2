@@ -11,6 +11,12 @@ export interface LiftTrend {
   name: string; last3: { date: string; topSetWeight: number; reps: number }[]; stalled: boolean;
 }
 
+export type CoachAdvice = {
+  overview: string;
+  priorities: string;
+  nextFourWeeks: string;
+};
+
 export function estimate1RM(weight:number, reps:number){
   return reps > 1 ? weight * (1 + reps / 30) : weight;
 }
@@ -48,7 +54,7 @@ export function summarizeLogs(routines:any[], logs:WorkoutLog[], weeks=8) {
     Core:'core', Abs:'core'
   };
   for (const w of weekly) {
-    const b = map[w.muscleGroup] || 'core';
+    const b = map[w.muscleGroup as keyof typeof map] || 'core';
     buckets[b] = (buckets[b] || 0) + w.hardSets;
   }
   const totalSets = Object.values(buckets).reduce((a,b)=>a+b,0) || 1;
@@ -80,4 +86,55 @@ export function summarizeLogs(routines:any[], logs:WorkoutLog[], weeks=8) {
   const adherence = { plannedExercises: planned, completed, adherencePct: planned? completed/planned : 1 };
 
   return { weeksConsidered: weeks, weeklyVolume: weekly.slice(-weeks*10), balance, liftTrends: liftTrends.slice(0,10), adherence };
+}
+
+// You already have summarizeTrainingData(...)
+export function buildCoachAdviceLite(summary: any, profile: any): CoachAdvice {
+  // extract a few safe signals
+  const goal = (profile?.goal || '').toLowerCase();
+  const weeklySessions = summary?.weeks?.[0]?.sessions || 0;
+  const avgIntensity = Math.round((summary?.weeks?.[0]?.avgIntensity || 0) * 10) / 10;
+  const stallLifts = (summary?.stalledLifts || []).slice(0, 3);
+  const lowVolumeGroups = (summary?.volumeGaps || []).slice(0, 3);
+
+  const goalLine =
+    goal.includes('hypertrophy') ? 'Prioritize moderate reps (6–12) and weekly volume.'
+    : goal.includes('strength')  ? 'Prioritize lower reps (3–6) with adequate rest.'
+    : 'Maintain a balanced approach with progressive overload.';
+
+  const consistency =
+    weeklySessions >= 4 ? 'Great consistency — keep that cadence.'
+    : weeklySessions >= 3 ? 'Solid consistency — one extra session could accelerate progress.'
+    : 'Aim for ≥3 weekly sessions for meaningful progress.';
+
+  const stallText =
+    stallLifts.length
+      ? `Possible stalls detected: ${stallLifts.join(', ')}. Consider micro-loading or a rep target reset.`
+      : 'No clear stalls detected — continue progressive loading.';
+
+  const gapsText =
+    lowVolumeGroups.length
+      ? `Underserved muscle groups: ${lowVolumeGroups.join(', ')}. Add 4–8 quality sets/week.`
+      : 'Volume distribution looks balanced across muscle groups.';
+
+  const overview = [
+    goalLine,
+    `Last week: ${weeklySessions} sessions, avg RPE/load index ≈ ${avgIntensity}.`,
+    consistency
+  ].join(' ');
+
+  const priorities = [
+    gapsText,
+    stallText,
+    'Ensure 1–2 reps in reserve on the first set of key lifts; add load or reps weekly if bar speed and form allow.'
+  ].join(' ');
+
+  const nextFourWeeks = [
+    'Weeks 1–2: Add +1–2 sets on the weakest muscle group; hold others steady.',
+    'Week 3: Slight load increase (≈2.5–5%) on primary lifts if last week ended with ≥1 RIR.',
+    'Week 4: Deload if fatigue accumulates (reduce volume by 30–40%) or repeat week 3 if you feel fresh.',
+    'Keep warm-ups consistent and track top sets + backoff sets.'
+  ].join(' ');
+
+  return { overview, priorities, nextFourWeeks };
 }
