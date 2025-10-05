@@ -7,9 +7,8 @@ import type { Exercise, ExerciseData, Routine } from '@/types';
 import type { MuscleGroup } from '@/lib/constants';
 import type { ExerciseFormData } from './AddExerciseDialog';
 import { MUSCLE_GROUPS_LIST } from '@/lib/constants';
-import { defaultExercises } from '@/lib/defaultExercises';
 import { useAuth } from '@/contexts/AuthContext';
-import { addExercise, getExercises, updateExercise, deleteExercise as deleteExerciseService, addDefaultExercisesBatch } from '@/services/exerciseService';
+import { addExercise, getExercises, updateExercise, deleteExercise as deleteExerciseService, ensureExercisesSeeded } from '@/services/exerciseService';
 import { getRoutines, updateRoutine } from '@/services/routineService';
 import { stripUndefinedDeep } from '@/lib/sanitize';
 import { assertMuscleGroup } from '@/lib/muscleGroup';
@@ -80,7 +79,6 @@ export function ExerciseClientPage() {
   const [isDialogSaving, setIsDialogSaving] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isSeeding, setIsSeeding] = useState(false);
-  const [hasAttemptedSeedForCurrentUser, setHasAttemptedSeedForCurrentUser] = useState(false);
 
 
   const fetchUserExercises = useCallback(async (currentUserId: string | null | undefined): Promise<Exercise[]> => {
@@ -101,52 +99,28 @@ export function ExerciseClientPage() {
     }
   }, [toast]);
 
-
   useEffect(() => {
-    const loadData = async () => {
-      if (user?.id) {
-        setIsLoading(true); 
-        let userExercises = await fetchUserExercises(user.id);
-
-        if (userExercises.length === 0 && !hasAttemptedSeedForCurrentUser) {
-          setHasAttemptedSeedForCurrentUser(true); 
-          setIsSeeding(true);
-          toast({ title: "Setting up your library...", description: "Adding default exercises."});
-          try {
-            await addDefaultExercisesBatch(user.id, defaultExercises);
-            userExercises = await fetchUserExercises(user.id); 
-            toast({ title: "Library Ready!", description: "Default exercises added."});
-          } catch (seedError: any) {
-            console.error("Failed to seed default exercises:", seedError);
-            toast({
-              title: "Error Seeding Library",
-              description: `Could not add default exercises. ${seedError.message || 'Unknown error'}`,
-              variant: "destructive",
-            });
-          } finally {
-            setIsSeeding(false);
-          }
-        }
-        setExercises(userExercises);
-        setIsLoading(false); 
-      } else if (user === null && !authContext.isLoading) { 
+    if (user?.id) {
+      setIsSeeding(true);
+      toast({ title: "Checking your library...", description: "Syncing default exercises." });
+      ensureExercisesSeeded(user.id)
+        .then(async () => {
+          const userExercises = await fetchUserExercises(user.id);
+          setExercises(userExercises);
+        })
+        .catch(err => {
+            console.error("Seeding check failed:", err);
+            toast({ title: "Library Sync Failed", description: "Could not check for default exercises.", variant: "destructive"});
+        })
+        .finally(() => {
+          setIsSeeding(false);
+          setIsLoading(false);
+        });
+    } else if (!authContext.isLoading && !user) {
         setExercises([]);
         setIsLoading(false);
-        setIsSeeding(false);
-        setHasAttemptedSeedForCurrentUser(false); 
-      }
-    };
-
-    if (user !== undefined) { 
-        loadData();
     }
-    
-     return () => {
-        if(user?.id && !authContext.isLoading) { 
-          // Future: Consider more robust user change detection if needed.
-        }
-    };
-  }, [user, fetchUserExercises, toast, authContext.isLoading, hasAttemptedSeedForCurrentUser]);
+  }, [user, authContext.isLoading, fetchUserExercises, toast]);
   
   const canonicalExercises = useMemo(() => {
       return exercises.map(e => ({...e, muscleGroup: assertMuscleGroup(e.muscleGroup as any)}));
@@ -328,11 +302,13 @@ export function ExerciseClientPage() {
     }
   };
  
-  if (authContext.isLoading) { 
+  if (authContext.isLoading || isLoading) { 
     return (
       <div className="flex justify-center items-center h-screen">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
-        <p className="ml-4 text-xl text-primary font-semibold">Loading authentication...</p>
+        <p className="ml-4 text-xl text-primary font-semibold">
+          {authContext.isLoading ? "Loading authentication..." : "Loading your exercises..."}
+        </p>
       </div>
     );
   }
@@ -345,18 +321,6 @@ export function ExerciseClientPage() {
       </div>
     );
   }
-  
-  if (user && isLoading) { 
-     return (
-      <div className="flex justify-center items-center h-screen">
-        <Loader2 className="h-12 w-12 animate-spin text-primary" />
-        <p className="ml-4 text-xl text-primary font-semibold">
-          {isSeeding ? "Setting up your library..." : "Loading your exercises..."}
-        </p>
-      </div>
-    );
-  }
-
 
   return (
     <>
@@ -465,7 +429,7 @@ export function ExerciseClientPage() {
       ) : (!isLoading && !isSeeding && exercises.length === 0 && user) ? ( 
           <div className="text-center py-12">
             <p className="text-xl text-muted-foreground font-semibold mb-2">Your exercise library is empty.</p>
-            <p className="text-muted-foreground">Add some exercises to get started!</p>
+            <p className="text-muted-foreground">Click "Create Routine" to get started!</p>
           </div>
         )
       : null }

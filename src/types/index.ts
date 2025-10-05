@@ -39,10 +39,11 @@ export interface Exercise {
   muscleGroup: MuscleGroup;
   targetNotes?: string;
   exerciseSetup?: string; 
-  progressiveOverload?: string;   // NEW
+  progressiveOverload?: string;
   instructions?: string; 
   dataAiHint?: string;
-  warmup?: WarmupConfig; // New field for warm-up settings
+  warmup?: WarmupConfig;
+  userEdited?: boolean; // NEW: flag to indicate user has modified this exercise
 }
 
 export type ExerciseData = Omit<Exercise, 'id'>;
@@ -116,4 +117,5 @@ export interface UserProfile {
   email?: string | null;
   name?: string | null;
   avatarUrl?: string | null;
+  seedVersion?: number; // NEW: track exercise seed version
 }

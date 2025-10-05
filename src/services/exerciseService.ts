@@ -15,8 +15,68 @@ import {
 import { deleteAllPerformanceEntriesForExercise } from './trainingLogService'; 
 import { stripUndefinedDeep } from '@/lib/sanitize';
 import { buildExerciseDocId } from '@/lib/ids';
+import { defaultExercises } from '@/lib/defaultExercises';
 
 const getUserExercisesCollectionPath = (userId: string) => `users/${userId}/exercises`;
+const CURRENT_SEED_VERSION = 2; // Bump this when you add/change default exercises
+
+/**
+ * Ensures the user's exercise library is seeded with default exercises.
+ * This function is idempotent and versioned. It will:
+ * 1. Check a `seedVersion` on the user's profile.
+ * 2. Only run if the user's version is less than the current version.
+ * 3. Fetch all existing exercise IDs to avoid overwriting.
+ * 4. Create only the default exercises that are missing.
+ * 5. Update the `seedVersion` on the user's profile.
+ * This prevents accidental overwriting of user-edited exercises.
+ */
+export async function ensureExercisesSeeded(userId: string): Promise<void> {
+  if (!userId) throw new Error("User ID is required for seeding.");
+
+  const profileRef = doc(db, 'users', userId, 'profile', 'profile');
+  const exercisesCol = collection(db, 'users', userId, 'exercises');
+
+  try {
+    // 1. Check seed version first
+    const profileSnap = await getDoc(profileRef);
+    const prevSeedVersion = profileSnap.exists() ? (profileSnap.data().seedVersion ?? 0) : 0;
+
+    if (prevSeedVersion >= CURRENT_SEED_VERSION) {
+      return; // Already seeded with the current or a newer version
+    }
+
+    // 2. Load existing exercise IDs once to prevent overwrites
+    const existingIds = new Set<string>();
+    const existingSnap = await getDocs(exercisesCol);
+    existingSnap.forEach(d => existingIds.add(d.id));
+
+    // 3. Create only missing default exercises
+    const batch = writeBatch(db);
+    let exercisesAdded = 0;
+    for (const ex of defaultExercises) {
+      if (!existingIds.has(ex.id)) {
+        const { id, ...payload } = ex;
+        const ref = doc(exercisesCol, id);
+        batch.set(ref, stripUndefinedDeep(payload)); // Never merge, only create
+        exercisesAdded++;
+      }
+    }
+    
+    // Only commit if there are changes to make
+    if (exercisesAdded > 0) {
+        // 4. Write new seed version atomically with the exercise batch
+        batch.set(profileRef, { seedVersion: CURRENT_SEED_VERSION }, { merge: true });
+        await batch.commit();
+    } else {
+        // If no exercises were added but the version was old, just update the version
+        await setDoc(profileRef, { seedVersion: CURRENT_SEED_VERSION }, { merge: true });
+    }
+
+  } catch (error: any) {
+    console.error("Error during idempotent exercise seeding:", error);
+    // Don't re-throw, to avoid crashing the UI on a non-critical background task
+  }
+}
 
 /**
  * Create a new exercise with a deterministic, human-readable document ID
@@ -41,7 +101,6 @@ export async function addExercise(userId: string, data: ExerciseData): Promise<E
     const ref = doc(db, colPath, candidateId);
     const snap = await getDoc(ref);
     if (!snap.exists()) {
-      // Build payload and remove ALL undefined deeply
       const raw = {
         name: data.name.trim(),
         muscleGroup: data.muscleGroup,
@@ -50,7 +109,6 @@ export async function addExercise(userId: string, data: ExerciseData): Promise<E
         progressiveOverload: data.progressiveOverload || '',
         instructions: data.instructions || '',
         dataAiHint: data.dataAiHint || '',
-        // warmup is optional; only include defined fields
         warmup: data.warmup
           ? {
               template: data.warmup.template,
@@ -69,7 +127,7 @@ export async function addExercise(userId: string, data: ExerciseData): Promise<E
           : undefined,
       };
 
-      const payload = stripUndefinedDeep(raw); // <-- KEY LINE
+      const payload = stripUndefinedDeep(raw);
 
       await setDoc(ref, payload);
       return { id: candidateId, ...(payload as ExerciseData) };
@@ -77,36 +135,6 @@ export async function addExercise(userId: string, data: ExerciseData): Promise<E
     candidateId = `${baseId}-${suffix++}`;
   }
 }
-
-export const addDefaultExercisesBatch = async (userId: string, defaultExercisesWithIds: Exercise[]): Promise<void> => {
-  if (!userId) throw new Error("User ID is required to add default exercises.");
-  if (!defaultExercisesWithIds || defaultExercisesWithIds.length === 0) return;
-
-  try {
-    const userExercisesColRef = collection(db, getUserExercisesCollectionPath(userId));
-    const batch = writeBatch(db);
-
-    defaultExercisesWithIds.forEach((exercise) => {
-      const { id, ...exercisePayload } = exercise; 
-      if (!id) {
-        console.warn("Skipping default exercise due to missing ID:", exercise.name);
-        return;
-      }
-      
-      const dataToSave = stripUndefinedDeep(exercisePayload);
-      
-      const exerciseDocRef = doc(userExercisesColRef, id); 
-      batch.set(exerciseDocRef, dataToSave); 
-    });
-
-    await batch.commit();
-  } catch (error: any)
-  {
-    console.error("Error adding/updating default exercises batch in Firestore: ", error);
-    throw new Error("Failed to add/update default exercises.");
-  }
-};
-
 
 export const getExercises = async (userId: string): Promise<Exercise[]> => {
   if (!userId) throw new Error("User ID is required to get exercises.");
@@ -131,8 +159,12 @@ export const updateExercise = async (userId: string, exerciseId: string, exercis
   try {
     const exerciseDocRef = doc(db, getUserExercisesCollectionPath(userId), exerciseId);
     
-    // Sanitize the object to remove any `undefined` values before sending to Firestore
-    const dataToUpdate = stripUndefinedDeep(exerciseData);
+    // Add a flag to indicate user has edited this, to prevent future accidental overwrites
+    const dataToUpdate = stripUndefinedDeep({
+        ...exerciseData,
+        userEdited: true, 
+        updatedAt: new Date(),
+    });
     
     await setDoc(exerciseDocRef, dataToUpdate, { merge: true });
   } catch (error: any) {
