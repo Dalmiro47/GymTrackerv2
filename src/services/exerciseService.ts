@@ -12,6 +12,8 @@ import {
   orderBy,
   getDoc,
   arrayUnion,
+  updateDoc,
+  arrayRemove,
 } from 'firebase/firestore';
 import { deleteAllPerformanceEntriesForExercise } from './trainingLogService'; 
 import { stripUndefinedDeep } from '@/lib/sanitize';
@@ -19,7 +21,7 @@ import { buildExerciseDocId } from '@/lib/ids';
 import { defaultExercises } from '@/lib/defaultExercises';
 
 const getUserExercisesCollectionPath = (userId: string) => `users/${userId}/exercises`;
-const CURRENT_SEED_VERSION = 2; // Bump this when you add/change default exercises
+const CURRENT_SEED_VERSION = 2;
 
 export type SeedResult = { addedCount: number; bumpedSeedVersion: boolean };
 
@@ -40,39 +42,33 @@ export async function ensureExercisesSeeded(userId: string): Promise<SeedResult>
   const exercisesCol = collection(db, 'users', userId, 'exercises');
 
   try {
-    // 1. Read profile (seedVersion + tombstones)
     const profileSnap = await getDoc(profileRef);
     const profile = profileSnap.exists() ? profileSnap.data() : {};
     const prevSeedVersion: number = profile.seedVersion ?? 0;
     const deletedDefaultIds: string[] = profile.deletedDefaultIds ?? [];
 
-    // 2. Load existing exercise IDs once
     const existingIds = new Set<string>();
     const existingSnap = await getDocs(exercisesCol);
     existingSnap.forEach(d => existingIds.add(d.id));
 
-    // 3. Compute missing defaults that are NOT tombstoned
     const missing = defaultExercises.filter(
       ex => !existingIds.has(ex.id) && !deletedDefaultIds.includes(ex.id)
     );
 
     const bumpedSeedVersion = prevSeedVersion < CURRENT_SEED_VERSION;
 
-    // If there's nothing to add and version is up-to-date, exit early.
     if (missing.length === 0 && !bumpedSeedVersion) {
       return { addedCount: 0, bumpedSeedVersion: false };
     }
 
     const batch = writeBatch(db);
 
-    // 4. Create-only for non-tombstoned missing exercises
     for (const ex of missing) {
       const { id, ...payload } = ex;
       const ref = doc(exercisesCol, id);
       batch.set(ref, stripUndefinedDeep(payload));
     }
     
-    // 5. Update seed version if it changed
     if (bumpedSeedVersion) {
       batch.set(profileRef, { seedVersion: CURRENT_SEED_VERSION }, { merge: true });
     }
@@ -188,7 +184,6 @@ export const deleteExercise = async (userId: string, exerciseId: string): Promis
   await deleteDoc(exerciseDocRef);
   await deleteAllPerformanceEntriesForExercise(userId, exerciseId);
 
-  // If it was a default exercise, "tombstone" it to prevent re-seeding.
   const isDefault = defaultExercises.some(ex => ex.id === exerciseId);
   if (isDefault) {
     const profileRef = doc(db, 'users', userId, 'profile', 'profile');
@@ -200,7 +195,41 @@ export const deleteExercise = async (userId: string, exerciseId: string): Promis
       );
     } catch (error: any) {
       console.error(`Failed to tombstone deleted default exercise ${exerciseId}:`, error);
-      // Don't re-throw; the primary deletion succeeded.
     }
   }
 };
+
+type HiddenDefault = { id: string; name: string; muscleGroup: string };
+
+export async function getHiddenDefaultExercises(userId: string): Promise<HiddenDefault[]> {
+  const profileRef = doc(db, 'users', userId, 'profile', 'profile');
+  const snap = await getDoc(profileRef);
+  const deleted: string[] = snap.exists() ? (snap.data().deletedDefaultIds ?? []) : [];
+
+  const byId = new Map(defaultExercises.map(ex => [ex.id, ex]));
+  return deleted
+    .map(id => byId.get(id))
+    .filter((ex): ex is Exercise => !!ex)
+    .map(ex => ({ id: ex.id, name: ex.name, muscleGroup: ex.muscleGroup }));
+}
+
+export async function restoreHiddenDefaults(
+  userId: string,
+  exerciseIds: string[]
+): Promise<SeedResult> {
+  if (exerciseIds.length === 0) return { addedCount: 0, bumpedSeedVersion: false };
+
+  const profileRef = doc(db, 'users', userId, 'profile', 'profile');
+  
+  await updateDoc(profileRef, {
+    deletedDefaultIds: arrayRemove(...exerciseIds)
+  });
+
+  const result = await ensureExercisesSeeded(userId);
+  return result;
+}
+
+export async function restoreAllHiddenDefaults(userId: string): Promise<SeedResult> {
+  const hidden = await getHiddenDefaultExercises(userId);
+  return restoreHiddenDefaults(userId, hidden.map(h => h.id));
+}

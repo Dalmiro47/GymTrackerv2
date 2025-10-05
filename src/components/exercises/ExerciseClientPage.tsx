@@ -8,7 +8,16 @@ import type { MuscleGroup } from '@/lib/constants';
 import type { ExerciseFormData } from './AddExerciseDialog';
 import { MUSCLE_GROUPS_LIST } from '@/lib/constants';
 import { useAuth } from '@/contexts/AuthContext';
-import { addExercise, getExercises, updateExercise, deleteExercise as deleteExerciseService, ensureExercisesSeeded } from '@/services/exerciseService';
+import { 
+  addExercise, 
+  getExercises, 
+  updateExercise, 
+  deleteExercise as deleteExerciseService, 
+  ensureExercisesSeeded,
+  getHiddenDefaultExercises,
+  restoreHiddenDefaults,
+  type SeedResult 
+} from '@/services/exerciseService';
 import { getRoutines, updateRoutine } from '@/services/routineService';
 import { stripUndefinedDeep } from '@/lib/sanitize';
 import { assertMuscleGroup } from '@/lib/muscleGroup';
@@ -19,7 +28,7 @@ import { AddExerciseDialog } from './AddExerciseDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { PlusCircle, Search, Filter, Loader2, AlertTriangle } from 'lucide-react';
+import { PlusCircle, Search, Filter, Loader2, AlertTriangle, History } from 'lucide-react';
 import {
   Accordion,
   AccordionContent,
@@ -35,9 +44,23 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useToast } from '@/hooks/use-toast';
 import { ScrollArea } from '../ui/scroll-area';
+import {
+  Dialog,
+  DialogClose,
+  DialogContent as RestoreDialogContent,
+  DialogDescription as RestoreDialogDescription,
+  DialogFooter as RestoreDialogFooter,
+  DialogHeader as RestoreDialogHeader,
+  DialogTitle as RestoreDialogTitle,
+} from '@/components/ui/dialog';
+import { Checkbox } from '../ui/checkbox';
+import { Label } from '../ui/label';
+
+type HiddenDefault = { id: string; name: string; muscleGroup: string };
 
 const groupExercisesByMuscle = (exercises: Exercise[], muscleOrder: readonly MuscleGroup[]): { muscleGroup: MuscleGroup; exercises: Exercise[] }[] => {
   const grouped = new Map<MuscleGroup, Exercise[]>();
@@ -79,6 +102,12 @@ export function ExerciseClientPage() {
   const [isDialogSaving, setIsDialogSaving] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
+  // State for restore functionality
+  const [hiddenDefaults, setHiddenDefaults] = useState<HiddenDefault[]>([]);
+  const [isRestoreDialogOpen, setIsRestoreDialogOpen] = useState(false);
+  const [selectedToRestore, setSelectedToRestore] = useState<string[]>([]);
+  const [isRestoring, setIsRestoring] = useState(false);
+
 
   const fetchUserExercises = useCallback(async (currentUserId: string | null | undefined): Promise<void> => {
     if (!currentUserId) {
@@ -97,6 +126,15 @@ export function ExerciseClientPage() {
       });
     }
   }, [toast]);
+  
+  const fetchHiddenDefaults = useCallback(async (currentUserId: string) => {
+    try {
+      const list = await getHiddenDefaultExercises(currentUserId);
+      setHiddenDefaults(list);
+    } catch (e) {
+      console.error("Failed to fetch hidden defaults:", e);
+    }
+  }, []);
 
   useEffect(() => {
     if (user?.id) {
@@ -121,7 +159,10 @@ export function ExerciseClientPage() {
           }
         } finally {
           if (!cancelled) {
-            await fetchUserExercises(user.id);
+            await Promise.all([
+              fetchUserExercises(user.id),
+              fetchHiddenDefaults(user.id),
+            ]);
             setIsLoading(false);
           }
         }
@@ -129,9 +170,10 @@ export function ExerciseClientPage() {
       return () => { cancelled = true; };
     } else if (!authContext.isLoading && !user) {
       setExercises([]);
+      setHiddenDefaults([]);
       setIsLoading(false);
     }
-  }, [user, authContext.isLoading, fetchUserExercises, toast]);
+  }, [user, authContext.isLoading, fetchUserExercises, fetchHiddenDefaults, toast]);
   
   const canonicalExercises = useMemo(() => {
       return exercises.map(e => ({...e, muscleGroup: assertMuscleGroup(e.muscleGroup as any)}));
@@ -302,6 +344,7 @@ export function ExerciseClientPage() {
       toast({ title: "Exercise Deleted", description: `${exerciseName} has been removed from your library.` });
       
       await fetchUserExercises(user.id);
+      await fetchHiddenDefaults(user.id);
     } catch (error: any) {
       console.error("Failed to delete exercise and update routines:", error);
       toast({ title: "Delete Error", description: `Could not delete ${exerciseName}. ${error.message}`, variant: "destructive" });
@@ -311,6 +354,31 @@ export function ExerciseClientPage() {
     }
   };
  
+  const handleOpenRestoreDialog = () => {
+    setSelectedToRestore(hiddenDefaults.map(h => h.id));
+    setIsRestoreDialogOpen(true);
+  };
+
+  const handleConfirmRestore = async () => {
+    if (!user?.id || selectedToRestore.length === 0) return;
+    setIsRestoring(true);
+    try {
+      const { addedCount } = await restoreHiddenDefaults(user.id, selectedToRestore);
+      toast({
+        title: "Restore Successful",
+        description: addedCount > 0 ? `Restored ${addedCount} default exercise${addedCount > 1 ? 's' : ''}.` : 'No exercises were restored.'
+      });
+      setIsRestoreDialogOpen(false);
+      await fetchUserExercises(user.id);
+      await fetchHiddenDefaults(user.id);
+    } catch(e: any) {
+      toast({ title: 'Restore Failed', description: e.message || 'Could not restore default exercises.', variant: 'destructive'});
+    } finally {
+      setIsRestoring(false);
+    }
+  };
+
+
   if (authContext.isLoading || isLoading) { 
     return (
       <div className="flex justify-center items-center h-screen">
@@ -334,15 +402,26 @@ export function ExerciseClientPage() {
   return (
     <>
       <PageHeader title="Exercise Library" description="Browse, add, and manage your exercises.">
-         <Button
-            variant="default"
-            className="bg-accent hover:bg-accent/90 text-accent-foreground"
-            onClick={handleOpenAddDialog}
-            disabled={isLoading} 
-          >
-          <PlusCircle className="mr-2 h-4 w-4" />
-          Add New Exercise
-        </Button>
+         <div className="flex items-center gap-2">
+            {hiddenDefaults.length > 0 && (
+                <Button variant="outline" onClick={handleOpenRestoreDialog}>
+                  <History className="mr-2 h-4 w-4" />
+                  Restore Defaults
+                  <span className="ml-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-secondary text-secondary-foreground text-xs font-bold">
+                    {hiddenDefaults.length}
+                  </span>
+                </Button>
+            )}
+            <Button
+              variant="default"
+              className="bg-accent hover:bg-accent/90 text-accent-foreground"
+              onClick={handleOpenAddDialog}
+              disabled={isLoading} 
+            >
+              <PlusCircle className="mr-2 h-4 w-4" />
+              Add New Exercise
+            </Button>
+         </div>
       </PageHeader>
 
       <AddExerciseDialog
@@ -352,6 +431,52 @@ export function ExerciseClientPage() {
         setIsOpen={setIsDialogOpen}
         isSaving={isDialogSaving}
       />
+      
+      <Dialog open={isRestoreDialogOpen} onOpenChange={setIsRestoreDialogOpen}>
+        <RestoreDialogContent>
+          <RestoreDialogHeader>
+            <RestoreDialogTitle>Restore Hidden Default Exercises</RestoreDialogTitle>
+            <RestoreDialogDescription>Select the default exercises you want to add back to your library.</RestoreDialogDescription>
+          </RestoreDialogHeader>
+          <div className="py-4">
+            {hiddenDefaults.length > 0 ? (
+                <ScrollArea className="max-h-64 w-full rounded-md border p-4">
+                    <div className="space-y-2">
+                    {hiddenDefaults.map(ex => (
+                        <div key={ex.id} className="flex items-center space-x-2">
+                            <Checkbox 
+                                id={`restore-${ex.id}`}
+                                checked={selectedToRestore.includes(ex.id)}
+                                onCheckedChange={(checked) => {
+                                    setSelectedToRestore(prev => 
+                                        checked ? [...prev, ex.id] : prev.filter(id => id !== ex.id)
+                                    )
+                                }}
+                            />
+                            <Label htmlFor={`restore-${ex.id}`} className="flex-grow cursor-pointer">
+                                {ex.name}
+                                <span className="ml-2 text-xs text-muted-foreground">({ex.muscleGroup})</span>
+                            </Label>
+                        </div>
+                    ))}
+                    </div>
+                </ScrollArea>
+            ) : (
+                <p className="text-sm text-muted-foreground">No hidden default exercises to restore.</p>
+            )}
+          </div>
+          <RestoreDialogFooter>
+            <DialogClose asChild>
+                <Button variant="ghost" disabled={isRestoring}>Cancel</Button>
+            </DialogClose>
+            <Button onClick={handleConfirmRestore} disabled={isRestoring || selectedToRestore.length === 0}>
+                {isRestoring ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : null}
+                Restore Selected
+            </Button>
+          </RestoreDialogFooter>
+        </RestoreDialogContent>
+      </Dialog>
+
 
       <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-3">
         <div className="relative md:col-span-2">
@@ -487,5 +612,3 @@ export function ExerciseClientPage() {
     </>
   );
 }
-
-    
