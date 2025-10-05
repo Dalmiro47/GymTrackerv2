@@ -13,6 +13,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from '@/lib/utils';
+import { normalizeAdviceUI } from '@/lib/coachNormalize';
 
 export function CoachInline({
   routineContext,
@@ -35,6 +36,8 @@ export function CoachInline({
     scope,
     preload: false, // don't auto-load in the log sidebar
   });
+
+  const normalizedAdvice = advice ? normalizeAdviceUI(advice) : null;
 
   // If no routine is selected, show disabled button + tooltip hint
   if (!isDay) {
@@ -89,12 +92,12 @@ export function CoachInline({
           <Button disabled={isRunning || data.isLoading} onClick={() => run()} className="w-full">
             {isRunning ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Analyzing…</> : 'Run coach'}
           </Button>
-          {!advice && <p className="text-sm text-muted-foreground">Run the coach to see suggestions.</p>}
-          {advice && (
+          {!normalizedAdvice && <p className="text-sm text-muted-foreground">Run the coach to see suggestions.</p>}
+          {normalizedAdvice && (
             <div className="space-y-3 text-sm">
-              <p>{advice.overview}</p>
+              <p>{normalizedAdvice.overview}</p>
               <ul className="list-disc ml-5 space-y-2">
-                {advice.routineTweaks.slice(0, 3).map((t, i) => (
+                {(normalizedAdvice.routineTweaks ?? []).slice(0, 3).map((t: any, i: number) => (
                   <li key={i}><b>{t.change}</b>: {t.details} <span className="text-muted-foreground">({t.rationale})</span></li>
                 ))}
               </ul>

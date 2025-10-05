@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Loader2, Sparkles } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { CoachSuggestions } from '@/components/coach/CoachSuggestions';
+import { normalizeAdviceUI } from '@/lib/coachNormalize';
 
 export default function CoachPage() {
   const data = useCoachData({ weeks: 8 });
@@ -18,6 +19,7 @@ export default function CoachPage() {
   });
 
   const lastAnalyzed = advice ? new Date(createdAt ?? 0) : null;
+  const normalized = advice ? normalizeAdviceUI(advice as any) : null;
 
   return (
     <div className="container mx-auto space-y-6 py-6">
@@ -44,18 +46,15 @@ export default function CoachPage() {
         </Button>
       </div>
 
-      {advice ? (
+      {normalized ? (
         <>
           <Card><CardHeader><CardTitle>Overview</CardTitle></CardHeader>
-          <CardContent><p className="text-sm">{advice.overview}</p></CardContent></Card>
-          <CoachSuggestions advice={advice} />
+          <CardContent><p className="text-sm">{normalized.overview}</p></CardContent></Card>
+          <CoachSuggestions advice={normalized as any} />
           <Card><CardHeader><CardTitle>Next 4 weeks</CardTitle></CardHeader>
           <CardContent className="grid gap-3">
-            {advice.nextFourWeeks.map((w,i)=>(
-              <div key={i} className="text-sm">
-                <div className="font-medium">Week {w.week}: {w.focus}</div>
-                <div className="text-muted-foreground">{w.notes}</div>
-              </div>
+            {normalized.nextFourWeeks.map((w, i) => (
+              <p key={i} className="text-sm">{w}</p>
             ))}
           </CardContent></Card>
         </>

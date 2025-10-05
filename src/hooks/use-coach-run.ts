@@ -7,6 +7,7 @@ import { format } from 'date-fns';
 import { hashString } from '@/lib/hash';
 import type { CoachAdvice } from '@/lib/coach.schema';
 import type { UserProfile } from '@/lib/types.gym';
+import { normalizeAdviceUI } from '@/lib/coachNormalize';
 
 export type CoachScope =
   | { mode: 'global' }
@@ -49,7 +50,7 @@ export function useCoachRun({
       if (snap.exists()) {
         const data: any = snap.data();
         if (data?.advice) {
-          setAdvice(data.advice as CoachAdvice);
+          setAdvice(normalizeAdviceUI(data.advice) as CoachAdvice);
           setCreatedAt(data.createdAt ?? null);
         }
       }
@@ -67,7 +68,7 @@ export function useCoachRun({
     if (cached.exists()) {
       const data: any = cached.data();
       if (data.inputHash === inputHash && data.advice) {
-        setAdvice(data.advice as CoachAdvice);
+        setAdvice(normalizeAdviceUI(data.advice) as CoachAdvice);
         setCreatedAt(data.createdAt ?? null);
         setRunning(false);
         return;
@@ -90,9 +91,10 @@ export function useCoachRun({
     const json = await res.json();
     if (json?.advice) {
       const now = Date.now();
-      setAdvice(json.advice as CoachAdvice);
+      const normalized = normalizeAdviceUI(json.advice);
+      setAdvice(normalized as CoachAdvice);
       setCreatedAt(now);
-      await setDoc(ref, { inputHash, createdAt: now, advice: json.advice }, { merge: true });
+      await setDoc(ref, { inputHash, createdAt: now, advice: normalized }, { merge: true });
     }
     setRunning(false);
   }, [user, profile, inputHash, routineSummary, trainingSummary, scope, docId]);
