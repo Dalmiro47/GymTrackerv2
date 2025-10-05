@@ -62,18 +62,34 @@ function findStalls(summary: any, topN = 3) {
     .map(x => x.name);
 }
 
+// NEW: Helper to safely get the most recent week's data.
+function getRecentWeek(weeks: any[]) {
+    if (!Array.isArray(weeks) || weeks.length === 0) {
+        return { sessions: 0, avgIntensity: 0, plannedSessions: 0 };
+    }
+    const latest = weeks[weeks.length - 1]; // .at(-1)
+    return {
+        sessions: Number(latest?.sessions ?? 0),
+        avgIntensity: Number(latest?.avgIntensity ?? latest?.avgRpe ?? 0),
+        plannedSessions: Number(latest?.plannedSessions ?? 0)
+    };
+}
+
+
 function adherence(summary: any) {
-  // Expect: summary.planSessions (planned) and summary.actualSessions (completed) last week
-  const planned = Number(summary?.weeks?.[0]?.plannedSessions ?? summary?.planSessions ?? 0);
-  const done    = Number(summary?.weeks?.[0]?.sessions ?? summary?.actualSessions ?? 0);
+  const recentWeek = getRecentWeek(summary?.weeks);
+  const done = recentWeek.sessions;
+  const planned = recentWeek.plannedSessions > 0 ? recentWeek.plannedSessions : (summary?.planSessions ?? 0);
   const ratio = planned > 0 ? Math.min(1, done / planned) : (done >= 3 ? 1 : done / 3);
   return { planned, done, ratio };
 }
 
 function avgIntensity(summary: any) {
-  const ai = Number(summary?.weeks?.[0]?.avgIntensity ?? summary?.weeks?.[0]?.avgRpe ?? 0);
+  const recentWeek = getRecentWeek(summary?.weeks);
+  const ai = recentWeek.avgIntensity;
   return Math.round((ai + Number.EPSILON) * 10) / 10;
 }
+
 
 function daySlots(routineSummary: any, dayId?: string) {
   // Expect: routineSummary.days = [{ id, name, slots: [{ slot, exercise, muscleGroup }] }]
@@ -258,19 +274,17 @@ export function summarizeLogs(routines:any[], logs:WorkoutLog[], weeks=8) {
     for (const ex of log.exercises ?? []) {
       const top = (ex.sets||[]).slice().sort((a,b)=> (b.weight*(b.reps||1)) - (a.weight*(a.reps||1)))[0];
       if (!top) continue;
-      const arr = trendMap[ex.name] = (trendMap[ex.name]||[]);
-      arr.push({ date: log.date!, topSetWeight: top.weight, reps: top.reps });
-      if (arr.length > 3) arr.shift();
+      trendMap[ex.name] = trendMap[ex.name] || [];
+      trendMap[ex.name].push({ date: log.date!, topSetWeight: top.weight, reps: top.reps });
     }
   }
-  const liftTrends: LiftTrend[] = Object.entries(trendMap).map(([name,last3])=>{
-    const stalled = last3.length===3 && !(last3[2].topSetWeight>last3[1].topSetWeight || last3[2].reps>last3[1].reps);
-    return { name, last3, stalled };
-  });
+  const trends: Record<string, LiftTrend> = {};
+  for(const [name, lastN] of Object.entries(trendMap)) {
+    const last3 = lastN.slice(-3);
+    const e1rm = last3.map(l => estimate1RM(l.topSetWeight, l.reps));
+    const stalled = e1rm.length > 1 && (e1rm.at(-1)! - e1rm[0]) < 2.5;
+    trends[name] = { name, last3, stalled };
+  }
 
-  const planned = routines.reduce((a,r)=>a + (r.exercises?.length||0), 0);
-  const completed = lastLogs.reduce((a,l)=>a+(l.exercises?.length||0),0);
-  const adherence = { plannedExercises: planned, completed, adherencePct: planned? completed/planned : 1 };
-
-  return { weeksConsidered: weeks, weeklyVolume: weekly.slice(-weeks*10), balance, liftTrends: liftTrends.slice(0,10), adherence };
+  return { weekly, balance, trends };
 }
