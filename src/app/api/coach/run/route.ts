@@ -4,34 +4,36 @@ import {
   GoogleGenerativeAI,
   HarmCategory,
   HarmBlockThreshold,
-  SchemaType,
-  type Schema,
+  Schema,
+  FunctionDeclarationsTool,
 } from '@google/generative-ai';
+import { stripUndefinedDeep } from '@/lib/sanitize';
 
 export const runtime = 'nodejs';
 
-// CoachAdvice schema (tool parameters). Keep this aligned with src/lib/coach.schema.ts
+// Re-defining a simplified schema here to ensure it's self-contained.
+// Keep this aligned with src/lib/coach.schema.ts
 const CoachAdviceParams: Schema = {
-  type: SchemaType.OBJECT,
+  type: 'OBJECT',
   properties: {
-    overview: { type: SchemaType.STRING, description: 'Short high-level summary.' },
-    priorityScore: { type: SchemaType.NUMBER, description: '1–100 priority of these changes.' },
-    risks: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+    overview: { type: 'STRING', description: 'Short high-level summary.' },
+    priorityScore: { type: 'NUMBER', description: '1–100 priority of these changes.' },
+    risks: { type: 'ARRAY', items: { type: 'STRING' } },
     routineTweaks: {
-      type: SchemaType.ARRAY,
+      type: 'ARRAY',
       items: {
-        type: SchemaType.OBJECT,
+        type: 'OBJECT',
         properties: {
           where: {
-            type: SchemaType.OBJECT,
+            type: 'OBJECT',
             properties: {
-              day: { type: SchemaType.STRING },
-              slot: { type: SchemaType.NUMBER },
+              day: { type: 'STRING' },
+              slot: { type: 'NUMBER' },
             },
             required: ['day'],
           },
           change: {
-            type: SchemaType.STRING,
+            type: 'STRING',
             enum: [
               'Replace Exercise',
               'Add Exercise',
@@ -40,78 +42,78 @@ const CoachAdviceParams: Schema = {
               'Change Frequency',
             ],
           },
-          details: { type: SchemaType.STRING },
+          details: { type: 'STRING' },
           setsReps: {
-            type: SchemaType.OBJECT,
+            type: 'OBJECT',
             properties: {
-              sets: { type: SchemaType.NUMBER },
-              repsRange: { type: SchemaType.STRING },
-              rir: { type: SchemaType.STRING },
+              sets: { type: 'NUMBER' },
+              repsRange: { type: 'STRING' },
+              rir: { type: 'STRING' },
             },
             required: ['sets', 'repsRange'],
           },
-          exampleExercises: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
-          rationale: { type: SchemaType.STRING },
+          exampleExercises: { type: 'ARRAY', items: { type: 'STRING' } },
+          rationale: { type: 'STRING' },
         },
         required: ['where', 'change', 'details', 'rationale'],
       },
     },
     nextFourWeeks: {
-      type: SchemaType.ARRAY,
+      type: 'ARRAY',
       items: {
-        type: SchemaType.OBJECT,
+        type: 'OBJECT',
         properties: {
-          week: { type: SchemaType.NUMBER },
-          focus: { type: SchemaType.STRING },
-          notes: { type: SchemaType.STRING },
+          week: { type: 'NUMBER' },
+          focus: { type: 'STRING' },
+          notes: { type: 'STRING' },
         },
         required: ['week', 'focus', 'notes'],
       },
     },
     meta: {
-      type: SchemaType.OBJECT,
+      type: 'OBJECT',
       properties: {
         stalledLifts: {
-          type: SchemaType.ARRAY,
+          type: 'ARRAY',
           items: {
-            type: SchemaType.OBJECT,
+            type: 'OBJECT',
             properties: {
-              name: { type: SchemaType.STRING },
-              reason: { type: SchemaType.STRING },
+              name: { type: 'STRING' },
+              reason: { type: 'STRING' },
             },
             required: ['name', 'reason'],
           },
         },
         volumeGaps: {
-          type: SchemaType.ARRAY,
+          type: 'ARRAY',
           items: {
-            type: SchemaType.OBJECT,
+            type: 'OBJECT',
             properties: {
-              muscleGroup: { type: SchemaType.STRING },
-              weeklySets: { type: SchemaType.NUMBER },
-              targetRange: { type: SchemaType.STRING },
+              muscleGroup: { type: 'STRING' },
+              weeklySets: { type: 'NUMBER' },
+              targetRange: { type: 'STRING' },
             },
             required: ['muscleGroup', 'weeklySets', 'targetRange'],
           },
         },
         balance: {
-          type: SchemaType.OBJECT,
+          type: 'OBJECT',
           properties: {
-            pushPct: { type: SchemaType.NUMBER },
-            pullPct: { type: SchemaType.NUMBER },
-            legsPct: { type: SchemaType.NUMBER },
-            hingePct: { type: SchemaType.NUMBER },
-            corePct: { type: SchemaType.NUMBER },
+            pushPct: { type: 'NUMBER' },
+            pullPct: { type: 'NUMBER' },
+            legsPct: { type: 'NUMBER' },
+            hingePct: { type: 'NUMBER' },
+            corePct: { type: 'NUMBER' },
           },
         },
-        confidence: { type: SchemaType.NUMBER },
+        confidence: { type: 'NUMBER' },
       },
     },
   },
   required: ['overview', 'priorityScore', 'routineTweaks', 'nextFourWeeks'],
-} as const;
+};
 
-const SYSTEM = `
+const SYSTEM_INSTRUCTION = `
 You are a certified strength & conditioning coach. Provide safe, conservative, evidence-based guidance.
 - Respect user constraints and sessionTimeTargetMin (time per session).
 - Treat training as mostly gender-neutral; only adjust where clearly relevant.
@@ -124,28 +126,31 @@ You are a certified strength & conditioning coach. Provide safe, conservative, e
 - Your response MUST be a function call to CoachAdvice with valid data.
 `;
 
+const tool: FunctionDeclarationsTool = {
+  functionDeclarations: [
+    {
+      name: 'CoachAdvice',
+      description: 'Return structured coaching advice.',
+      parameters: CoachAdviceParams,
+    },
+  ],
+};
+
+
 export async function POST(req: NextRequest) {
   try {
     const { profile, routineSummary, trainingSummary, scope } = await req.json();
-    const apiKey = process.env.GOOGLE_API_KEY || '';
-    if (!apiKey) return NextResponse.json({ error: 'Missing GOOGLE_API_KEY' }, { status: 503 });
+    const apiKey = process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return NextResponse.json({ error: 'Missing API Key for AI service' }, { status: 503 });
+    }
 
     const genAI = new GoogleGenerativeAI(apiKey);
 
     const model = genAI.getGenerativeModel({
       model: 'gemini-1.5-flash',
-      systemInstruction: SYSTEM,
-      tools: [
-        {
-          functionDeclarations: [
-            {
-              name: 'CoachAdvice',
-              description: 'Return structured coaching advice.',
-              parameters: CoachAdviceParams,
-            },
-          ],
-        },
-      ],
+      systemInstruction: { role: 'model', parts: [{ text: SYSTEM_INSTRUCTION }] },
+      tools: [tool],
       generationConfig: {
         temperature: 0.3,
       },
@@ -157,10 +162,9 @@ export async function POST(req: NextRequest) {
       ],
     });
 
-    // Only the dynamic data lives in the prompt
     const prompt = `
 CONTEXT
-UserProfile: ${JSON.stringify(profile)}
+UserProfile: ${JSON.stringify(stripUndefinedDeep(profile))}
 RoutineSummary: ${JSON.stringify(routineSummary)}
 TrainingSummary: ${JSON.stringify(trainingSummary)}
 SCOPE: ${JSON.stringify(scope)}
@@ -170,21 +174,18 @@ Call the CoachAdvice function with your structured advice.
 `;
 
     const result = await model.generateContent(prompt);
-
-    const parts = result.response?.candidates?.[0]?.content?.parts ?? [];
-    const fn = parts.find((p: any) => p?.functionCall)?.functionCall;
-    let advice = fn?.name === 'CoachAdvice' ? fn?.args : undefined;
-
-    // belt-and-suspenders fallback for odd responses
-    if (!advice && typeof result.response?.text === 'function') {
-      try {
-        advice = JSON.parse(result.response.text());
-      } catch {}
-    }
+    
+    // ✅ New, correct way to access function call output
+    const call = result.response.functionCalls()?.[0];
+    const advice = call?.name === 'CoachAdvice' ? call.args : undefined;
 
     if (!advice) {
-      console.error('CoachAdvice function was not called or parsed. Raw:', JSON.stringify(result.response, null, 2));
-      return NextResponse.json({ error: 'Invalid response structure from model' }, { status: 502 });
+      console.error('CoachAdvice function was not called or parsed. Raw response:', JSON.stringify(result.response, null, 2));
+      let errorMessage = 'Invalid response structure from model.';
+      if (result.response.promptFeedback?.blockReason) {
+        errorMessage = `Request blocked: ${result.response.promptFeedback.blockReason}`;
+      }
+      return NextResponse.json({ error: errorMessage }, { status: 502 });
     }
 
     return NextResponse.json({ advice }, { status: 200 });
