@@ -176,7 +176,7 @@ export async function POST(req: Request) {
 
     if (!canUseGemini) {
       // ✅ Free path
-      const lite = buildCoachAdviceLite(summary, profile);
+      const lite = buildCoachAdviceLite(summary, profile, { scope, routineSummary });
       const advice: CoachAdvice = normalizeAdviceShape(lite);
       return NextResponse.json({ advice, engine: 'lite' });
     }
@@ -217,7 +217,7 @@ Call the CoachAdvice function with your structured advice.
     }
 
     if (!rawAdvice) {
-      const lite = buildCoachAdviceLite(summary, profile);
+      const lite = buildCoachAdviceLite(summary, profile, { scope, routineSummary });
       const advice: CoachAdvice = normalizeAdviceShape(lite);
       return NextResponse.json({ advice: advice, engine: 'lite', note: lastErr?.message ?? 'LLM unavailable, used lite' }, { status: 200 });
     }
