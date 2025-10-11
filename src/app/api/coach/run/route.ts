@@ -12,6 +12,7 @@ const MODEL_CANDIDATES = [
   'gemini-2.0-flash',
 ];
 
+
 function stripFences(s: string) {
   const t = s.trim();
   if (t.startsWith('```')) return t.replace(/^```(?:json)?\s*/i,'').replace(/```$/,'').trim();
@@ -78,7 +79,7 @@ function compactPayload(profile: any, routineSummary: any, trainingSummary: any)
   };
 }
 
-async function callGeminiREST(model: string, apiKey: string, systemText: string, userText: string) {
+async function callGeminiREST(model: string, apiKey: string, systemText: string, userText: string, maxTokens: number) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
   const body = {
     system_instruction: { parts: [{ text: systemText }] },
@@ -86,7 +87,7 @@ async function callGeminiREST(model: string, apiKey: string, systemText: string,
     generationConfig: {
       temperature: 0.2,
       topP: 0.9,
-      maxOutputTokens: 800,
+      maxOutputTokens: maxTokens,
       response_mime_type: 'application/json',
       response_schema: COACH_RESPONSE_SCHEMA
     }
@@ -95,7 +96,8 @@ async function callGeminiREST(model: string, apiKey: string, systemText: string,
   const rawText = await r.text();
   if (!r.ok) throw new Error(`HTTP_${r.status}: ${rawText.slice(0,800)}`);
   const data = JSON.parse(rawText);
-  return { data, parsed: extractJsonFromCandidates(data) };
+  const parsed = extractJsonFromCandidates(data);
+  return { data, parsed };
 }
 
 export async function POST(req: Request) {
@@ -106,40 +108,51 @@ export async function POST(req: Request) {
     const { profile, routineSummary, trainingSummary } = await req.json();
     const scope = { mode: 'global' as const };
 
+    // always compact before prompting
     const compact = compactPayload(profile, routineSummary, trainingSummary);
-    const userPrompt = makeUserPrompt({ ...compact, scope });
 
-    let used: string | null = null;
     let adviceRaw: any = null;
+    let used: string | null = null;
     let lastErr: string | null = null;
 
     for (const model of MODEL_CANDIDATES) {
       try {
-        const { parsed } = await callGeminiREST(model, apiKey, SYSTEM_PROMPT, userPrompt);
-        adviceRaw = parsed;
-        used = model;
-        break;
-      } catch (e: any) {
-        const msg = String(e?.message || e);
-        lastErr = msg;
-        const m = msg.toLowerCase();
-        if (m.includes('404') || m.includes('not found') || m.includes('unsupported') || m.includes('429') || m.includes('quota') || m.includes('rate') || m.includes('preview')) {
-          continue;
+        // 1) Fast path (slightly bigger budget than 800)
+        try {
+          const prompt = makeUserPrompt({ ...compact, scope, brief: false });
+          const { parsed } = await callGeminiREST(model, apiKey, SYSTEM_PROMPT, prompt, 1100);
+          adviceRaw = parsed; used = model; break;
+        } catch (e: any) {
+          const msg = String(e?.message || e);
+
+          // 2) Retry ONCE if token-limited → brief mode + larger cap (rare)
+          if (msg.includes('MAX_TOKENS')) {
+            const promptBrief = makeUserPrompt({ ...compact, scope, brief: true });
+            const { parsed } = await callGeminiREST(model, apiKey, SYSTEM_PROMPT, promptBrief, 1400);
+            adviceRaw = parsed; used = model; break;
+          }
+
+          // try next model on 404/429 etc.
+          const m = msg.toLowerCase();
+          if (m.includes('404') || m.includes('not found') || m.includes('unsupported') ||
+              m.includes('429') || m.includes('quota') || m.includes('rate') || m.includes('preview')) {
+            lastErr = msg; continue;
+          }
+          throw e;
         }
-        throw e;
+      } catch (e:any) {
+        lastErr = String(e?.message || e);
+        continue;
       }
     }
 
     if (!adviceRaw) {
-      return NextResponse.json(
-        { ok:false, engine:'none', modelTried: MODEL_CANDIDATES, error:`NO_MODEL_WORKED: ${lastErr}` },
-        { status:502 }
-      );
+      return NextResponse.json({ ok:false, engine:'none', error:`NO_MODEL_WORKED: ${lastErr}` }, { status:502 });
     }
 
     const advice = normalizeAdviceUI(adviceRaw, routineSummary);
     return NextResponse.json({ ok:true, engine:'gemini', modelUsed: used, advice });
-  } catch (e: any) {
+  } catch (e:any) {
     return NextResponse.json({ ok:false, engine:'none', error:String(e?.message || e) }, { status:502 });
   }
 }
