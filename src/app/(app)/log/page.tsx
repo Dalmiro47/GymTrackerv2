@@ -242,82 +242,62 @@ function TrainingLogPageContent() {
   
   return (
     <div className="space-y-6">
-      <PageHeader title="Training Log" description="Record your daily workouts and track progress.">
-        {/* Mobile-first: 2-up row (Coach/Delete) + full-width Save; desktop: inline to the right */}
-        <div className="w-full sm:w-auto">
-          <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:justify-end">
-            {/* Coach */}
-            <div className="col-span-1">
-              <CoachInline
-                routineContext={routineDay}
-                buttonProps={{
-                  className: "w-full sm:w-auto",
-                  size: "sm", // compact on mobile
-                }}
-              />
-            </div>
-      
-            {/* Delete (AlertDialog preserved) */}
-            <AlertDialog open={isDeleteConfirmOpen} onOpenChange={setIsDeleteConfirmOpen}>
-              <AlertDialogTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full sm:w-auto border-destructive text-destructive hover:bg-destructive/10"
-                  disabled={isDeletingLog || isLoadingLog || !canDeleteLog || isSavingLog}
-                  aria-label="Delete day's log"
-                >
-                  {isDeletingLog ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Trash2 className="mr-2 h-4 w-4" />
-                  )}
-                  <span className="hidden min-[380px]:inline">Delete Day&apos;s Log</span>
-                  <span className="min-[380px]:hidden">Delete</span>
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle className="flex items-center">
+      {/* Header row */}
+      <div className="flex items-center justify-between mb-4">
+        <PageHeader title="Training Log" description="Record your daily workouts and track progress."/>
+        
+        {/* Desktop actions (hidden on mobile) */}
+        <div className="hidden md:flex gap-2">
+          <AlertDialog open={isDeleteConfirmOpen} onOpenChange={setIsDeleteConfirmOpen}>
+            <AlertDialogTrigger asChild>
+              <Button
+                variant="destructive"
+                disabled={isDeletingLog || isLoadingLog || !canDeleteLog || isSavingLog}
+                className="gap-2"
+                title="Delete today's log"
+              >
+                <Trash2 className="h-4 w-4" />
+                Delete Day’s Log
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle className="flex items-center">
                     <AlertTriangle className="mr-2 h-5 w-5 text-destructive" />
                     Confirm Deletion
-                  </AlertDialogTitle>
-                  <AlertDialogDescription>
-                    Are you sure you want to delete the entire log for {format(selectedDate, 'PPP')}? This action cannot be undone.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction 
-                    onClick={handleDeleteConfirmed} 
-                    className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
-                    disabled={isDeletingLog}
-                  >
-                    {isDeletingLog ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Delete Log"}
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  Are you sure you want to delete the entire log for {format(selectedDate, 'PPP')}? This action cannot be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={handleDeleteConfirmed}
+                  disabled={isDeletingLog}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  {isDeletingLog ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Delete Log"}
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
-            </AlertDialog>
-      
-            {/* Primary Save CTA — full width on mobile, nice min width on desktop */}
-            <Button
-              onClick={async () => await saveCurrentLog()}
-              disabled={isSavingLog || isLoadingLog || isDeletingLog}
-              aria-busy={isSavingLog}
-              className="col-span-2 w-full sm:col-span-1 sm:w-auto sm:min-w-[170px] bg-accent hover:bg-accent/90"
-              size="sm"
-              aria-label="Save day's log"
-            >
-              {isSavingLog ? (
+          </AlertDialog>
+
+          <Button
+            onClick={async () => await saveCurrentLog()}
+            disabled={isSavingLog || isLoadingLog || isDeletingLog}
+            className="gap-2 bg-accent hover:bg-accent/90"
+            title="Save today’s log"
+          >
+             {isSavingLog ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (
                 <Save className="mr-2 h-4 w-4" />
               )}
-              Save Day's Log
-            </Button>
-          </div>
+            Save Day’s Log
+          </Button>
         </div>
-      </PageHeader>
+      </div>
 
       <Card className="shadow-lg">
         <CardHeader>
@@ -644,6 +624,54 @@ function TrainingLogPageContent() {
         onReplaceExercise={handleReplaceExercise}
         initialMuscleGroup={exerciseToReplace?.muscleGroup}
       />
+      
+      {/* Spacer so content isn't hidden behind mobile action bar */}
+      <div className="h-20 md:hidden" />
+
+      {/* Mobile sticky action bar */}
+      <div className="md:hidden fixed bottom-0 inset-x-0 z-40 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div className="container px-4 py-3 grid grid-cols-2 gap-2 pb-[env(safe-area-inset-bottom)]">
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button
+                variant="outline"
+                className="h-12 text-base gap-2 border-destructive text-destructive hover:bg-destructive/10"
+                disabled={isDeletingLog || isLoadingLog || !canDeleteLog || isSavingLog}
+              >
+                <Trash2 className="h-5 w-5 text-destructive" />
+                Delete
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete today’s log?</AlertDialogTitle>
+                <AlertDialogDescription>
+                    Are you sure you want to delete the entire log for {format(selectedDate, 'PPP')}? This cannot be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={handleDeleteConfirmed}
+                  disabled={isDeletingLog}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  {isDeletingLog ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Delete"}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+
+          <Button
+            onClick={async () => await saveCurrentLog()}
+            disabled={isSavingLog || isLoadingLog || isDeletingLog}
+            className="h-12 text-base gap-2 bg-accent hover:bg-accent/90"
+          >
+            {isSavingLog ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Save className="h-5 w-5" />}
+            Save
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -656,3 +684,5 @@ export default function TrainingLogPage() {
     </Suspense>
   );
 }
+
+    
