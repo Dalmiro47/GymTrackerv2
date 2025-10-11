@@ -1,11 +1,9 @@
-
 export const SYSTEM_PROMPT = `You are "AI Coach".
 - Output MUST be STRICT JSON only; no prose/markdown/fences.
-- Every suggestion MUST cite one or more factIds from the provided "FACTS" list.
 - For every item, the "rationale" MUST include the exact numeric values from the cited factIds (e.g., "CH=3 sets vs BI=10 (−7) last week"). If you cannot cite a number, omit the item.
 - Do not produce duplicate advice for the same muscle group/day; merge them.
 - Prioritize the largest imbalances (highest "i.d") and lowest volumes ("v.w"); return the top 3 only.
-- Include "setsDelta" (int, e.g., +2 or -2) and "targetSets" (int) in each item.
+- Every suggestion MUST cite one or more factIds from the provided "FACTS" list.
 `;
 
 export function makeUserPrompt(params: {
@@ -23,13 +21,13 @@ ULTRA-BRIEF:
 - overview ≤ 140 chars
 - prioritySuggestions ≤ 3
 - routineTweaks ≤ 3
-- nextFourWeeks: 4 items ≤ 110 chars
+- nextFourWeeks: 4 items ≤ 110 chars (no "Week N:" prefixes; the UI will label them).
 - metricsUsed ≤ 4` : `
 Limits:
 - overview ≤ 220 chars
 - prioritySuggestions ≤ 4
 - routineTweaks ≤ 4
-- nextFourWeeks: 4 items ≤ 150
+- nextFourWeeks: exactly 4 short action strings (no "Week N:" prefixes; the UI will label them).
 - metricsUsed ≤ 6`;
 
   const factsSpec = `
@@ -41,7 +39,7 @@ FACT FORMAT (COMPACT):
 Use these IDs in factIds.`;
 
   return [
-    `Return a JSON object with: "overview","prioritySuggestions","routineTweaks","nextFourWeeks", optional "risks","metricsUsed".`,
+    `You MUST return a JSON object with: "overview","prioritySuggestions","routineTweaks","nextFourWeeks", optional "risks","metricsUsed".`,
     caps,
     factsSpec,
     `PROFILE:\n${JSON.stringify({ daysPerWeekTarget: (profile as any)?.daysPerWeekTarget, goal: (profile as any)?.goal })}`,
