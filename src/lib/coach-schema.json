@@ -1,0 +1,246 @@
+import { NextResponse } from 'next/server';
+import { stripUndefinedDeep } from '@/lib/sanitize';
+import type { FunctionDeclarationsTool } from '@google/generative-ai';
+import { summarizeLogs, buildCoachAdviceLite, normalizeAdviceShape } from '@/lib/analysis';
+import type { CoachAdvice } from '@/lib/analysis';
+
+// Optional import only if you have the SDK installed
+let GoogleGenerativeAI: any, HarmCategory: any, HarmBlockThreshold: any;
+try {
+  // Avoid module load crash on edge runtimes without SDK
+  ({ GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } = require('@google/generative-ai'));
+} catch {}
+
+
+const MODEL_CANDIDATES = [
+    'gemini-1.5-flash',
+    'gemini-1.5-flash-latest',
+    'gemini-1.5-pro',
+    'gemini-1.5-pro-latest',
+];
+
+const CoachAdviceParams = {
+  type: 'OBJECT',
+  properties: {
+    overview: { type: 'STRING', description: 'Short high-level summary.' },
+    priorities: { type: 'ARRAY', items: { type: 'STRING' } },
+    routineTweaks: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          where: {
+            type: 'OBJECT',
+            properties: {
+              day: { type: 'STRING' },
+              slot: { type: 'NUMBER' },
+            },
+            required: ['day'],
+          },
+          change: {
+            type: 'STRING',
+            enum: [
+              'Replace Exercise',
+              'Add Exercise',
+              'Remove Exercise',
+              'Change Sets/Reps',
+              'Change Frequency',
+            ],
+          },
+          details: { type: 'STRING' },
+          setsReps: {
+            type: 'OBJECT',
+            properties: {
+              sets: { type: 'NUMBER' },
+              repsRange: { type: 'STRING' },
+              rir: { type: 'STRING' },
+            },
+            required: ['sets', 'repsRange'],
+          },
+          exampleExercises: { type: 'ARRAY', items: { type: 'STRING' } },
+          rationale: { type: 'STRING' },
+        },
+        required: ['where', 'change', 'details', 'rationale'],
+      },
+    },
+    nextFourWeeks: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          week: { type: 'NUMBER' },
+          focus: { type: 'STRING' },
+          notes: { type: 'STRING' },
+        },
+        required: ['week', 'focus', 'notes'],
+      },
+    },
+    meta: {
+      type: 'OBJECT',
+      properties: {
+        stalledLifts: {
+          type: 'ARRAY',
+          items: {
+            type: 'OBJECT',
+            properties: {
+              name: { type: 'STRING' },
+              reason: { type: 'STRING' },
+            },
+            required: ['name', 'reason'],
+          },
+        },
+        volumeGaps: {
+          type: 'ARRAY',
+          items: {
+            type: 'OBJECT',
+            properties: {
+              muscleGroup: { type: 'STRING' },
+              weeklySets: { type: 'NUMBER' },
+              targetRange: { type: 'STRING' },
+            },
+            required: ['muscleGroup', 'weeklySets', 'targetRange'],
+          },
+        },
+        balance: {
+          type: 'OBJECT',
+          properties: {
+            pushPct: { type: 'NUMBER' },
+            pullPct: { type: 'NUMBER' },
+            legsPct: { type: 'NUMBER' },
+            hingePct: { type: 'NUMBER' },
+            corePct: { type: 'NUMBER' },
+          },
+        },
+        confidence: { type: 'NUMBER' },
+      },
+    },
+  },
+  required: ['overview', 'routineTweaks', 'nextFourWeeks'],
+};
+
+const SYSTEM_PROMPT = `You are "AI Coach", a strength coach.
+Output: STRICT JSON only (validates against user-provided JSON Schema).
+Constraints:
+- Use ONLY provided metrics; never invent numbers or exercises.
+- Avoid generic hypertrophy guidance (e.g., "6–12 reps" or "keep technique-first") unless it is directly justified by the data.
+- Every suggestion MUST reference an observed metric (e.g., e1RM slope, weekly volume %, RIR trend).
+- Prefer minimal, testable prescriptions: sets×reps×RIR, load deltas (+2.5%), or weekly frequency changes.
+- If data is insufficient for a section, return [] for that section. No filler text.
+`;
+
+const tool: FunctionDeclarationsTool = {
+  functionDeclarations: [
+    {
+      name: 'CoachAdvice',
+      description: 'Return structured coaching advice.',
+      parameters: CoachAdviceParams as any,
+    },
+  ],
+};
+
+
+async function runWithModel(genAI: any, modelName: string, promptText: string) {
+    const model = genAI.getGenerativeModel({
+        model: modelName,
+        systemInstruction: { role: 'model', parts: [{ text: SYSTEM_PROMPT }] },
+        tools: [tool],
+        generationConfig: {
+            temperature: 0.3,
+        },
+        safetySettings: [
+          { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+          { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+          { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
+          { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+        ],
+    });
+
+    const result = await model.generateContent(promptText);
+    const call = result?.response?.functionCalls?.[0];
+    const advice = call?.name === 'CoachAdvice' ? call.args : undefined;
+    return { advice, raw: result };
+}
+
+function makeUserPrompt(params: {
+  profile: unknown;
+  routineSummary: unknown;
+  trainingSummary: unknown;
+  scope: { mode: 'global' };
+}) {
+  const { profile, routineSummary, trainingSummary, scope } = params;
+
+  return [
+    `PROFILE:\n${JSON.stringify(profile)}`,
+    `ROUTINE SUMMARY:\n${JSON.stringify(routineSummary)}`,
+    `TRAINING SUMMARY (last 6–8 weeks):\n${JSON.stringify(trainingSummary)}`,
+    `SCOPE:\n${JSON.stringify(scope)}`,
+    `GUIDANCE:
+- Identify: improvements (positive e1RM slope), plateaus (±1% ≥3 weeks), fatigue risk (volume↑ & RIR↓ & e1RM↓), imbalances (≥25–30% lower volume vs antagonist).
+- "prioritySuggestions": max 5 items, each with a clear action and a metric-based rationale.
+- "routineTweaks": concrete prescriptions per exercise or day (sets×reps×RIR / small load deltas).
+- "nextFourWeeks": 4 concise week-by-week directives (one per array item).
+Return STRICT JSON only.`
+  ].join('\n\n');
+}
+
+
+export async function POST(req: Request) {
+  try {
+    const { profile, routineSummary, trainingSummary, logs } = await req.json();
+
+    const scope = { mode: 'global' as const };
+    const summary = trainingSummary ?? summarizeLogs(routineSummary?.days, logs);
+
+    const apiKey = process.env.GOOGLE_API_KEY?.trim() || process.env.GEMINI_API_KEY?.trim();
+    const canUseGemini = Boolean(apiKey && GoogleGenerativeAI);
+
+    if (!canUseGemini) {
+      // ✅ Free path
+      const lite = buildCoachAdviceLite(summary, profile, { scope, routineSummary });
+      const advice: CoachAdvice = normalizeAdviceShape(lite);
+      return NextResponse.json({ advice, engine: 'lite' });
+    }
+
+    const genAI = new GoogleGenerativeAI(apiKey!);
+    const prompt = makeUserPrompt({ profile, routineSummary, trainingSummary: summary, scope });
+
+    let rawAdvice: any;
+    let lastErr: any;
+
+    for (const modelName of MODEL_CANDIDATES) {
+      try {
+        const out = await runWithModel(genAI, modelName, prompt);
+        rawAdvice = out.advice;
+        if (rawAdvice) break;
+      } catch (e: any) {
+        lastErr = e;
+        const msg = String(e?.message || e);
+        if (
+          msg.includes('not found') ||
+          msg.includes('is not supported') ||
+          msg.includes('404')
+        ) {
+          console.warn(`Model ${modelName} not found, trying next...`);
+          continue; 
+        }
+        throw e;
+      }
+    }
+
+    if (!rawAdvice) {
+      const lite = buildCoachAdviceLite(summary, profile, { scope, routineSummary });
+      const advice: CoachAdvice = normalizeAdviceShape(lite);
+      return NextResponse.json({ advice: advice, engine: 'lite', note: lastErr?.message ?? 'LLM unavailable, used lite' }, { status: 200 });
+    }
+    
+    const advice = normalizeAdviceShape(rawAdvice);
+    return NextResponse.json({ advice, engine: 'gemini' });
+
+  } catch (err: any) {
+    console.error('AI Coach error:', err);
+    return NextResponse.json(
+      { error: err?.message || 'AI Coach failed.' },
+      { status: 500 }
+    );
+  }
+}

@@ -1,103 +1,65 @@
-'use client';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { collection, doc, getDoc, setDoc } from 'firebase/firestore';
+
+import { useState } from 'react';
+import { getAuth } from 'firebase/auth';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebaseConfig';
-import { useAuth } from '@/contexts/AuthContext';
-import { format } from 'date-fns';
-import { hashString } from '@/lib/hash';
-import type { CoachAdvice } from '@/lib/coach.schema';
-import type { UserProfile } from '@/lib/types.gym';
-import { normalizeAdviceUI } from '@/lib/coachNormalize';
 
-export type CoachScope =
-  | { mode: 'global' }
-  | { mode: 'day'; dayId: string; dayName?: string };
+function isoWeekKey(d = new Date()) {
+  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const day = date.getUTCDay() || 7;
+  date.setUTCDate(date.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+  const week = Math.ceil((((+date - +yearStart) / 86400000) + 1) / 7);
+  return `${date.getUTCFullYear()}-${String(week).padStart(2, '0')}`;
+}
 
-export function useCoachRun({
-  profile,
-  routineSummary,
-  trainingSummary,
-  scope = { mode: 'global' },
-  preload = false, // NEW
-}: {
-  profile: UserProfile | null;
-  routineSummary: any;
-  trainingSummary: any;
-  scope?: CoachScope;
-  preload?: boolean;
-}) {
-  const { user } = useAuth();
-  const [isRunning, setRunning] = useState(false);
-  const [advice, setAdvice] = useState<CoachAdvice | null>(null);
-  const [createdAt, setCreatedAt] = useState<number | null>(null);
+export function useCoachRun() {
+  const [loading, setLoading] = useState(false);
+  const [error, setError]   = useState<string | null>(null);
 
-  const weekKey = format(new Date(), 'RRRR-ww');
-  const scopeKey = scope.mode === 'day' ? `day-${scope.dayId}` : 'global';
-  const docId = `${weekKey}-${scopeKey}`;
+  async function runCoach(payload: {
+    profile: any;
+    routineSummary: any;
+    trainingSummary: any;
+    scope?: { mode: 'global' | 'day'; dayId?: string; dayName?: string };
+  }) {
+    setLoading(true);
+    setError(null);
+    try {
+      const r = await fetch('/api/coach/run', {
+        method: 'POST',
+        cache: 'no-store',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...payload, scope: { mode: 'global' as const } })
+      });
+      const data = await r.json();
+      if (!r.ok || !data?.ok) throw new Error(data?.error || `HTTP ${r.status}`);
 
-  const inputHash = useMemo(
-    () => hashString(JSON.stringify({ profile, routineSummary, trainingSummary, scope })),
-    [profile, routineSummary, trainingSummary, scope]
-  );
+      // --- Persist to Firestore ---
+      const uid = getAuth().currentUser?.uid;
+      if (uid) {
+        const nowKey = isoWeekKey();
+        const base = {
+          advice: data.advice,
+          engine: data.engine,
+          modelUsed: data.modelUsed,
+          createdAt: serverTimestamp(),
+        };
 
-  // NEW: preload cached advice when arriving on the page
-  useEffect(() => {
-    (async () => {
-      if (!preload || !user || !profile) return;
-      const uid = user.id;
-      const ref = doc(collection(db, 'users', uid, 'coachAdvice'), docId);
-      const snap = await getDoc(ref);
-      if (snap.exists()) {
-        const data: any = snap.data();
-        if (data?.advice) {
-          setAdvice(normalizeAdviceUI(data.advice) as CoachAdvice);
-          setCreatedAt(data.createdAt ?? null);
-        }
+        // latest
+        await setDoc(doc(db, 'users', uid, 'coachAdvice', 'latest-global'), base, { merge: true });
+        // weekly history (optional)
+        await setDoc(doc(db, 'users', uid, 'coachAdvice', `${nowKey}-global`), base, { merge: true });
       }
-    })();
-  }, [preload, user, profile, docId]);
 
-  const run = useCallback(async () => {
-    if (!user || !profile) return;
-    setRunning(true);
-    const uid = user.id;
-    const ref = doc(collection(db, 'users', uid, 'coachAdvice'), docId);
-
-    // cache
-    const cached = await getDoc(ref);
-    if (cached.exists()) {
-      const data: any = cached.data();
-      if (data.inputHash === inputHash && data.advice) {
-        setAdvice(normalizeAdviceUI(data.advice) as CoachAdvice);
-        setCreatedAt(data.createdAt ?? null);
-        setRunning(false);
-        return;
-      }
+      return data.advice; // already normalized on server
+    } catch (e: any) {
+      setError(e?.message ?? 'Unknown error');
+      return null;
+    } finally {
+      setLoading(false);
     }
+  }
 
-    // run
-    const res = await fetch('/api/coach/run', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ profile, routineSummary, trainingSummary, scope }),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      console.error('Coach API error:', res.status, err?.error);
-      setRunning(false);
-      return;
-    }
-
-    const json = await res.json();
-    if (json?.advice) {
-      const now = Date.now();
-      const normalized = normalizeAdviceUI(json.advice);
-      setAdvice(normalized as CoachAdvice);
-      setCreatedAt(now);
-      await setDoc(ref, { inputHash, createdAt: now, advice: normalized }, { merge: true });
-    }
-    setRunning(false);
-  }, [user, profile, inputHash, routineSummary, trainingSummary, scope, docId]);
-
-  return { advice, run, isRunning, inputHash, weekKey, createdAt };
+  return { runCoach, loading, error };
 }

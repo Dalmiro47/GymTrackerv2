@@ -1,235 +1,150 @@
 
 import { NextResponse } from 'next/server';
-import { stripUndefinedDeep } from '@/lib/sanitize';
-import type { FunctionDeclarationsTool } from '@google/generative-ai';
-import { summarizeLogs, buildCoachAdviceLite, normalizeAdviceShape } from '@/lib/analysis';
-import type { CoachAdvice } from '@/lib/analysis';
+import { SYSTEM_PROMPT, makeUserPrompt, COACH_RESPONSE_SCHEMA } from '@/lib/ai/coachPrompt';
+import { normalizeAdviceUI } from '@/lib/coachNormalize';
 
-// Optional import only if you have the SDK installed
-let GoogleGenerativeAI: any, HarmCategory: any, HarmBlockThreshold: any;
-try {
-  // Avoid module load crash on edge runtimes without SDK
-  ({ GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } = require('@google/generative-ai'));
-} catch {}
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
+const MODEL_CANDIDATES = ['gemini-2.5-flash','gemini-2.5-flash-lite','gemini-2.0-flash'];
 
-const MODEL_CANDIDATES = [
-    'gemini-1.5-flash',
-    'gemini-1.5-flash-latest',
-    'gemini-1.5-pro',
-    'gemini-1.5-pro-latest',
-];
+function stripFences(s: string) {
+  const t = s.trim();
+  if (t.startsWith('```')) return t.replace(/^```(?:json)?\s*/i,'').replace(/```$/,'').trim();
+  return t;
+}
+function tryParseJSON(s: string) { try { return JSON.parse(s); } catch { return null; } }
+function decodeInlineData(b64: string) {
+  try { return Buffer.from(b64, 'base64').toString('utf-8'); } catch { return ''; }
+}
+function extractJsonFromCandidates(data: any) {
+  const cand = data?.candidates?.[0];
+  const parts = cand?.content?.parts;
 
-const CoachAdviceParams = {
-  type: 'OBJECT',
-  properties: {
-    overview: { type: 'STRING', description: 'Short high-level summary.' },
-    priorities: { type: 'ARRAY', items: { type: 'STRING' } },
-    routineTweaks: {
-      type: 'ARRAY',
-      items: {
-        type: 'OBJECT',
-        properties: {
-          where: {
-            type: 'OBJECT',
-            properties: {
-              day: { type: 'STRING' },
-              slot: { type: 'NUMBER' },
-            },
-            required: ['day'],
-          },
-          change: {
-            type: 'STRING',
-            enum: [
-              'Replace Exercise',
-              'Add Exercise',
-              'Remove Exercise',
-              'Change Sets/Reps',
-              'Change Frequency',
-            ],
-          },
-          details: { type: 'STRING' },
-          setsReps: {
-            type: 'OBJECT',
-            properties: {
-              sets: { type: 'NUMBER' },
-              repsRange: { type: 'STRING' },
-              rir: { type: 'STRING' },
-            },
-            required: ['sets', 'repsRange'],
-          },
-          exampleExercises: { type: 'ARRAY', items: { type: 'STRING' } },
-          rationale: { type: 'STRING' },
-        },
-        required: ['where', 'change', 'details', 'rationale'],
-      },
+  if (Array.isArray(parts)) {
+    for (const p of parts) {
+      if (typeof p?.text === 'string' && p.text.trim()) {
+        const parsed = tryParseJSON(stripFences(p.text));
+        if (parsed) return parsed;
+      }
+    }
+    for (const p of parts) {
+      const id = p?.inline_data;
+      if (id?.mime_type?.toLowerCase().includes('json') && typeof id?.data === 'string') {
+        const parsed = tryParseJSON(decodeInlineData(id.data));
+        if (parsed) return parsed;
+      }
+    }
+    for (const p of parts) {
+      const fc = p?.functionCall;
+      if (fc?.args) return fc.args;
+      if (typeof fc?.argsJson === 'string') {
+        const parsed = tryParseJSON(fc.argsJson);
+        if (parsed) return parsed;
+      }
+    }
+  }
+
+  const diag = {
+    keys: Object.keys(cand ?? {}),
+    partsType: Array.isArray(parts) ? 'array' : typeof parts,
+    partsLen: Array.isArray(parts) ? parts.length : 0,
+    finishReason: cand?.finishReason,
+  };
+  throw new Error(`EMPTY_RESPONSE_PARTS: ${JSON.stringify(diag)}`);
+}
+
+// compact the payload for retry
+function compactPayload(profile: any, routineSummary: any, trainingSummary: any) {
+  const ts = trainingSummary ?? {};
+  // keep only last 8 "weekly" items if it's large
+  const weekly = Array.isArray(ts.weekly) ? ts.weekly.slice(-8) : [];
+  // drop any giant fields we don't need
+  return {
+    profile,
+    routineSummary: {
+      days: Array.isArray(routineSummary?.days)
+        ? routineSummary.days.map((d: any) => ({
+            id: d.id, name: d.name,
+            exercises: Array.isArray(d.exercises) ? d.exercises.slice(0, 6) : []
+          })).slice(0, 4)
+        : []
     },
-    nextFourWeeks: {
-      type: 'ARRAY',
-      items: {
-        type: 'OBJECT',
-        properties: {
-          week: { type: 'NUMBER' },
-          focus: { type: 'STRING' },
-          notes: { type: 'STRING' },
-        },
-        required: ['week', 'focus', 'notes'],
-      },
-    },
-    meta: {
-      type: 'OBJECT',
-      properties: {
-        stalledLifts: {
-          type: 'ARRAY',
-          items: {
-            type: 'OBJECT',
-            properties: {
-              name: { type: 'STRING' },
-              reason: { type: 'STRING' },
-            },
-            required: ['name', 'reason'],
-          },
-        },
-        volumeGaps: {
-          type: 'ARRAY',
-          items: {
-            type: 'OBJECT',
-            properties: {
-              muscleGroup: { type: 'STRING' },
-              weeklySets: { type: 'NUMBER' },
-              targetRange: { type: 'STRING' },
-            },
-            required: ['muscleGroup', 'weeklySets', 'targetRange'],
-          },
-        },
-        balance: {
-          type: 'OBJECT',
-          properties: {
-            pushPct: { type: 'NUMBER' },
-            pullPct: { type: 'NUMBER' },
-            legsPct: { type: 'NUMBER' },
-            hingePct: { type: 'NUMBER' },
-            corePct: { type: 'NUMBER' },
-          },
-        },
-        confidence: { type: 'NUMBER' },
-      },
-    },
-  },
-  required: ['overview', 'routineTweaks', 'nextFourWeeks'],
-};
+    trainingSummary: { weekly }
+  };
+}
 
-const SYSTEM_INSTRUCTION = `
-You are a certified strength & conditioning coach. Provide safe, conservative, evidence-based guidance.
-- Respect user constraints and sessionTimeTargetMin (time per session).
-- Treat training as mostly gender-neutral; only adjust where clearly relevant.
-- Map guidance to goals (Hypertrophy, Strength, Strength+Hypertrophy, Fat Loss, General Fitness).
-- Respect daysPerWeekTarget and ensure weekly balance (squat/hinge/horizontal+vertical push/pull/core).
-- Suggest 1–3 high-impact tweaks with rationale; be cautious on thin data.
-- Use TrainingSummary to note stalled lifts & volume gaps (fill meta.*).
-- If scope.mode === "day": only tweak that day and keep within sessionTimeTargetMin.
-- If scope.mode === "global": analyze the entire plan.
-- Your response MUST be a function call to CoachAdvice with valid data.
-`;
-
-const tool: FunctionDeclarationsTool = {
-  functionDeclarations: [
-    {
-      name: 'CoachAdvice',
-      description: 'Return structured coaching advice.',
-      parameters: CoachAdviceParams as any,
-    },
-  ],
-};
-
-
-async function runWithModel(genAI: any, modelName: string, promptText: string) {
-    const model = genAI.getGenerativeModel({
-        model: modelName,
-        systemInstruction: { role: 'model', parts: [{ text: SYSTEM_INSTRUCTION }] },
-        tools: [tool],
-        generationConfig: {
-            temperature: 0.3,
-        },
-        safetySettings: [
-          { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
-          { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
-          { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH },
-          { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
-        ],
-    });
-
-    const result = await model.generateContent(promptText);
-    const call = result?.response?.functionCalls?.[0];
-    const advice = call?.name === 'CoachAdvice' ? call.args : undefined;
-    return { advice, raw: result };
+async function callGeminiREST(model: string, apiKey: string, systemText: string, userText: string, maxTokens: number) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+  const body = {
+    system_instruction: { parts: [{ text: systemText }] },
+    contents: [{ role: 'user', parts: [{ text: userText }] }],
+    generationConfig: {
+      temperature: 0.2,
+      topP: 0.9,
+      maxOutputTokens: maxTokens,
+      response_mime_type: 'application/json',
+      response_schema: COACH_RESPONSE_SCHEMA
+    }
+  };
+  const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const rawText = await r.text();
+  if (!r.ok) throw new Error(`HTTP_${r.status}: ${rawText.slice(0,800)}`);
+  const data = JSON.parse(rawText);
+  return { data, parsed: extractJsonFromCandidates(data) };
 }
 
 export async function POST(req: Request) {
+  const apiKey = (process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || '').trim();
+  if (!apiKey) return NextResponse.json({ ok:false, engine:'none', error:'MISSING_API_KEY' }, { status:500 });
+
   try {
-    const { profile, routineSummary, trainingSummary, scope, routines, logs } = await req.json();
+    const { profile, routineSummary, trainingSummary } = await req.json();
+    const scope = { mode: 'global' as const };
 
-    const summary = trainingSummary ?? summarizeLogs(routines, logs);
+    const prompt1 = makeUserPrompt({ profile, routineSummary, trainingSummary, scope });
+    const prompt2 = makeUserPrompt({ ...compactPayload(profile, routineSummary, trainingSummary), scope });
 
-    const apiKey = process.env.GOOGLE_API_KEY?.trim() || process.env.GEMINI_API_KEY?.trim();
-    const canUseGemini = Boolean(apiKey && GoogleGenerativeAI);
+    let used: string | null = null;
+    let adviceRaw: any = null;
+    let lastErr: string | null = null;
 
-    if (!canUseGemini) {
-      // ✅ Free path
-      const lite = buildCoachAdviceLite(summary, profile, { scope, routineSummary });
-      const advice: CoachAdvice = normalizeAdviceShape(lite);
-      return NextResponse.json({ advice, engine: 'lite' });
-    }
-
-    const genAI = new GoogleGenerativeAI(apiKey!);
-    const prompt = `
-CONTEXT
-UserProfile: ${JSON.stringify(stripUndefinedDeep(profile))}
-RoutineSummary: ${JSON.stringify(routineSummary)}
-TrainingSummary: ${JSON.stringify(summary)}
-SCOPE: ${JSON.stringify(scope)}
-
-TASK
-Call the CoachAdvice function with your structured advice.
-`.trim();
-
-    let rawAdvice: any;
-    let lastErr: any;
-
-    for (const modelName of MODEL_CANDIDATES) {
+    for (const model of MODEL_CANDIDATES) {
       try {
-        const out = await runWithModel(genAI, modelName, prompt);
-        rawAdvice = out.advice;
-        if (rawAdvice) break;
-      } catch (e: any) {
-        lastErr = e;
-        const msg = String(e?.message || e);
-        if (
-          msg.includes('not found') ||
-          msg.includes('is not supported') ||
-          msg.includes('404')
-        ) {
-          console.warn(`Model ${modelName} not found, trying next...`);
-          continue; 
+        // pass 1: generous tokens
+        try {
+          const { data, parsed } = await callGeminiREST(model, apiKey, SYSTEM_PROMPT, prompt1, 2048);
+          adviceRaw = parsed; used = model; break;
+        } catch (e: any) {
+          const msg = String(e?.message || e);
+          // retry once if MAX_TOKENS / empty parts: compact payload + more tokens
+          if (msg.includes('EMPTY_RESPONSE_PARTS') || msg.includes('MAX_TOKENS')) {
+            const { parsed } = await callGeminiREST(model, apiKey, SYSTEM_PROMPT, prompt2, 4096);
+            adviceRaw = parsed; used = model; break;
+          }
+          // On 404/429/preview, try next model
+          const m = msg.toLowerCase();
+          if (m.includes('404') || m.includes('not found') || m.includes('unsupported') || m.includes('429') || m.includes('quota') || m.includes('rate') || m.includes('preview')) {
+            lastErr = msg; continue;
+          }
+          throw e;
         }
-        throw e;
+      } catch (e: any) {
+        lastErr = String(e?.message || e);
+        continue;
       }
     }
 
-    if (!rawAdvice) {
-      const lite = buildCoachAdviceLite(summary, profile, { scope, routineSummary });
-      const advice: CoachAdvice = normalizeAdviceShape(lite);
-      return NextResponse.json({ advice: advice, engine: 'lite', note: lastErr?.message ?? 'LLM unavailable, used lite' }, { status: 200 });
+    if (!adviceRaw) {
+      return NextResponse.json(
+        { ok:false, engine:'none', modelTried: MODEL_CANDIDATES, error:`NO_MODEL_WORKED: ${lastErr}` },
+        { status:502 }
+      );
     }
-    
-    const advice = normalizeAdviceShape(rawAdvice);
-    return NextResponse.json({ advice, engine: 'gemini' });
 
-  } catch (err: any) {
-    console.error('AI Coach route error:', err);
-    return NextResponse.json(
-      { error: err?.message || 'AI Coach failed.' },
-      { status: 500 }
-    );
+    const advice = normalizeAdviceUI(adviceRaw, routineSummary);
+    return NextResponse.json({ ok:true, engine:'gemini', modelUsed: used, advice });
+  } catch (e: any) {
+    return NextResponse.json({ ok:false, engine:'none', error:String(e?.message || e) }, { status:502 });
   }
 }
