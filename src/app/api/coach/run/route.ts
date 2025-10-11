@@ -12,37 +12,71 @@ const MODEL_CANDIDATES = [
   'gemini-2.0-flash',
 ];
 
-// New, safer extractor for JSON from Gemini REST API response
-function extractJsonFromResponse(apiResponse: any): any {
-  const parts = apiResponse?.candidates?.[0]?.content?.parts ?? [];
-  if (parts.length === 0) {
-    throw new Error('EMPTY_RESPONSE_PARTS');
+// ---- helpers at top-level (in the same file) ----
+function stripFences(s: string) {
+  const t = s.trim();
+  if (t.startsWith("```")) {
+    return t.replace(/^```(?:json)?\s*/i, "").replace(/```$/, "").trim();
   }
+  return t;
+}
 
-  // Case 1: JSON is in a single `text` part
-  if (parts[0]?.text) {
-    const combinedText = parts.map((p: any) => p.text || '').join('');
-    try {
-      return JSON.parse(combinedText);
-    } catch (e) {
-      throw new Error(`NON_JSON_IN_TEXT: ${String(e)}`);
+function tryParseJSON(s: string) {
+  try { return JSON.parse(s); } catch { return null; }
+}
+
+function decodeInlineData(b64: string) {
+  try { return Buffer.from(b64, "base64").toString("utf-8"); } catch { return ""; }
+}
+
+function extractJsonFromCandidates(data: any) {
+  const cand = data?.candidates?.[0];
+  const parts = cand?.content?.parts;
+
+  // 1) text parts (also handle ```json fences)
+  if (Array.isArray(parts)) {
+    for (const p of parts) {
+      if (typeof p?.text === "string" && p.text.trim()) {
+        const text = stripFences(p.text);
+        const parsed = tryParseJSON(text);
+        if (parsed) return parsed;
+      }
     }
   }
 
-  // Case 2: JSON is in `inlineData` (base64 encoded)
-  if (parts[0]?.inlineData?.data) {
-    try {
-      const base64Data = parts[0].inlineData.data;
-      // Buffer.from is available in Node.js environment
-      const decodedJson = Buffer.from(base64Data, 'base64').toString('utf-8');
-      return JSON.parse(decodedJson);
-    } catch (e) {
-      throw new Error(`FAILED_TO_DECODE_INLINEDATA: ${String(e)}`);
+  // 2) inline_data (application/json, base64)
+  if (Array.isArray(parts)) {
+    for (const p of parts) {
+      const id = p?.inline_data;
+      if (id?.mime_type?.toLowerCase().includes("json") && typeof id?.data === "string") {
+        const decoded = decodeInlineData(id.data);
+        const parsed = tryParseJSON(decoded);
+        if (parsed) return parsed;
+      }
     }
   }
 
-  // If neither case matches, throw a diagnostic error
-  throw new Error(`UNHANDLED_RESPONSE_SHAPE: ${JSON.stringify(parts).slice(0, 300)}`);
+  // 3) function call (if model used tool calling)
+  if (Array.isArray(parts)) {
+    for (const p of parts) {
+      const fc = p?.functionCall;
+      if (fc?.args) return fc.args; // already JSON object
+      if (typeof fc?.argsJson === "string") {
+        const parsed = tryParseJSON(fc.argsJson);
+        if (parsed) return parsed;
+      }
+    }
+  }
+
+  // nothing parsed → return a short diagnostic
+  const diag = {
+    keys: Object.keys(cand ?? {}),
+    partsType: Array.isArray(parts) ? "array" : typeof parts,
+    partsLen: Array.isArray(parts) ? parts.length : 0,
+    finishReason: cand?.finishReason,
+    promptFeedback: data?.promptFeedback
+  };
+  throw new Error(`EMPTY_RESPONSE_PARTS: ${JSON.stringify(diag).slice(0, 500)}`);
 }
 
 
@@ -73,14 +107,9 @@ async function callGeminiREST(model: string, apiKey: string, systemText: string,
     throw new Error(`HTTP_${r.status}: ${rawText.slice(0, 500)}`);
   }
   
-  let data: any;
-  try {
-    data = JSON.parse(rawText);
-  } catch {
-    throw new Error(`NON_JSON_HTTP_RESPONSE: ${rawText.slice(0, 300)}`);
-  }
-
-  return extractJsonFromResponse(data);
+  const data = JSON.parse(rawText);
+  const parsed = extractJsonFromCandidates(data);
+  return parsed;
 }
 
 export async function POST(req: Request) {
