@@ -252,13 +252,18 @@ export async function POST(req: Request) {
     parsed.prioritySuggestions = rankAndDedupe(
       parsed.prioritySuggestions,
       factIdx,
-      (i) => `${(i.area || '').toLowerCase()}|${String(i.advice || '').toLowerCase().slice(0,60)}`
+      (i) => (i.area || '').toLowerCase()
     );
 
     parsed.routineTweaks = rankAndDedupe(
       parsed.routineTweaks,
       factIdx,
       (i) => `${(i.dayId || '')}|${(i.change || '').toLowerCase()}|${String(i.details || '').toLowerCase().slice(0,40)}`
+    );
+
+    const validDayIds = new Set((routineSummary?.days ?? []).map((d:any)=>String(d.id)));
+    parsed.routineTweaks = (parsed.routineTweaks ?? []).filter((t:any) =>
+      !t?.dayId || validDayIds.has(String(t.dayId))
     );
 
     const advice = normalizeAdviceUI(parsed, routineSummary, facts);

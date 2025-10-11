@@ -20,6 +20,23 @@ function cleanText(s?: string) {
   return t;
 }
 
+const FACT_CODE = /\b[vi]:[A-Z]{2}(?::[A-Z]{2})?\b/gi;             // v:TR  or  i:AB:TR
+const FACT_CODE_PARENS = /\(\s*[vi]:[A-Z]{2}(?::[A-Z]{2})?\s*\)/gi; // (v:TR) etc.
+const WEEKDAY_PHRASE = /\b(?:on\s+)?(?:Mon(day)?s?|Tue(s(day)?)?s?|Wed(nesday)?s?|Thu(rsday)?s?|Fri(day)?s?|Sat(urday)?s?|Sun(day)?s?)\b/gi;
+
+function stripCodes(s?: string) {
+  return String(s ?? '')
+    .replace(FACT_CODE_PARENS, '')
+    .replace(FACT_CODE, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
+function stripWeekdays(s?: string) {
+  return String(s ?? '').replace(WEEKDAY_PHRASE, '').replace(/\s{2,}/g, ' ').trim();
+}
+
+
 function dayLookup(routineSummary?: RoutineSummary) {
   const m = new Map<string,string>();
   routineSummary?.days?.forEach(d => m.set(String(d.id), String(d.name)));
@@ -44,15 +61,21 @@ export function normalizeAdviceUI(adviceIn: any, routineSummary?: RoutineSummary
     ids.map(id => labelFromFact(factIdx.get(id))).filter(Boolean) as string[];
 
   const prioritySrc = advice.prioritySuggestions ?? advice.priorities;
-  const prioritySuggestions = arr(prioritySrc).map((i:any) => ({
-    area: str(i?.area),
-    advice: str(i?.advice),
-    rationale: cleanText(i?.rationale),
-    factIds: arr(i?.factIds).map(str),
-    setsDelta: num(i?.setsDelta),
-    targetSets: num(i?.targetSets),
-    evidence: mapEvidence(arr(i?.factIds).map(str)),
-  }));
+  const prioritySuggestions = arr(prioritySrc).map((i:any) => {
+    const area = str(i?.area);
+    const adviceTxt = stripWeekdays(stripCodes(i?.advice));
+    const rationaleTxt = stripCodes(cleanText(i?.rationale));
+
+    return {
+      area,
+      advice: adviceTxt,
+      rationale: rationaleTxt,
+      factIds: arr(i?.factIds).map(str),
+      setsDelta: num(i?.setsDelta),
+      targetSets: num(i?.targetSets),
+      evidence: mapEvidence(arr(i?.factIds).map(str)),
+    };
+  });
 
   const routineTweaks = arr(advice?.routineTweaks).map((i:any) => {
     const dayId = str(i?.dayId);
@@ -61,8 +84,8 @@ export function normalizeAdviceUI(adviceIn: any, routineSummary?: RoutineSummary
       : getDay(dayId);
     return {
       change: str(i?.change),
-      details: cleanText(i?.details),
-      rationale: cleanText(i?.rationale),
+      details: stripCodes(cleanText(i?.details)),
+      rationale: stripCodes(cleanText(i?.rationale)),
       dayId,
       exerciseId: str(i?.exerciseId),
       day,

@@ -38,6 +38,12 @@ FACT FORMAT (COMPACT):
 - Adherence: {"id":"a","t":"a","w":5,"targ":4}
 Use these IDs in factIds.`;
 
+  const extraConstraints = `
+- Include "setsDelta" (int, e.g., +2 or -2) and "targetSets" (int) in each priority suggestion.
+- Priority suggestions MUST NOT mention weekdays or day names. Keep them muscle-group level only. If you want a specific day change, put it in "routineTweaks" with a valid dayId from routineSummary.days.
+- In human text ("advice", "rationale"), USE full muscle names (Chest, Back, Shoulders, Legs, Biceps, Triceps, Abs). DO NOT print fact-id codes like v:TR or i:AB:TR in the text. Keep codes only inside factIds[].
+`;
+
   return [
     `You MUST return a JSON object with: "overview","prioritySuggestions","routineTweaks","nextFourWeeks", optional "risks","metricsUsed".`,
     caps,
@@ -47,7 +53,7 @@ Use these IDs in factIds.`;
     `TRAINING SUMMARY (compact):\n${JSON.stringify({ weekly: (trainingSummary as any)?.weekly ?? [] })}`,
     `FACTS:\n${JSON.stringify(facts)}`,
     `SCOPE:\n${JSON.stringify(scope)}`,
-    `Constraints: Include "setsDelta" (int, e.g., +2 or -2) and "targetSets" (int) in each priority suggestion.`
+    `Constraints:${extraConstraints}`
   ].join('\n\n');
 }
 
