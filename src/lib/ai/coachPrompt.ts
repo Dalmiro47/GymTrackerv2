@@ -3,7 +3,7 @@ export const SYSTEM_PROMPT = `You are "AI Coach".
 - For every item, the "rationale" MUST include the exact numeric values from the cited factIds (e.g., "CH=3 sets vs BI=10 (−7) last week"). If you cannot cite a number, omit the item.
 - Do not produce duplicate advice for the same muscle group/day; merge them.
 - Prioritize the largest imbalances (highest "i.d") and lowest volumes ("v.w"); return the top 3 only.
-- Every suggestion MUST cite one or more factIds from the provided "FACTS" list.
+- Never output placeholders like "(no factId available)", "(no evidence)", or "[no facts]". If you cannot cite valid facts with numbers, omit the item.
 `;
 
 export function makeUserPrompt(params: {
@@ -27,7 +27,7 @@ Limits:
 - overview ≤ 220 chars
 - prioritySuggestions ≤ 4
 - routineTweaks ≤ 4
-- nextFourWeeks: exactly 4 short action strings (no "Week N:" prefixes; the UI will label them).
+- nextFourWeeks: 4 items ≤ 150 chars (no "Week N:" prefixes; the UI will label them).
 - metricsUsed ≤ 6`;
 
   const factsSpec = `

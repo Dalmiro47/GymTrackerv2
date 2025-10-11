@@ -1,4 +1,3 @@
-
 'use client';
 import React from 'react';
 import type { normalizeAdviceUI } from '@/lib/coachNormalize';
@@ -24,7 +23,9 @@ export function CoachSuggestions({ advice }: { advice: ReturnType<typeof normali
               <div className="space-y-1">
                 <div className="font-medium">{item.change}{item.day?.name ? ` on ${item.day.name}` : ''}</div>
                 <div>{item.details}</div>
-                <div className="text-xs text-muted-foreground">Rationale: {item.rationale}</div>
+                {item.rationale && (
+                  <div className="text-xs text-muted-foreground">Rationale: {item.rationale}</div>
+                )}
                 {item.evidence?.length > 0 && (
                   <div className="text-[11px] text-muted-foreground">Based on: {item.evidence.join('; ')}</div>
                 )}
@@ -40,7 +41,9 @@ export function CoachSuggestions({ advice }: { advice: ReturnType<typeof normali
                     Prescription: {item.setsDelta > 0 ? '+' : ''}{item.setsDelta} sets → target {item.targetSets}/wk
                   </div>
                 )}
-                <div className="text-xs text-muted-foreground">Rationale: {item.rationale}</div>
+                {item.rationale && (
+                  <div className="text-xs text-muted-foreground">Rationale: {item.rationale}</div>
+                )}
                 {item.evidence?.length > 0 && (
                   <div className="text-[11px] text-muted-foreground">Based on: {item.evidence.join('; ')}</div>
                 )}

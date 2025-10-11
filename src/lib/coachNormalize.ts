@@ -1,9 +1,24 @@
-
 type RoutineSummary = { days?: Array<{ id: string; name: string }> };
 
 const arr = (x:any) => Array.isArray(x) ? x : [];
 const str = (x:any) => typeof x === 'string' ? x : '';
 const num = (x:any) => Number.isFinite(x) ? Number(x) : undefined;
+
+const CLEAN_PATTERNS = [
+  /\(\s*no\s*factid\s*available\s*\)/gi,
+  /\(\s*no\s*fact\s*id\s*available\s*\)/gi,
+  /\(\s*no\s*facts?\s*available\s*\)/gi,
+  /\(\s*no\s*evidence\s*\)/gi,
+  /\[\s*no\s*facts?\s*\]/gi,
+];
+
+function cleanText(s?: string) {
+  let t = String(s ?? '');
+  for (const re of CLEAN_PATTERNS) t = t.replace(re, '');
+  // collapse spaces & tidy punctuation
+  t = t.replace(/\s{2,}/g, ' ').replace(/\s+([,.;:])/g, '$1').trim();
+  return t;
+}
 
 function dayLookup(routineSummary?: RoutineSummary) {
   const m = new Map<string,string>();
@@ -32,7 +47,7 @@ export function normalizeAdviceUI(adviceIn: any, routineSummary?: RoutineSummary
   const prioritySuggestions = arr(prioritySrc).map((i:any) => ({
     area: str(i?.area),
     advice: str(i?.advice),
-    rationale: str(i?.rationale),
+    rationale: cleanText(i?.rationale),
     factIds: arr(i?.factIds).map(str),
     setsDelta: num(i?.setsDelta),
     targetSets: num(i?.targetSets),
@@ -46,8 +61,8 @@ export function normalizeAdviceUI(adviceIn: any, routineSummary?: RoutineSummary
       : getDay(dayId);
     return {
       change: str(i?.change),
-      details: str(i?.details),
-      rationale: str(i?.rationale),
+      details: cleanText(i?.details),
+      rationale: cleanText(i?.rationale),
       dayId,
       exerciseId: str(i?.exerciseId),
       day,
@@ -67,5 +82,3 @@ export function normalizeAdviceUI(adviceIn: any, routineSummary?: RoutineSummary
     metricsUsed: arr(advice?.metricsUsed).map(str),
   };
 }
-
-    
