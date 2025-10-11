@@ -32,6 +32,9 @@ export function normalizeAdviceUI(adviceIn: any, routineSummary?: RoutineSummary
     area: str(i?.area),
     advice: str(i?.advice),
     rationale: str(i?.rationale),
+    factIds: arr(i?.factIds).map(str),
+    setsDelta: Number.isFinite(i?.setsDelta) ? i.setsDelta : undefined,
+    targetSets: Number.isFinite(i?.targetSets) ? i.targetSets : undefined,
   }));
 
   const routineTweaks = arr(advice?.routineTweaks).map((i: any) => {

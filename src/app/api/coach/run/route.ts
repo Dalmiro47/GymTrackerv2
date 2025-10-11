@@ -7,69 +7,48 @@ import { normalizeAdviceUI } from '@/lib/coachNormalize';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-// Fast first
 const MODEL_CANDIDATES = ['gemini-2.5-flash-lite','gemini-2.5-flash','gemini-2.0-flash'];
 
-// ---- helpers at top-level (in the same file) ----
 function stripFences(s: string) {
   const t = s.trim();
-  if (t.startsWith("```")) {
-    return t.replace(/^```(?:json)?\s*/i, "").replace(/```$/, "").trim();
-  }
+  if (t.startsWith('```')) return t.replace(/^```(?:json)?\s*/i,'').replace(/```$/,'').trim();
   return t;
 }
-
-function tryParseJSON(s: string) {
-  try { return JSON.parse(s); } catch { return null; }
-}
-
+function tryParseJSON(s: string) { try { return JSON.parse(s); } catch { return null; } }
 function decodeInlineData(b64: string) {
-  try { return Buffer.from(b64, "base64").toString("utf-8"); } catch { return ""; }
+  try { return Buffer.from(b64, 'base64').toString('utf-8'); } catch { return ''; }
 }
-
 function extractJsonFromCandidates(data: any) {
   const cand = data?.candidates?.[0];
   const parts = cand?.content?.parts;
 
-  // 1) text parts (also handle ```json fences)
   if (Array.isArray(parts)) {
     for (const p of parts) {
-      if (typeof p?.text === "string" && p.text.trim()) {
-        const text = stripFences(p.text);
-        const parsed = tryParseJSON(text);
+      if (typeof p?.text === 'string' && p.text.trim()) {
+        const parsed = tryParseJSON(stripFences(p.text));
         if (parsed) return parsed;
       }
     }
-  }
-
-  // 2) inline_data (application/json, base64)
-  if (Array.isArray(parts)) {
     for (const p of parts) {
       const id = p?.inline_data;
-      if (id?.mime_type?.toLowerCase().includes("json") && typeof id?.data === "string") {
-        const decoded = decodeInlineData(id.data);
-        const parsed = tryParseJSON(decoded);
+      if (id?.mime_type?.toLowerCase().includes('json') && typeof id?.data === 'string') {
+        const parsed = tryParseJSON(decodeInlineData(id.data));
         if (parsed) return parsed;
       }
     }
-  }
-
-  // 3) function call (if model used tool calling)
-  if (Array.isArray(parts)) {
     for (const p of parts) {
       const fc = p?.functionCall;
-      if (fc?.args) return fc.args; // already JSON object
-      if (typeof fc?.argsJson === "string") {
+      if (fc?.args) return fc.args;
+      if (typeof fc?.argsJson === 'string') {
         const parsed = tryParseJSON(fc.argsJson);
         if (parsed) return parsed;
       }
     }
   }
 
-  // nothing parsed → return a short diagnostic
   const diag = {
     keys: Object.keys(cand ?? {}),
-    partsType: Array.isArray(parts) ? "array" : typeof parts,
+    partsType: Array.isArray(parts) ? 'array' : typeof parts,
     partsLen: Array.isArray(parts) ? parts.length : 0,
     finishReason: cand?.finishReason,
     promptFeedback: data?.promptFeedback
@@ -77,12 +56,9 @@ function extractJsonFromCandidates(data: any) {
   throw new Error(`EMPTY_RESPONSE_PARTS: ${JSON.stringify(diag).slice(0, 500)}`);
 }
 
-// compact the payload for retry
 function compactPayload(profile: any, routineSummary: any, trainingSummary: any) {
   const ts = trainingSummary ?? {};
-  // keep only last 8 "weekly" items if it's large
   const weekly = Array.isArray(ts.weekly) ? ts.weekly.slice(-8) : [];
-  // drop any giant fields we don't need
   return {
     profile,
     routineSummary: {
@@ -117,6 +93,21 @@ async function callGeminiREST(model: string, apiKey: string, systemText: string,
   return { data, parsed: extractJsonFromCandidates(data) };
 }
 
+function lacksNumbers(s?: string) { return !/\d/.test(String(s||'')); }
+
+function verifyNumbers(advice: any) {
+  const bad: string[] = [];
+  for (const [k, arr] of Object.entries({
+    prioritySuggestions: advice?.prioritySuggestions ?? [],
+    routineTweaks: advice?.routineTweaks ?? []
+  })) {
+    (arr as any[]).forEach((it, i) => {
+      if (lacksNumbers(it?.rationale)) bad.push(`${k}[${i}]`);
+    });
+  }
+  return bad;
+}
+
 export async function POST(req: Request) {
   const apiKey = (process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || '').trim();
   if (!apiKey) return NextResponse.json({ ok:false, engine:'none', error:'MISSING_API_KEY' }, { status:500 });
@@ -125,8 +116,8 @@ export async function POST(req: Request) {
     const { profile, routineSummary, trainingSummary } = await req.json();
     const scope = { mode: 'global' as const };
 
-    // already compacted training summary on your side; now build compact facts
     const { facts } = buildCoachFactsCompact(profile, routineSummary, trainingSummary);
+    const factSet = new Set(facts.map((f:any)=>f.id));
 
     let used: string | null = null;
     let parsed: any | null = null;
@@ -134,14 +125,42 @@ export async function POST(req: Request) {
 
     for (const model of MODEL_CANDIDATES) {
       try {
-        const prompt = makeUserPrompt({ profile, routineSummary, trainingSummary, scope, facts, brief:false });
-        try {
-          const { parsed: p1 } = await callGeminiREST(model, apiKey, SYSTEM_PROMPT, prompt, 1200); // small bump
-          parsed = p1; used = model; break;
-        } catch (e: any) {
+        const prompt = makeUserPrompt({ profile, routineSummary, trainingSummary, scope, facts, brief: false });
+        let { parsed: p1 } = await callGeminiREST(model, apiKey, SYSTEM_PROMPT, prompt, 1200);
+
+        const badFactIds = (p1?.prioritySuggestions ?? []).concat(p1?.routineTweaks ?? [])
+          .some((item: any) => !item.factIds || item.factIds.length === 0 || !item.factIds.every((id:string) => factSet.has(id)));
+        const badNumbers = verifyNumbers(p1).length > 0;
+        
+        if (badFactIds || badNumbers) {
+          const repair = `REPAIR: Some suggestions were invalid.
+${badFactIds ? 'Every item MUST include valid factIds.' : ''}
+${badNumbers ? 'Every rationale MUST include numeric values from the facts.' : ''}
+Regenerate your response following all rules.`;
+
+          const promptBrief = makeUserPrompt({ profile, routineSummary, trainingSummary, scope, facts, brief: true }) + '\n\n' + repair;
+          const { parsed: p2 } = await callGeminiREST(model, apiKey, SYSTEM_PROMPT, promptBrief, 1400);
+
+          // Only accept the repair if it's valid this time
+          const repairedIsGood = !verifyNumbers(p2).length && !(p2?.prioritySuggestions ?? []).concat(p2?.routineTweaks ?? [])
+            .some((item: any) => !item.factIds || item.factIds.length === 0 || !item.factIds.every((id:string) => factSet.has(id)));
+          
+          if (repairedIsGood) {
+              parsed = p2;
+          }
+        } else {
+          parsed = p1;
+        }
+
+        if (parsed) {
+          used = model;
+          break;
+        }
+
+      } catch (e: any) {
           const msg = String(e?.message || e);
           if (msg.includes('MAX_TOKENS')) {
-            const promptBrief = makeUserPrompt({ profile, routineSummary, trainingSummary, scope, facts, brief:true });
+            const promptBrief = makeUserPrompt({ profile, routineSummary, trainingSummary, scope, facts, brief: true });
             const { parsed: p2 } = await callGeminiREST(model, apiKey, SYSTEM_PROMPT, promptBrief, 1400);
             parsed = p2; used = model; break;
           }
@@ -150,10 +169,6 @@ export async function POST(req: Request) {
             lastErr = msg; continue;
           }
           throw e;
-        }
-      } catch (e:any) {
-        lastErr = String(e?.message || e);
-        continue;
       }
     }
 

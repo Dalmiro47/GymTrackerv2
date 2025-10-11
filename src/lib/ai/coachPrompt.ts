@@ -2,6 +2,9 @@
 export const SYSTEM_PROMPT = `You are "AI Coach".
 - Output MUST be STRICT JSON only; no prose/markdown/fences.
 - Every suggestion MUST cite one or more factIds from FACTS.
+- For every item, the "rationale" MUST include the exact numeric values from the cited factIds (e.g., "CH=3 sets vs BI=10 (−7) last week"). If you cannot cite a number, omit the item.
+- Do not produce duplicate advice for the same muscle group/day; merge them.
+- Prioritize the largest imbalances (highest "i.d") and lowest volumes ("v.w"); return the top 3 only.
 - Use ONLY the provided facts/metrics; do not invent numbers or exercises.
 - If a section lacks data, return [].`;
 
@@ -45,7 +48,8 @@ Use these IDs in factIds.`;
     `ROUTINE SUMMARY (names only):\n${JSON.stringify({ days: (routineSummary as any)?.days?.map((d:any)=>({id:d.id,name:d.name})) ?? [] })}`,
     `TRAINING SUMMARY (compact):\n${JSON.stringify({ weekly: (trainingSummary as any)?.weekly ?? [] })}`,
     `FACTS:\n${JSON.stringify(facts)}`,
-    `SCOPE:\n${JSON.stringify(scope)}`
+    `SCOPE:\n${JSON.stringify(scope)}`,
+    `Constraints: Include "setsDelta" (int, e.g., +2 or -2) and "targetSets" (int) in each priority suggestion.`
   ].join('\n\n');
 }
 
@@ -62,7 +66,9 @@ export const COACH_RESPONSE_SCHEMA = {
           area: { type: 'STRING' },
           advice: { type: 'STRING' },
           rationale: { type: 'STRING' },
-          factIds: { type: 'ARRAY', items: { type: 'STRING' } }
+          factIds: { type: 'ARRAY', items: { type: 'STRING' } },
+          setsDelta: { type: 'NUMBER' },
+          targetSets: { type: 'NUMBER' }
         },
         required: ['area','advice','rationale','factIds']
       }
