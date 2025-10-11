@@ -216,6 +216,7 @@ export function normalizeAdviceShape(input: any): CoachAdvice {
     overview: String(input?.overview ?? '').trim(),
     priorities: toList(input?.priorities),
     nextFourWeeks: toList(input?.nextFourWeeks),
+    routineTweaks: Array.isArray(input?.routineTweaks) ? input.routineTweaks : [],
   };
 }
 
