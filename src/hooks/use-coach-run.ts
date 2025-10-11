@@ -50,13 +50,18 @@ export function useCoachRun() {
       // 3) Save result (+ inputHash) for next instant run
       if (uid) {
         const nowKey = new Date().toISOString().slice(0,10); // or your week key
-        const base = {
+        const base: any = {
           advice: data.advice,
           engine: data.engine,
           modelUsed: data.modelUsed,
           inputHash,
           createdAt: serverTimestamp(),
         };
+
+        if (Array.isArray(data.facts)) {
+            base.facts = data.facts;
+        }
+
         await setDoc(doc(db, 'users', uid, 'coachAdvice', 'latest-global'), base, { merge: true });
         await setDoc(doc(db, 'users', uid, 'coachAdvice', `${nowKey}-global`), base, { merge: true });
       }

@@ -1,8 +1,9 @@
-
 export const SYSTEM_PROMPT = `You are "AI Coach".
-- Output MUST be STRICT JSON only; no prose, no markdown, no code fences. Do NOT include explanations.
-- Use ONLY the provided metrics; every suggestion must cite an observed metric.
-- If a section lacks data, return [].
+- Output MUST be STRICT JSON only; no prose/markdown/fences.
+- For every item, the "rationale" MUST include the exact numeric values from the cited factIds (e.g., "CH=3 sets vs BI=10 (−7) last week"). If you cannot cite a number, omit the item.
+- Do not produce duplicate advice for the same muscle group/day; merge them.
+- Prioritize the largest imbalances (highest "i.d") and lowest volumes ("v.w"); return the top 3 only.
+- Never output placeholders like "(no factId available)", "(no evidence)", or "[no facts]". If you cannot cite valid facts with numbers, omit the item.
 `;
 
 export function makeUserPrompt(params: {
@@ -10,33 +11,50 @@ export function makeUserPrompt(params: {
   routineSummary: unknown;
   trainingSummary: unknown;
   scope: { mode: 'global' };
-  brief?: boolean; // NEW
+  facts: any[];
+  brief?: boolean;
 }) {
-  const { profile, routineSummary, trainingSummary, scope, brief } = params;
+  const { profile, routineSummary, trainingSummary, scope, facts, brief } = params;
 
-  const base = [
-    `Return a JSON object with: "overview", "prioritySuggestions", "routineTweaks", "nextFourWeeks", optional "risks", "metricsUsed".`,
-    `PROFILE:\n${JSON.stringify(profile)}`,
-    `ROUTINE SUMMARY:\n${JSON.stringify(routineSummary)}`,
-    `TRAINING SUMMARY (last 6–8 weeks):\n${JSON.stringify(trainingSummary)}`,
-    `SCOPE:\n${JSON.stringify(scope)}`
-  ];
+  const caps = brief ? `
+ULTRA-BRIEF:
+- overview ≤ 140 chars
+- prioritySuggestions ≤ 3
+- routineTweaks ≤ 3
+- nextFourWeeks: 4 items ≤ 110 chars (no "Week N:" prefixes; the UI will label them).
+- metricsUsed ≤ 4` : `
+Limits:
+- overview ≤ 220 chars
+- prioritySuggestions ≤ 4
+- routineTweaks ≤ 4
+- nextFourWeeks: 4 items ≤ 150 chars (no "Week N:" prefixes; the UI will label them).
+- metricsUsed ≤ 6`;
 
-  const constraints = brief
-    ? `ULTRA-BRIEF MODE (token limited):
-- "overview" ≤ 160 chars.
-- "prioritySuggestions": ≤ 3 items, each "area", "advice" (≤ 100 chars), "rationale" (≤ 100 chars).
-- "routineTweaks": ≤ 3 items, each "change","details" (≤ 120 chars),"rationale" (≤ 100 chars), optional "dayId","exerciseId".
-- "nextFourWeeks": exactly 4 items ≤ 120 chars each.
-- "risks": omit unless critical; "metricsUsed": ≤ 4 items.`
-    : `Constraints:
-- "overview" ≤ 240 chars.
-- "prioritySuggestions": ≤ 5 items; each "area","advice" (≤ 140 chars), "rationale" (≤ 160 chars).
-- "routineTweaks": ≤ 6 items; each "change","details" (≤ 160 chars),"rationale" (≤ 160 chars), optional "dayId","exerciseId".
-- "nextFourWeeks": exactly 4 items ≤ 160 chars each.
-- "risks": ≤ 3 items; "metricsUsed": ≤ 8 strings (≤ 60 chars each).`;
+  const factsSpec = `
+FACT FORMAT (COMPACT):
+- Volume: {"id":"v:CH","t":"v","g":"CH","w":3}  // last-week sets for group CH (Chest)
+- Imbalance: {"id":"i:BI:CH","t":"i","hi":"BI","lo":"CH","d":7} // BI had 7 sets more than CH
+- Stall: {"id":"s:InclineD","t":"s","n":"Incline Dumbbell","w":3,"sl":-0.8}
+- Adherence: {"id":"a","t":"a","w":5,"targ":4}
+Use these IDs in factIds.`;
 
-  return [...base, `GUIDANCE:\n${constraints}`].join('\n\n');
+  const extraConstraints = `
+- Include "setsDelta" (int, e.g., +2 or -2) and "targetSets" (int) in each priority suggestion.
+- Priority suggestions MUST NOT mention weekdays or day names. Keep them muscle-group level only. If you want a specific day change, put it in "routineTweaks" with a valid dayId from routineSummary.days.
+- In human text ("advice", "rationale"), USE full muscle names (Chest, Back, Shoulders, Legs, Biceps, Triceps, Abs). DO NOT print fact-id codes like v:TR or i:AB:TR in the text. Keep codes only inside factIds[].
+`;
+
+  return [
+    `You MUST return a JSON object with: "overview","prioritySuggestions","routineTweaks","nextFourWeeks", optional "risks","metricsUsed".`,
+    caps,
+    factsSpec,
+    `PROFILE:\n${JSON.stringify({ daysPerWeekTarget: (profile as any)?.daysPerWeekTarget, goal: (profile as any)?.goal })}`,
+    `ROUTINE SUMMARY (names only):\n${JSON.stringify({ days: (routineSummary as any)?.days?.map((d:any)=>({id:d.id,name:d.name})) ?? [] })}`,
+    `TRAINING SUMMARY (compact):\n${JSON.stringify({ weekly: (trainingSummary as any)?.weekly ?? [] })}`,
+    `FACTS:\n${JSON.stringify(facts)}`,
+    `SCOPE:\n${JSON.stringify(scope)}`,
+    `Constraints:${extraConstraints}`
+  ].join('\n\n');
 }
 
 // Gemini structured output schema (NOT JSON Schema draft; this is Gemini's schema type)
@@ -51,9 +69,12 @@ export const COACH_RESPONSE_SCHEMA = {
         properties: {
           area: { type: 'STRING' },
           advice: { type: 'STRING' },
-          rationale: { type: 'STRING' }
+          rationale: { type: 'STRING' },
+          factIds: { type: 'ARRAY', items: { type: 'STRING' } },
+          setsDelta: { type: 'NUMBER' },
+          targetSets: { type: 'NUMBER' }
         },
-        required: ['area','advice','rationale']
+        required: ['area','advice','rationale','factIds']
       }
     },
     routineTweaks: {
@@ -65,20 +86,14 @@ export const COACH_RESPONSE_SCHEMA = {
           details: { type: 'STRING' },
           rationale: { type: 'STRING' },
           dayId: { type: 'STRING' },
-          exerciseId: { type: 'STRING' }
+          exerciseId: { type: 'STRING' },
+          factIds: { type: 'ARRAY', items: { type: 'STRING' } }
         },
-        required: ['change','details','rationale']
+        required: ['change','details','rationale','factIds']
       }
     },
     nextFourWeeks: { type: 'ARRAY', items: { type: 'STRING' } },
-    risks: {
-      type: 'ARRAY',
-      items: {
-        type: 'OBJECT',
-        properties: { issue: { type: 'STRING' }, mitigation: { type: 'STRING' } },
-        required: ['issue','mitigation']
-      }
-    },
+    risks: { type: 'ARRAY', items: { type: 'STRING' } },
     metricsUsed: { type: 'ARRAY', items: { type: 'STRING' } }
   },
   required: ['overview','prioritySuggestions','routineTweaks','nextFourWeeks']

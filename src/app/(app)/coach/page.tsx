@@ -12,6 +12,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { CoachSuggestions } from '@/components/coach/CoachSuggestions';
 import { normalizeAdviceUI } from '@/lib/coachNormalize';
 
+function withWeekLabel(text: string, i: number) {
+  if (!text) return '';
+  // if the string already starts with "Week 1:", "week1:", etc., keep it as-is
+  const alreadyLabeled = /^\s*week\s*\d+\s*:?/i.test(text);
+  return alreadyLabeled ? text : `Week ${i + 1}: ${text}`;
+}
+
 export default function CoachPage() {
   const data = useCoachData({ weeks: 6 });
   const { runCoach, loading: isRunning, error } = useCoachRun();
@@ -86,9 +93,11 @@ export default function CoachPage() {
           {normalized.nextFourWeeks?.length > 0 && (
             <Card>
               <CardHeader><CardTitle>Next 4 weeks</CardTitle></CardHeader>
-              <CardContent className="grid gap-3">
-                {normalized.nextFourWeeks.map((w: any, i: number) => (
-                  <p key={i} className="text-sm">{typeof w === 'string' ? w : w.notes}</p>
+              <CardContent className="space-y-2">
+                {normalized.nextFourWeeks.slice(0, 4).map((line: string, i: number) => (
+                  <div key={i} className="text-sm">
+                    {withWeekLabel(line, i)}
+                  </div>
                 ))}
               </CardContent>
             </Card>

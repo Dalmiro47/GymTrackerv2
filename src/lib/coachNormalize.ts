@@ -1,69 +1,107 @@
+type RoutineSummary = { days?: Array<{ id: string; name: string }> };
 
-type RoutineSummary = {
-  days?: Array<{ id: string; name: string }>;
-};
+const arr = (x:any) => Array.isArray(x) ? x : [];
+const str = (x:any) => typeof x === 'string' ? x : '';
+const num = (x:any) => Number.isFinite(x) ? Number(x) : undefined;
 
-const arr = (x: any) => (Array.isArray(x) ? x : []);
-const str = (x: any) => (typeof x === 'string' ? x : '');
+const CLEAN_PATTERNS = [
+  /\(\s*no\s*factid\s*available\s*\)/gi,
+  /\(\s*no\s*fact\s*id\s*available\s*\)/gi,
+  /\(\s*no\s*facts?\s*available\s*\)/gi,
+  /\(\s*no\s*evidence\s*\)/gi,
+  /\[\s*no\s*facts?\s*\]/gi,
+];
 
-function dayLookup(routineSummary?: RoutineSummary) {
-  const map = new Map<string, string>();
-  if (routineSummary?.days) {
-    for (const d of routineSummary.days) map.set(String(d.id), String(d.name));
-  }
-  return (dayId?: string) =>
-    dayId ? { id: dayId, name: map.get(dayId) ?? '' } : { id: '', name: '' };
+function cleanText(s?: string) {
+  let t = String(s ?? '');
+  for (const re of CLEAN_PATTERNS) t = t.replace(re, '');
+  // collapse spaces & tidy punctuation
+  t = t.replace(/\s{2,}/g, ' ').replace(/\s+([,.;:])/g, '$1').trim();
+  return t;
 }
 
-/**
- * Normalize AI advice for UI rendering.
- * - Adds missing fields
- * - Aliases "priorities" -> "prioritySuggestions"
- * - Resolves dayId -> day {id, name}
- */
-export function normalizeAdviceUI(adviceIn: any, routineSummary?: RoutineSummary) {
+const FACT_CODE = /\b[vi]:[A-Z]{2}(?::[A-Z]{2})?\b/gi;             // v:TR  or  i:AB:TR
+const FACT_CODE_PARENS = /\(\s*[vi]:[A-Z]{2}(?::[A-Z]{2})?\s*\)/gi; // (v:TR) etc.
+const WEEKDAY_PHRASE = /\b(?:on\s+)?(?:Mon(day)?s?|Tue(s(day)?)?s?|Wed(nesday)?s?|Thu(rsday)?s?|Fri(day)?s?|Sat(urday)?s?|Sun(day)?s?)\b/gi;
+
+function stripCodes(s?: string) {
+  return String(s ?? '')
+    .replace(FACT_CODE_PARENS, '')
+    .replace(FACT_CODE, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
+function stripWeekdays(s?: string) {
+  return String(s ?? '').replace(WEEKDAY_PHRASE, '').replace(/\s{2,}/g, ' ').trim();
+}
+
+
+function dayLookup(routineSummary?: RoutineSummary) {
+  const m = new Map<string,string>();
+  routineSummary?.days?.forEach(d => m.set(String(d.id), String(d.name)));
+  return (dayId?: string) => dayId ? { id: dayId, name: m.get(dayId) ?? '' } : { id:'', name:'' };
+}
+
+function labelFromFact(f:any) {
+  if (!f) return undefined;
+  if (f.t === 'v') return `${f.g} last week = ${f.w} sets`;
+  if (f.t === 'i') return `${f.hi} vs ${f.lo} diff = ${f.d} sets`;
+  if (f.t === 's') return `Stall: ${f.n} (${f.w} wk)`;
+  if (f.t === 'a') return `Adherence ${f.w}w (target ${f.targ})`;
+  return f.id;
+}
+
+export function normalizeAdviceUI(adviceIn: any, routineSummary?: RoutineSummary, facts?: any[]) {
   const getDay = dayLookup(routineSummary);
   const advice = adviceIn ?? {};
+  const factIdx = new Map<string, any>((facts ?? []).map(f=>[String(f.id), f]));
 
-  // alias: priorities -> prioritySuggestions
+  const mapEvidence = (ids: string[]) =>
+    ids.map(id => labelFromFact(factIdx.get(id))).filter(Boolean) as string[];
+
   const prioritySrc = advice.prioritySuggestions ?? advice.priorities;
+  const prioritySuggestions = arr(prioritySrc).map((i:any) => {
+    const area = str(i?.area);
+    const adviceTxt = stripWeekdays(stripCodes(i?.advice));
+    const rationaleTxt = stripCodes(cleanText(i?.rationale));
 
-  const prioritySuggestions = arr(prioritySrc).map((i: any) => ({
-    area: str(i?.area),
-    advice: str(i?.advice),
-    rationale: str(i?.rationale),
-  }));
+    return {
+      area,
+      advice: adviceTxt,
+      rationale: rationaleTxt,
+      factIds: arr(i?.factIds).map(str),
+      setsDelta: num(i?.setsDelta),
+      targetSets: num(i?.targetSets),
+      evidence: mapEvidence(arr(i?.factIds).map(str)),
+    };
+  });
 
-  const routineTweaks = arr(advice?.routineTweaks).map((i: any) => {
+  const routineTweaks = arr(advice?.routineTweaks).map((i:any) => {
     const dayId = str(i?.dayId);
-    const day = i?.day && (typeof i.day === 'object')
+    const day = i?.day && typeof i.day === 'object'
       ? { id: str(i.day.id), name: str(i.day.name) }
       : getDay(dayId);
     return {
       change: str(i?.change),
-      details: str(i?.details),
-      rationale: str(i?.rationale),
+      details: stripCodes(cleanText(i?.details)),
+      rationale: stripCodes(cleanText(i?.rationale)),
       dayId,
       exerciseId: str(i?.exerciseId),
-      day, // <-- guaranteed object
+      day,
+      factIds: arr(i?.factIds).map(str),
+      evidence: mapEvidence(arr(i?.factIds).map(str)),
+      setsDelta: num(i?.setsDelta),
+      targetSets: num(i?.targetSets),
     };
   });
-
-  const nextFourWeeks = arr(advice?.nextFourWeeks).slice(0, 4).map(str);
-
-  const risks = arr(advice?.risks).map((r: any) => ({
-    issue: str(r?.issue),
-    mitigation: str(r?.mitigation),
-  }));
-
-  const metricsUsed = arr(advice?.metricsUsed).map(str);
 
   return {
     overview: str(advice?.overview),
     prioritySuggestions,
     routineTweaks,
-    nextFourWeeks,
-    risks,
-    metricsUsed,
+    nextFourWeeks: arr(advice?.nextFourWeeks).map(str),
+    risks: arr(advice?.risks).map(str),
+    metricsUsed: arr(advice?.metricsUsed).map(str),
   };
 }

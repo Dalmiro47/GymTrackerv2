@@ -289,3 +289,66 @@ export function summarizeLogs(routines:any[], logs:WorkoutLog[], weeks=8) {
 
   return { weekly, balance, trends };
 }
+
+export type CoachFactCompact =
+  | { id: string; t: 'v'; g: string; w: number }              // volume: group code, last week sets
+  | { id: string; t: 'i'; hi: string; lo: string; d: number } // imbalance: hi vs lo (diff sets)
+  | { id: string; t: 's'; n: string; w: number; sl: number }  // stall: name, weeks, slope
+  | { id: string; t: 'a'; w: number; targ: number };          // adherence
+
+const MG = (s: string) => {
+  const k = s.toLowerCase();
+  if (k.startsWith('ch')) return 'CH';
+  if (k.startsWith('ba')) return 'BK';
+  if (k.startsWith('sh')) return 'SH';
+  if (k.startsWith('le')) return 'LE';
+  if (k.startsWith('bi')) return 'BI';
+  if (k.startsWith('tr')) return 'TR';
+  if (k.startsWith('ab')) return 'AB';
+  return s.slice(0,2).toUpperCase();
+};
+
+export function buildCoachFactsCompact(profile: any, _routineSummary: any, trainingSummary: any) {
+  const facts: CoachFactCompact[] = [];
+
+  // Last week by muscle group (sort asc → low first). Limit to 7.
+  const lastWeek = (trainingSummary?.weekly ?? []).filter(Boolean)
+    .reduce((acc: Record<string, number>, r: any) => {
+      if (!acc.__week) acc.__week = r.week; // take the first week in list
+      if (r.week === acc.__week) acc[r.muscleGroup] = Number(r.hardSets || 0);
+      return acc;
+    }, {} as any);
+
+  const mgPairs = Object.entries(lastWeek).filter(([k])=>k!=='__week') as [string, number][];
+  mgPairs.sort((a,b)=>a[1]-b[1]);
+  for (const [mg, w] of mgPairs.slice(0,7)) {
+    const g = MG(mg);
+    facts.push({ id: `v:${g}`, t: 'v', g, w });
+  }
+
+  // Biggest imbalances vs max. Limit to 4 with diff ≥ 4 sets.
+  if (mgPairs.length) {
+    const [hiMg, hiVal] = [...mgPairs].sort((a,b)=>b[1]-a[1])[0];
+    for (const [mg, sets] of mgPairs) {
+      const diff = hiVal - sets;
+      if (diff >= 4 && mg !== hiMg) {
+        facts.push({ id: `i:${MG(hiMg)}:${MG(mg)}`, t: 'i', hi: MG(hiMg), lo: MG(mg), d: diff });
+      }
+      if (facts.filter(f=>f.t==='i').length >= 4) break;
+    }
+  }
+
+  // Stalls (if available). Limit to 2 and shorten slope precision.
+  for (const s of (trainingSummary?.stalls ?? []).slice(0,2)) {
+    facts.push({ id: `s:${(s.name||'').slice(0,10)}`, t: 's', n: s.name, w: Number(s.weeks||0), sl: Number((s.slope||0).toFixed(2)) });
+  }
+
+  // Adherence: 1 fact
+  const weeksLogged = new Set((trainingSummary?.weekly ?? []).map((w:any)=>w.week)).size;
+  facts.push({ id: 'a', t: 'a', w: weeksLogged, targ: Number(profile?.daysPerWeekTarget || 0) });
+
+  // Hard cap to ~14 facts total
+  return { facts: facts.slice(0,14) };
+}
+
+    
