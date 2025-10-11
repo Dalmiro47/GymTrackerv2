@@ -195,7 +195,9 @@ export async function POST(req: Request) {
   try {
     const { profile, routineSummary, trainingSummary } = await req.json();
     const scope = { mode: 'global' as const };
-    const { facts } = buildCoachFactsCompact(profile, routineSummary, trainingSummary);
+    
+    const compact = compactPayload(profile, routineSummary, trainingSummary);
+    const { facts } = buildCoachFactsCompact(profile, routineSummary, compact.trainingSummary);
     const factIdx = indexFacts(facts);
 
     let used: string | null = null;
@@ -204,13 +206,12 @@ export async function POST(req: Request) {
 
     for (const model of MODEL_CANDIDATES) {
       try {
-        const prompt = makeUserPrompt({ profile, routineSummary, trainingSummary, scope, facts, brief: false });
-        let { parsed: p1 } = await callGeminiREST(model, apiKey, SYSTEM_PROMPT, prompt, 1200);
+        let { parsed: p1 } = await callGeminiREST(model, apiKey, SYSTEM_PROMPT, makeUserPrompt({ ...compact, scope, facts, brief: false }), 1200);
 
         let badNum = verifyNumbers(p1);
         if (badNum.length) {
             const repair = `REPAIR: These items lacked numeric rationale: ${badNum.join(', ')}. Include exact numbers from FACTS in each rationale.`;
-            const promptBrief = makeUserPrompt({ profile, routineSummary, trainingSummary, scope, facts, brief: true }) + '\n\n' + repair;
+            const promptBrief = makeUserPrompt({ ...compact, scope, facts, brief: true }) + '\n\n' + repair;
             const { parsed: p2 } = await callGeminiREST(model, apiKey, SYSTEM_PROMPT, promptBrief, 1400);
             p1 = p2;
         }
@@ -221,7 +222,7 @@ export async function POST(req: Request) {
 - setsDelta is an integer; targetSets is 0..20
 - If a v: fact is cited, targetSets = current(w) + setsDelta
 - Text matches sign (add vs reduce).`;
-            const promptBrief2 = makeUserPrompt({ profile, routineSummary, trainingSummary, scope, facts, brief: true }) + '\n\n' + repair2;
+            const promptBrief2 = makeUserPrompt({ ...compact, scope, facts, brief: true }) + '\n\n' + repair2;
             const { parsed: p3 } = await callGeminiREST(model, apiKey, SYSTEM_PROMPT, promptBrief2, 1400);
             p1 = p3;
         }
@@ -247,10 +248,14 @@ export async function POST(req: Request) {
     parsed.routineTweaks = rankAndDedupe(parsed.routineTweaks, factIdx, (i)=>`${i.change || ''}|${i.dayId || ''}`);
 
     const advice = normalizeAdviceUI(parsed, routineSummary, facts);
-    return NextResponse.json({ ok: true, engine: 'gemini', modelUsed: used, advice });
+    return NextResponse.json({
+      ok: true,
+      engine: 'gemini',
+      modelUsed: used,
+      advice,
+      facts: Array.isArray(facts) ? facts : [],
+    });
   } catch (e: any) {
     return NextResponse.json({ ok: false, engine: 'none', error: String(e?.message || e) }, { status: 502 });
   }
 }
-
-    
