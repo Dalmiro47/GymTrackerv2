@@ -1,17 +1,14 @@
 
 import { NextResponse } from 'next/server';
 import { SYSTEM_PROMPT, makeUserPrompt, COACH_RESPONSE_SCHEMA } from '@/lib/ai/coachPrompt';
-import { buildCoachFacts } from '@/lib/analysis';
+import { buildCoachFactsCompact } from '@/lib/analysis';
 import { normalizeAdviceUI } from '@/lib/coachNormalize';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-const MODEL_CANDIDATES = [
-  'gemini-2.5-flash-lite', // fastest first
-  'gemini-2.5-flash',
-  'gemini-2.0-flash',
-];
+// Fast first
+const MODEL_CANDIDATES = ['gemini-2.5-flash-lite','gemini-2.5-flash','gemini-2.0-flash'];
 
 // ---- helpers at top-level (in the same file) ----
 function stripFences(s: string) {
@@ -120,19 +117,6 @@ async function callGeminiREST(model: string, apiKey: string, systemText: string,
   return { data, parsed: extractJsonFromCandidates(data) };
 }
 
-function verifyGrounding(advice: any, factIds: Set<string>) {
-  const bad: string[] = [];
-  const chk = (arr: any[], path: string) => {
-    for (let i=0;i<arr.length;i++) {
-      const ids = Array.isArray(arr[i]?.factIds) ? arr[i].factIds : [];
-      if (!ids.length || !ids.every((id:string)=>factIds.has(id))) bad.push(`${path}[${i}]`);
-    }
-  };
-  chk(advice?.prioritySuggestions ?? [], 'prioritySuggestions');
-  chk(advice?.routineTweaks ?? [], 'routineTweaks');
-  return bad;
-}
-
 export async function POST(req: Request) {
   const apiKey = (process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || '').trim();
   if (!apiKey) return NextResponse.json({ ok:false, engine:'none', error:'MISSING_API_KEY' }, { status:500 });
@@ -141,43 +125,43 @@ export async function POST(req: Request) {
     const { profile, routineSummary, trainingSummary } = await req.json();
     const scope = { mode: 'global' as const };
 
-    const compact = compactPayload(profile, routineSummary, trainingSummary);
-    const { facts } = buildCoachFacts(profile, routineSummary, compact.trainingSummary);
-    const factSet = new Set(facts.map((f:any)=>f.id));
+    // already compacted training summary on your side; now build compact facts
+    const { facts } = buildCoachFactsCompact(profile, routineSummary, trainingSummary);
 
     let used: string | null = null;
     let parsed: any | null = null;
+    let lastErr: string | null = null;
 
     for (const model of MODEL_CANDIDATES) {
       try {
-        const prompt = makeUserPrompt({ ...compact, scope, facts, brief: false });
-        const { parsed: p1 } = await callGeminiREST(model, apiKey, SYSTEM_PROMPT, prompt, 1100);
-        let bad = verifyGrounding(p1, factSet);
-
-        if (bad.length) {
-          const repair = [
-            `REPAIR: Some items lacked valid factIds (${bad.join(', ')}).`,
-            `You MUST regenerate ensuring every item includes at least one valid id from the FACTS list.`
-          ].join('\n');
-          const promptBrief = makeUserPrompt({ ...compact, scope, facts, brief: true }) + '\n\n' + repair;
-          const { parsed: p2 } = await callGeminiREST(model, apiKey, SYSTEM_PROMPT, promptBrief, 1400);
-          bad = verifyGrounding(p2, factSet);
-          if (!bad.length) { parsed = p2; used = model; break; }
-        } else { parsed = p1; used = model; break; }
-      } catch (e) {
-        const msg = String((e as any)?.message || e);
-        if (msg.toLowerCase().includes('404') || msg.toLowerCase().includes('not found') || msg.toLowerCase().includes('unsupported') || msg.toLowerCase().includes('429') || msg.toLowerCase().includes('rate') || msg.toLowerCase().includes('quota') || msg.toLowerCase().includes('preview')) {
-            continue;
+        const prompt = makeUserPrompt({ profile, routineSummary, trainingSummary, scope, facts, brief:false });
+        try {
+          const { parsed: p1 } = await callGeminiREST(model, apiKey, SYSTEM_PROMPT, prompt, 1200); // small bump
+          parsed = p1; used = model; break;
+        } catch (e: any) {
+          const msg = String(e?.message || e);
+          if (msg.includes('MAX_TOKENS')) {
+            const promptBrief = makeUserPrompt({ profile, routineSummary, trainingSummary, scope, facts, brief:true });
+            const { parsed: p2 } = await callGeminiREST(model, apiKey, SYSTEM_PROMPT, promptBrief, 1400);
+            parsed = p2; used = model; break;
+          }
+          const m = msg.toLowerCase();
+          if (m.includes('404')||m.includes('unsupported')||m.includes('429')||m.includes('quota')||m.includes('rate')) {
+            lastErr = msg; continue;
+          }
+          throw e;
         }
-        throw e;
+      } catch (e:any) {
+        lastErr = String(e?.message || e);
+        continue;
       }
     }
 
-    if (!parsed) return NextResponse.json({ ok:false, engine:'none', error:'NO_MODEL_WORKED' }, { status:502 });
+    if (!parsed) return NextResponse.json({ ok:false, engine:'none', error:`NO_MODEL_WORKED: ${lastErr}` }, { status:502 });
 
-    const advice = normalizeAdviceUI(parsed, routineSummary); // your normalizer already tolerates extras
-    return NextResponse.json({ ok:true, engine:'gemini', modelUsed: used, advice, facts });
+    const advice = normalizeAdviceUI(parsed, routineSummary);
+    return NextResponse.json({ ok:true, engine:'gemini', modelUsed: used, advice });
   } catch (e:any) {
-    return NextResponse.json({ ok:false, engine:'none', error:String(e?.message||e) }, { status:502 });
+    return NextResponse.json({ ok:false, engine:'none', error:String(e?.message || e) }, { status:502 });
   }
 }

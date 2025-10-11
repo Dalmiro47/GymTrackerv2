@@ -1,7 +1,7 @@
 
-export const SYSTEM_PROMPT = `You are "AI Coach", a strength coach.
+export const SYSTEM_PROMPT = `You are "AI Coach".
 - Output MUST be STRICT JSON only; no prose/markdown/fences.
-- Every suggestion MUST cite one or more factIds from the provided "FACTS" list.
+- Every suggestion MUST cite one or more factIds from FACTS.
 - Use ONLY the provided facts/metrics; do not invent numbers or exercises.
 - If a section lacks data, return [].`;
 
@@ -10,47 +10,41 @@ export function makeUserPrompt(params: {
   routineSummary: unknown;
   trainingSummary: unknown;
   scope: { mode: 'global' };
-  facts: any[];
+  facts: any[];      // compact facts (v/i/s/a)
   brief?: boolean;
 }) {
   const { profile, routineSummary, trainingSummary, scope, facts, brief } = params;
 
-  const limits = brief ? `
-ULTRA-BRIEF MODE:
-- "overview" ≤ 140 chars.
-- "prioritySuggestions": ≤ 3 items.
-- "routineTweaks": ≤ 3 items.
-- "nextFourWeeks": 4 items, each ≤ 110 chars.
-- "metricsUsed": ≤ 4 items.` : `
-Constraints:
-- "overview" ≤ 220 chars.
-- "prioritySuggestions": ≤ 5 items.
-- "routineTweaks": ≤ 6 items.
-- "nextFourWeeks": exactly 4 items.
-- "metricsUsed": ≤ 8 items.`;
+  const caps = brief ? `
+ULTRA-BRIEF:
+- overview ≤ 140 chars
+- prioritySuggestions ≤ 3
+- routineTweaks ≤ 3
+- nextFourWeeks: 4 items ≤ 110 chars
+- metricsUsed ≤ 4` : `
+Limits:
+- overview ≤ 200 chars
+- prioritySuggestions ≤ 4
+- routineTweaks ≤ 4
+- nextFourWeeks: 4 items ≤ 140 chars
+- metricsUsed ≤ 6`;
 
-  const fewShot = `
-FACTS EXAMPLE:
-[
-  {"id":"mg_Chest_vol","type":"mg_volume","mg":"Chest","lastWeekSets":3},
-  {"id":"imb_Biceps_Chest","type":"mg_imbalance","mgHi":"Biceps","mgLo":"Chest","diffSets":7}
-]
-GOOD prioritySuggestions ITEM:
-{
-  "area":"Chest",
-  "advice":"Add 2–3 hard sets for Chest this week on Wednesday.",
-  "rationale":"Chest was 3 sets vs Biceps 10 last week (–7).",
-  "factIds":["mg_Chest_vol","imb_Biceps_Chest"]
-}`;
+  const factsSpec = `
+FACT FORMAT (COMPACT):
+- Volume: {"id":"v:CH","t":"v","g":"CH","w":3}  // last-week sets for group CH (Chest)
+- Imbalance: {"id":"i:BI:CH","t":"i","hi":"BI","lo":"CH","d":7} // BI had 7 sets more than CH
+- Stall: {"id":"s:InclineD","t":"s","n":"Incline Dumbbell","w":3,"sl":-0.8}
+- Adherence: {"id":"a","t":"a","w":5,"targ":4}
+Use these IDs in factIds.`;
 
   return [
-    `You MUST return a JSON object with: "overview","prioritySuggestions","routineTweaks","nextFourWeeks", optional "risks","metricsUsed".`,
-    limits,
-    fewShot,
-    `PROFILE:\n${JSON.stringify(profile)}`,
-    `ROUTINE SUMMARY:\n${JSON.stringify(routineSummary)}`,
-    `TRAINING SUMMARY:\n${JSON.stringify(trainingSummary)}`,
-    `FACTS (use these ids in factIds):\n${JSON.stringify(facts)}`,
+    `Return a JSON object with: "overview","prioritySuggestions","routineTweaks","nextFourWeeks", optional "risks","metricsUsed".`,
+    caps,
+    factsSpec,
+    `PROFILE:\n${JSON.stringify({ daysPerWeekTarget: (profile as any)?.daysPerWeekTarget, goal: (profile as any)?.goal })}`,
+    `ROUTINE SUMMARY (names only):\n${JSON.stringify({ days: (routineSummary as any)?.days?.map((d:any)=>({id:d.id,name:d.name})) ?? [] })}`,
+    `TRAINING SUMMARY (compact):\n${JSON.stringify({ weekly: (trainingSummary as any)?.weekly ?? [] })}`,
+    `FACTS:\n${JSON.stringify(facts)}`,
     `SCOPE:\n${JSON.stringify(scope)}`
   ].join('\n\n');
 }
