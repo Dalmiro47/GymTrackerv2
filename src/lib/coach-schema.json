@@ -1,4 +1,3 @@
-
 import { NextResponse } from 'next/server';
 import { stripUndefinedDeep } from '@/lib/sanitize';
 import type { FunctionDeclarationsTool } from '@google/generative-ai';

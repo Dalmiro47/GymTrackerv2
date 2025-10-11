@@ -18,13 +18,11 @@ export function useCoachRun({
   profile,
   routineSummary,
   trainingSummary,
-  scope = { mode: 'global' },
-  preload = false, // NEW
+  preload = false, 
 }: {
   profile: UserProfile | null;
   routineSummary: any;
   trainingSummary: any;
-  scope?: CoachScope;
   preload?: boolean;
 }) {
   const { user } = useAuth();
@@ -33,12 +31,12 @@ export function useCoachRun({
   const [createdAt, setCreatedAt] = useState<number | null>(null);
 
   const weekKey = format(new Date(), 'RRRR-ww');
-  const scopeKey = scope.mode === 'day' ? `day-${scope.dayId}` : 'global';
+  const scopeKey = 'global';
   const docId = `${weekKey}-${scopeKey}`;
 
   const inputHash = useMemo(
-    () => hashString(JSON.stringify({ profile, routineSummary, trainingSummary, scope })),
-    [profile, routineSummary, trainingSummary, scope]
+    () => hashString(JSON.stringify({ profile, routineSummary, trainingSummary, scope: { mode: 'global' } })),
+    [profile, routineSummary, trainingSummary]
   );
 
   // NEW: preload cached advice when arriving on the page
@@ -80,7 +78,12 @@ export function useCoachRun({
     const res = await fetch('/api/coach/run', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ profile, routineSummary, trainingSummary, scope }),
+      body: JSON.stringify({ 
+        profile, 
+        routineSummary, 
+        trainingSummary,
+        scope: { mode: 'global' as const } 
+      }),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
@@ -98,7 +101,7 @@ export function useCoachRun({
       await setDoc(ref, { inputHash, createdAt: now, advice: normalized }, { merge: true });
     }
     setRunning(false);
-  }, [user, profile, inputHash, routineSummary, trainingSummary, scope, docId]);
+  }, [user, profile, inputHash, routineSummary, trainingSummary, docId]);
 
   return { advice, run, isRunning, inputHash, weekKey, createdAt };
 }
