@@ -121,18 +121,23 @@ function mgName(code: string) {
   return map[code] ?? code;
 }
 
-// Score: higher = more important
+// Prefer gaps/low-volume strongly over plain adherence
 function scoreFromFactIds(factIds: string[] = [], idx: Record<string, any>) {
-  let s = 0;
+  let score = 0;
+  let hasIv = false;
   for (const id of factIds) {
     const f = idx[id];
     if (!f) continue;
-    if (f.t === 'i') s = Math.max(s, Number(f.d || 0));          // big gap
-    else if (f.t === 'v') s = Math.max(s, Math.max(0, 20 - (f.w || 0))); // low volume
+    if (f.t === 'i') { score = Math.max(score, Number(f.d || 0)); hasIv = true; }
+    else if (f.t === 'v') { score = Math.max(score, Math.max(0, 20 - (f.w || 0))); hasIv = true; }
+    else if (f.t === 's') { score = Math.max(score, 5 + Math.min(5, Math.abs(f.sl || 0))); }
+    else if (f.t === 'a') { score = Math.max(score, 1); }
   }
-  return s;
+  // Ensure any item with i/v outranks pure adherence
+  return hasIv ? score + 100 : score;
 }
 
+// De-dupe using a more stable key (area + trimmed advice), allow top 4
 function rankAndDedupe(list: any[] = [], idx: Record<string, any>, keyer: (i:any)=>string) {
   const seen = new Set<string>();
   return list
@@ -144,7 +149,7 @@ function rankAndDedupe(list: any[] = [], idx: Record<string, any>, keyer: (i:any
       seen.add(k);
       return true;
     })
-    .slice(0, 3)
+    .slice(0, 4) // was 3
     .map(({ _score, ...i }) => i);
 }
 
@@ -244,8 +249,17 @@ export async function POST(req: Request) {
         return NextResponse.json({ ok: false, engine: 'none', error: `NO_MODEL_WORKED: ${lastErr}` }, { status: 502 });
     }
 
-    parsed.prioritySuggestions = rankAndDedupe(parsed.prioritySuggestions, factIdx, (i)=>`${i.area || ''}|`);
-    parsed.routineTweaks = rankAndDedupe(parsed.routineTweaks, factIdx, (i)=>`${i.change || ''}|${i.dayId || ''}`);
+    parsed.prioritySuggestions = rankAndDedupe(
+      parsed.prioritySuggestions,
+      factIdx,
+      (i) => `${(i.area || '').toLowerCase()}|${String(i.advice || '').toLowerCase().slice(0,60)}`
+    );
+
+    parsed.routineTweaks = rankAndDedupe(
+      parsed.routineTweaks,
+      factIdx,
+      (i) => `${(i.dayId || '')}|${(i.change || '').toLowerCase()}|${String(i.details || '').toLowerCase().slice(0,40)}`
+    );
 
     const advice = normalizeAdviceUI(parsed, routineSummary, facts);
     return NextResponse.json({

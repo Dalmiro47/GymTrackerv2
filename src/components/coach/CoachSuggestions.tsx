@@ -31,7 +31,9 @@ export function CoachSuggestions({ advice }: { advice: ReturnType<typeof normali
               </div>
             ) : ( // It's a 'priority'
               <div className="space-y-1">
-                <div className="font-medium">{item.area}</div>
+                <div className="font-medium">
+                  {item.area?.trim() ? item.area : 'Suggestion'}
+                </div>
                 <div>{item.advice}</div>
                 {typeof item.setsDelta === 'number' && typeof item.targetSets === 'number' && (
                   <div className="text-xs text-muted-foreground">
@@ -50,5 +52,3 @@ export function CoachSuggestions({ advice }: { advice: ReturnType<typeof normali
     </Card>
   );
 }
-
-    

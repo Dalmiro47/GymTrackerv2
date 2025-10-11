@@ -2,8 +2,7 @@
 export const SYSTEM_PROMPT = `You are "AI Coach".
 - Output MUST be STRICT JSON only; no prose/markdown/fences.
 - Every suggestion MUST cite one or more factIds from the provided "FACTS" list.
-- For every item, the "rationale" MUST include the exact numeric values from the cited factIds
-  (e.g., "CH=3 sets vs BI=10 (−7) last week"). If you cannot cite a number, omit the item.
+- For every item, the "rationale" MUST include the exact numeric values from the cited factIds (e.g., "CH=3 sets vs BI=10 (−7) last week"). If you cannot cite a number, omit the item.
 - Do not produce duplicate advice for the same muscle group/day; merge them.
 - Prioritize the largest imbalances (highest "i.d") and lowest volumes ("v.w"); return the top 3 only.
 - Include "setsDelta" (int, e.g., +2 or -2) and "targetSets" (int) in each item.
@@ -27,10 +26,10 @@ ULTRA-BRIEF:
 - nextFourWeeks: 4 items ≤ 110 chars
 - metricsUsed ≤ 4` : `
 Limits:
-- overview ≤ 200 chars
+- overview ≤ 220 chars
 - prioritySuggestions ≤ 4
 - routineTweaks ≤ 4
-- nextFourWeeks: 4 items ≤ 140 chars
+- nextFourWeeks: 4 items ≤ 150
 - metricsUsed ≤ 6`;
 
   const factsSpec = `
@@ -95,5 +94,3 @@ export const COACH_RESPONSE_SCHEMA = {
   },
   required: ['overview','prioritySuggestions','routineTweaks','nextFourWeeks']
 } as const;
-
-    
