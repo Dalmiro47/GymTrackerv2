@@ -1,26 +1,69 @@
 
-// super small helper to coerce strings -> string[]
-export type CoachAdviceUI = {
-  overview: string;
-  priorities: string[];
-  nextFourWeeks: string[];
-  // allow optional richer fields if you add them later
-  routineTweaks?: any[];
+type RoutineSummary = {
+  days?: Array<{ id: string; name: string }>;
 };
 
-const toList = (v: any): string[] => {
-  if (Array.isArray(v)) return v.map(x => String(x).trim()).filter(Boolean);
-  const s = String(v ?? '').trim();
-  if (!s) return [];
-  // split common bullets / newlines / numbered lists
-  return s.split(/\r?\n|· |- |\* |\d+\.\s/g).map(t => t.trim()).filter(Boolean);
-};
+const arr = (x: any) => (Array.isArray(x) ? x : []);
+const str = (x: any) => (typeof x === 'string' ? x : '');
 
-export function normalizeAdviceUI(raw: any): CoachAdviceUI {
+function dayLookup(routineSummary?: RoutineSummary) {
+  const map = new Map<string, string>();
+  if (routineSummary?.days) {
+    for (const d of routineSummary.days) map.set(String(d.id), String(d.name));
+  }
+  return (dayId?: string) =>
+    dayId ? { id: dayId, name: map.get(dayId) ?? '' } : { id: '', name: '' };
+}
+
+/**
+ * Normalize AI advice for UI rendering.
+ * - Adds missing fields
+ * - Aliases "priorities" -> "prioritySuggestions"
+ * - Resolves dayId -> day {id, name}
+ */
+export function normalizeAdviceUI(adviceIn: any, routineSummary?: RoutineSummary) {
+  const getDay = dayLookup(routineSummary);
+  const advice = adviceIn ?? {};
+
+  // alias: priorities -> prioritySuggestions
+  const prioritySrc = advice.prioritySuggestions ?? advice.priorities;
+
+  const prioritySuggestions = arr(prioritySrc).map((i: any) => ({
+    area: str(i?.area),
+    advice: str(i?.advice),
+    rationale: str(i?.rationale),
+  }));
+
+  const routineTweaks = arr(advice?.routineTweaks).map((i: any) => {
+    const dayId = str(i?.dayId);
+    const day = i?.day && (typeof i.day === 'object')
+      ? { id: str(i.day.id), name: str(i.day.name) }
+      : getDay(dayId);
+    return {
+      change: str(i?.change),
+      details: str(i?.details),
+      rationale: str(i?.rationale),
+      dayId,
+      exerciseId: str(i?.exerciseId),
+      day, // <-- guaranteed object
+    };
+  });
+
+  const nextFourWeeks = arr(advice?.nextFourWeeks).slice(0, 4).map(str);
+
+  const risks = arr(advice?.risks).map((r: any) => ({
+    issue: str(r?.issue),
+    mitigation: str(r?.mitigation),
+  }));
+
+  const metricsUsed = arr(advice?.metricsUsed).map(str);
+
   return {
-    overview: String(raw?.overview ?? '').trim(),
-    priorities: toList(raw?.priorities),
-    nextFourWeeks: toList(raw?.nextFourWeeks),
-    routineTweaks: Array.isArray(raw?.routineTweaks) ? raw.routineTweaks : [],
+    overview: str(advice?.overview),
+    prioritySuggestions,
+    routineTweaks,
+    nextFourWeeks,
+    risks,
+    metricsUsed,
   };
 }

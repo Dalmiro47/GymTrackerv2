@@ -142,7 +142,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const advice = normalizeAdviceUI(adviceRaw);
+    const advice = normalizeAdviceUI(adviceRaw, routineSummary);
     return NextResponse.json({ ok:true, engine:'gemini', modelUsed: used, advice });
   } catch (e: any) {
     return NextResponse.json({ ok:false, engine:'none', error:String(e?.message || e) }, { status:502 });

@@ -26,7 +26,7 @@ export default function CoachPage() {
     }
   };
 
-  const normalized = advice ? normalizeAdviceUI(advice as any) : null;
+  const normalized = advice ? normalizeAdviceUI(advice, data.routineSummary) : null;
 
   return (
     <div className="container mx-auto space-y-6 py-6">
@@ -51,17 +51,23 @@ export default function CoachPage() {
 
       {error && <p className="text-sm text-destructive">{error}</p>}
 
-      {normalized ? (
+      {normalized && normalized.overview ? (
         <>
           <Card><CardHeader><CardTitle>Overview</CardTitle></CardHeader>
           <CardContent><p className="text-sm">{normalized.overview}</p></CardContent></Card>
-          <CoachSuggestions advice={normalized as any} />
-          <Card><CardHeader><CardTitle>Next 4 weeks</CardTitle></CardHeader>
-          <CardContent className="grid gap-3">
-            {normalized.nextFourWeeks.map((w: any, i: number) => (
-              <p key={i} className="text-sm">{typeof w === 'string' ? w : w.notes}</p>
-            ))}
-          </CardContent></Card>
+          
+          <CoachSuggestions advice={normalized} />
+
+          {normalized.nextFourWeeks?.length > 0 && (
+            <Card>
+              <CardHeader><CardTitle>Next 4 weeks</CardTitle></CardHeader>
+              <CardContent className="grid gap-3">
+                {normalized.nextFourWeeks.map((w: any, i: number) => (
+                  <p key={i} className="text-sm">{typeof w === 'string' ? w : w.notes}</p>
+                ))}
+              </CardContent>
+            </Card>
+          )}
         </>
       ) : (!isRunning && <p className="text-sm text-muted-foreground">Run the coach to generate your first report.</p>)}
        {process.env.NODE_ENV === 'development' && (
