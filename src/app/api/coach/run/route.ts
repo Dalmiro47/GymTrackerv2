@@ -1,23 +1,18 @@
 
 import { NextResponse } from 'next/server';
-import { stripUndefinedDeep } from '@/lib/sanitize';
-import type { FunctionDeclarationsTool } from '@google/generative-ai';
-import { summarizeLogs, buildCoachAdviceLite, normalizeAdviceShape } from '@/lib/analysis';
-import type { CoachAdvice } from '@/lib/analysis';
 import { SYSTEM_PROMPT, makeUserPrompt } from '@/lib/ai/coachPrompt';
+import { normalizeAdviceUI } from '@/lib/coachNormalize';
+import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from '@google/generative-ai';
+import type { FunctionDeclarationsTool } from '@google/generative-ai';
 
-// Optional import only if you have the SDK installed
-let GoogleGenerativeAI: any, HarmCategory: any, HarmBlockThreshold: any;
-try {
-  // Avoid module load crash on edge runtimes without SDK
-  ({ GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } = require('@google/generative-ai'));
-} catch {}
-
+// Ensure no static caching of this route
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 const MODEL_CANDIDATES = [
-    'gemini-2.5-flash',
-    'gemini-2.5-flash-lite',
-    'gemini-2.0-flash',
+  'gemini-2.5-flash',
+  'gemini-2.5-flash-lite',
+  'gemini-2.0-flash',
 ];
 
 const CoachAdviceParams = {
@@ -130,7 +125,13 @@ const tool: FunctionDeclarationsTool = {
 };
 
 
-async function runWithModel(genAI: any, modelName: string, promptText: string) {
+type CoachAdviceOut = any; // your typed shape if you have it
+
+async function callModel(modelName: string, userText: string): Promise<{ advice: CoachAdviceOut, raw: any }> {
+    const apiKey = (process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || '').trim();
+    if (!apiKey) throw new Error('NO_API_KEY');
+
+    const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({
         model: modelName,
         systemInstruction: { role: 'model', parts: [{ text: SYSTEM_PROMPT }] },
@@ -148,7 +149,7 @@ async function runWithModel(genAI: any, modelName: string, promptText: string) {
         ],
     });
 
-    const result = await model.generateContent(promptText);
+    const result = await model.generateContent(userText);
     const call = result?.response?.functionCalls?.[0];
     const advice = call?.name === 'CoachAdvice' ? call.args : undefined;
     return { advice, raw: result };
@@ -157,64 +158,47 @@ async function runWithModel(genAI: any, modelName: string, promptText: string) {
 
 export async function POST(req: Request) {
   try {
-    const { profile, routineSummary, trainingSummary, logs, scope } = await req.json();
+    const { profile, routineSummary, trainingSummary } = await req.json();
+    const scope = { mode: 'global' as const };
 
-    const summary = trainingSummary ?? summarizeLogs(routineSummary?.days, logs);
+    const userPrompt = makeUserPrompt({
+      profile, routineSummary, trainingSummary, scope
+    });
 
-    const apiKey = process.env.GOOGLE_API_KEY?.trim() || process.env.GEMINI_API_KEY?.trim();
-    const canUseGemini = Boolean(apiKey && GoogleGenerativeAI);
+    let raw: CoachAdviceOut | null = null;
+    let used: string | null = null;
+    let lastErr: unknown = null;
 
-    if (!canUseGemini) {
-      // ✅ Free path
-      const lite = buildCoachAdviceLite(summary, profile, { scope, routineSummary });
-      const advice: CoachAdvice = normalizeAdviceShape(lite);
-      return NextResponse.json({ advice, engine: 'lite' });
-    }
-
-    const genAI = new GoogleGenerativeAI(apiKey!);
-    const prompt = makeUserPrompt({ profile, routineSummary, trainingSummary: summary, scope });
-
-    let rawAdvice: any;
-    let lastErr: any;
-
-    for (const modelName of MODEL_CANDIDATES) {
+    for (const m of MODEL_CANDIDATES) {
       try {
-        const out = await runWithModel(genAI, modelName, prompt);
-        rawAdvice = out.advice;
-        if (rawAdvice) break;
+        const out = await callModel(m, userPrompt);
+        raw = out.advice;
+        used = m;
+        if (raw) break;
       } catch (e: any) {
         lastErr = e;
-        const msg = String(e?.message || e);
-        if (
-          msg.includes('not found') ||
-          msg.includes('is not supported') ||
-          msg.includes('404')
-        ) {
-          console.warn(`Model ${modelName} not found, trying next...`);
-          continue; 
+        const msg = `${e?.message || e}`.toLowerCase();
+        // Try next model on 404 / unsupported / rate-limit
+        if (msg.includes('404') || msg.includes('not found') || msg.includes('unsupported') || msg.includes('429') || msg.includes('rate') || msg.includes('quota')) {
+          continue;
         }
-        if (msg.includes('429') || msg.toLowerCase().includes('rate') || msg.toLowerCase().includes('quota')) {
-            console.warn(`Model ${modelName} rate-limited, trying next...`);
-            continue;
-        }
+        // Other errors are fatal
         throw e;
       }
     }
 
-    if (!rawAdvice) {
-      const lite = buildCoachAdviceLite(summary, profile, { scope, routineSummary });
-      const advice: CoachAdvice = normalizeAdviceShape(lite);
-      return NextResponse.json({ advice: advice, engine: 'lite', note: lastErr?.message ?? 'LLM unavailable, used lite' }, { status: 200 });
+    if (!raw) {
+      throw new Error(`NO_MODEL_WORKED: ${String((lastErr as any)?.message || lastErr)}`);
     }
-    
-    const advice = normalizeAdviceShape(rawAdvice);
-    return NextResponse.json({ advice, engine: 'gemini' });
 
-  } catch (err: any) {
-    console.error('AI Coach error:', err);
+    // normalize for UI safety
+    const advice = normalizeAdviceUI(raw);
+    return NextResponse.json({ ok: true, engine: 'gemini', modelUsed: used, advice });
+  } catch (e: any) {
+    console.error('AI Coach error', e);
     return NextResponse.json(
-      { error: err?.message || 'AI Coach failed.' },
-      { status: 500 }
+      { ok: false, engine: 'none', error: e?.message ?? 'Unknown server error' },
+      { status: 502 }
     );
   }
 }

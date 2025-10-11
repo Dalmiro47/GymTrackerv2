@@ -11,15 +11,21 @@ import { CoachSuggestions } from '@/components/coach/CoachSuggestions';
 import { normalizeAdviceUI } from '@/lib/coachNormalize';
 
 export default function CoachPage() {
-  const data = useCoachData({ weeks: 8 });
-  const { advice, run, isRunning, createdAt } = useCoachRun({
-    profile: data.profile,
-    routineSummary: data.routineSummary,
-    trainingSummary: data.summary,
-    preload: true, // <- load cached on mount
-  });
+  const data = useCoachData({ weeks: 6 });
+  const { runCoach, loading: isRunning, error } = useCoachRun();
+  const [advice, setAdvice] = React.useState<any | null>(null);
 
-  const lastAnalyzed = advice ? new Date(createdAt ?? 0) : null;
+  const handleRunCoach = async () => {
+    const result = await runCoach({
+      profile: data.profile,
+      routineSummary: data.routineSummary,
+      trainingSummary: data.summary,
+    });
+    if (result) {
+      setAdvice(result);
+    }
+  };
+
   const normalized = advice ? normalizeAdviceUI(advice as any) : null;
 
   return (
@@ -29,11 +35,7 @@ export default function CoachPage() {
           <h1 className="text-2xl font-semibold flex items-center gap-2">
             <Sparkles className="h-5 w-5" /> Coach
           </h1>
-          {lastAnalyzed && Number.isFinite(lastAnalyzed.getTime()) && lastAnalyzed.getFullYear() > 2000 && (
-            <div className="text-xs text-muted-foreground mt-1">
-              Last analyzed: {lastAnalyzed.toLocaleString()}
-            </div>
-          )}
+          
           <p className="text-sm text-muted-foreground mt-2">
             Manage your profile in{' '}
             <Link href="/profile" className="underline">
@@ -42,10 +44,12 @@ export default function CoachPage() {
             .
           </p>
         </div>
-        <Button onClick={() => run()} disabled={isRunning || data.isLoading}>
+        <Button onClick={handleRunCoach} disabled={isRunning || data.isLoading}>
           {isRunning ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Analyzing…</> : 'Run coach'}
         </Button>
       </div>
+
+      {error && <p className="text-sm text-destructive">{error}</p>}
 
       {normalized ? (
         <>
@@ -54,12 +58,17 @@ export default function CoachPage() {
           <CoachSuggestions advice={normalized as any} />
           <Card><CardHeader><CardTitle>Next 4 weeks</CardTitle></CardHeader>
           <CardContent className="grid gap-3">
-            {normalized.nextFourWeeks.map((w, i) => (
-              <p key={i} className="text-sm">{w}</p>
+            {normalized.nextFourWeeks.map((w: any, i: number) => (
+              <p key={i} className="text-sm">{typeof w === 'string' ? w : w.notes}</p>
             ))}
           </CardContent></Card>
         </>
       ) : (!isRunning && <p className="text-sm text-muted-foreground">Run the coach to generate your first report.</p>)}
+       {process.env.NODE_ENV === 'development' && (
+        <p className="text-xs text-gray-500 mt-2">
+          Debug: check console for engine/model (logged by useCoachRun)
+        </p>
+      )}
     </div>
   );
 }

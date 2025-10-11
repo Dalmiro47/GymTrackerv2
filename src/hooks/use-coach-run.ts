@@ -14,94 +14,44 @@ export type CoachScope =
   | { mode: 'global' }
   | { mode: 'day'; dayId: string; dayName?: string };
 
-export function useCoachRun({
-  profile,
-  routineSummary,
-  trainingSummary,
-  preload = false, 
-}: {
-  profile: UserProfile | null;
-  routineSummary: any;
-  trainingSummary: any;
-  preload?: boolean;
-}) {
-  const { user } = useAuth();
-  const [isRunning, setRunning] = useState(false);
-  const [advice, setAdvice] = useState<CoachAdvice | null>(null);
-  const [createdAt, setCreatedAt] = useState<number | null>(null);
+export function useCoachRun() {
+  const [loading, setLoading] = useState(false);
+  const [error, setError]   = useState<string | null>(null);
 
-  const weekKey = format(new Date(), 'RRRR-ww');
-  const scopeKey = 'global';
-  const docId = `${weekKey}-${scopeKey}`;
-
-  const inputHash = useMemo(
-    () => hashString(JSON.stringify({ profile, routineSummary, trainingSummary, scope: { mode: 'global' } })),
-    [profile, routineSummary, trainingSummary]
-  );
-
-  // NEW: preload cached advice when arriving on the page
-  useEffect(() => {
-    (async () => {
-      if (!preload || !user || !profile) return;
-      const uid = user.id;
-      const ref = doc(collection(db, 'users', uid, 'coachAdvice'), docId);
-      const snap = await getDoc(ref);
-      if (snap.exists()) {
-        const data: any = snap.data();
-        if (data?.advice) {
-          setAdvice(normalizeAdviceUI(data.advice) as CoachAdvice);
-          setCreatedAt(data.createdAt ?? null);
-        }
+  async function runCoach(payload: {
+    profile: any;
+    routineSummary: any;
+    trainingSummary: any;
+    scope?: { mode: 'global' | 'day'; dayId?: string; dayName?: string };
+  }) {
+    setLoading(true);
+    setError(null);
+    try {
+      // FORCE API CALL (no cache short-circuit)
+      const r = await fetch('/api/coach/run', {
+        method: 'POST',
+        cache: 'no-store',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...payload,
+          // keep global scope to avoid drillback
+          scope: { mode: 'global' as const }
+        })
+      });
+      const data = await r.json();
+      if (!r.ok || !data?.ok) {
+        throw new Error(data?.error || `HTTP ${r.status}`);
       }
-    })();
-  }, [preload, user, profile, docId]);
-
-  const run = useCallback(async () => {
-    if (!user || !profile) return;
-    setRunning(true);
-    const uid = user.id;
-    const ref = doc(collection(db, 'users', uid, 'coachAdvice'), docId);
-
-    // cache
-    const cached = await getDoc(ref);
-    if (cached.exists()) {
-      const data: any = cached.data();
-      if (data.inputHash === inputHash && data.advice) {
-        setAdvice(normalizeAdviceUI(data.advice) as CoachAdvice);
-        setCreatedAt(data.createdAt ?? null);
-        setRunning(false);
-        return;
-      }
+      // Log which engine/model produced the output
+      console.info('AI Coach response:', { engine: data.engine, modelUsed: data.modelUsed });
+      return data.advice; // already normalized by server
+    } catch (e: any) {
+      setError(e?.message ?? 'Unknown error');
+      return null;
+    } finally {
+      setLoading(false);
     }
+  }
 
-    // run
-    const res = await fetch('/api/coach/run', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        profile, 
-        routineSummary, 
-        trainingSummary,
-        scope: { mode: 'global' as const } 
-      }),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      console.error('Coach API error:', res.status, err?.error);
-      setRunning(false);
-      return;
-    }
-
-    const json = await res.json();
-    if (json?.advice) {
-      const now = Date.now();
-      const normalized = normalizeAdviceUI(json.advice);
-      setAdvice(normalized as CoachAdvice);
-      setCreatedAt(now);
-      await setDoc(ref, { inputHash, createdAt: now, advice: normalized }, { merge: true });
-    }
-    setRunning(false);
-  }, [user, profile, inputHash, routineSummary, trainingSummary, docId]);
-
-  return { advice, run, isRunning, inputHash, weekKey, createdAt };
+  return { runCoach, loading, error };
 }
