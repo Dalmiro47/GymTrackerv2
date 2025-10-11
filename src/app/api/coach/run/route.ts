@@ -6,7 +6,11 @@ import { normalizeAdviceUI } from '@/lib/coachNormalize';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-const MODEL_CANDIDATES = ['gemini-2.5-flash','gemini-2.5-flash-lite','gemini-2.0-flash'];
+const MODEL_CANDIDATES = [
+  'gemini-2.5-flash-lite', // fastest first
+  'gemini-2.5-flash',
+  'gemini-2.0-flash',
+];
 
 function stripFences(s: string) {
   const t = s.trim();
@@ -74,7 +78,7 @@ function compactPayload(profile: any, routineSummary: any, trainingSummary: any)
   };
 }
 
-async function callGeminiREST(model: string, apiKey: string, systemText: string, userText: string, maxTokens: number) {
+async function callGeminiREST(model: string, apiKey: string, systemText: string, userText: string) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
   const body = {
     system_instruction: { parts: [{ text: systemText }] },
@@ -82,7 +86,7 @@ async function callGeminiREST(model: string, apiKey: string, systemText: string,
     generationConfig: {
       temperature: 0.2,
       topP: 0.9,
-      maxOutputTokens: maxTokens,
+      maxOutputTokens: 800,
       response_mime_type: 'application/json',
       response_schema: COACH_RESPONSE_SCHEMA
     }
@@ -102,8 +106,8 @@ export async function POST(req: Request) {
     const { profile, routineSummary, trainingSummary } = await req.json();
     const scope = { mode: 'global' as const };
 
-    const prompt1 = makeUserPrompt({ profile, routineSummary, trainingSummary, scope });
-    const prompt2 = makeUserPrompt({ ...compactPayload(profile, routineSummary, trainingSummary), scope });
+    const compact = compactPayload(profile, routineSummary, trainingSummary);
+    const userPrompt = makeUserPrompt({ ...compact, scope });
 
     let used: string | null = null;
     let adviceRaw: any = null;
@@ -111,27 +115,18 @@ export async function POST(req: Request) {
 
     for (const model of MODEL_CANDIDATES) {
       try {
-        // pass 1: generous tokens
-        try {
-          const { data, parsed } = await callGeminiREST(model, apiKey, SYSTEM_PROMPT, prompt1, 2048);
-          adviceRaw = parsed; used = model; break;
-        } catch (e: any) {
-          const msg = String(e?.message || e);
-          // retry once if MAX_TOKENS / empty parts: compact payload + more tokens
-          if (msg.includes('EMPTY_RESPONSE_PARTS') || msg.includes('MAX_TOKENS')) {
-            const { parsed } = await callGeminiREST(model, apiKey, SYSTEM_PROMPT, prompt2, 4096);
-            adviceRaw = parsed; used = model; break;
-          }
-          // On 404/429/preview, try next model
-          const m = msg.toLowerCase();
-          if (m.includes('404') || m.includes('not found') || m.includes('unsupported') || m.includes('429') || m.includes('quota') || m.includes('rate') || m.includes('preview')) {
-            lastErr = msg; continue;
-          }
-          throw e;
-        }
+        const { parsed } = await callGeminiREST(model, apiKey, SYSTEM_PROMPT, userPrompt);
+        adviceRaw = parsed;
+        used = model;
+        break;
       } catch (e: any) {
-        lastErr = String(e?.message || e);
-        continue;
+        const msg = String(e?.message || e);
+        lastErr = msg;
+        const m = msg.toLowerCase();
+        if (m.includes('404') || m.includes('not found') || m.includes('unsupported') || m.includes('429') || m.includes('quota') || m.includes('rate') || m.includes('preview')) {
+          continue;
+        }
+        throw e;
       }
     }
 

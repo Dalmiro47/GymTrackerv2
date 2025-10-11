@@ -1,16 +1,14 @@
 
 import { useState } from 'react';
 import { getAuth } from 'firebase/auth';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebaseConfig';
+import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 
-function isoWeekKey(d = new Date()) {
-  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-  const day = date.getUTCDay() || 7;
-  date.setUTCDate(date.getUTCDate() + 4 - day);
-  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
-  const week = Math.ceil((((+date - +yearStart) / 86400000) + 1) / 7);
-  return `${date.getUTCFullYear()}-${String(week).padStart(2, '0')}`;
+// tiny stable hash
+function hash(obj: any) {
+  const json = JSON.stringify(obj, Object.keys(obj).sort());
+  let h = 0; for (let i = 0; i < json.length; i++) h = (h*31 + json.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(16);
 }
 
 export function useCoachRun() {
@@ -26,35 +24,46 @@ export function useCoachRun() {
     setLoading(true);
     setError(null);
     try {
+      const uid = getAuth().currentUser?.uid;
+      const inputHash = hash({ profile: payload.profile, routineSummary: payload.routineSummary, trainingSummary: payload.trainingSummary });
+
+      // 1) Fast-path: reuse latest if same input
+      if (uid) {
+        const latestRef = doc(db, 'users', uid, 'coachAdvice', 'latest-global');
+        const snap = await getDoc(latestRef);
+        const cached = snap.exists() ? snap.data() : null;
+        if (cached?.inputHash === inputHash && cached?.advice) {
+          return cached.advice; // instant
+        }
+      }
+
+      // 2) Otherwise call API (compact payload already used on the server)
       const r = await fetch('/api/coach/run', {
         method: 'POST',
         cache: 'no-store',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...payload, scope: { mode: 'global' as const } })
+        body: JSON.stringify({ profile: payload.profile, routineSummary: payload.routineSummary, trainingSummary: payload.trainingSummary, scope: { mode: 'global' } })
       });
       const data = await r.json();
       if (!r.ok || !data?.ok) throw new Error(data?.error || `HTTP ${r.status}`);
 
-      // --- Persist to Firestore ---
-      const uid = getAuth().currentUser?.uid;
+      // 3) Save result (+ inputHash) for next instant run
       if (uid) {
-        const nowKey = isoWeekKey();
+        const nowKey = new Date().toISOString().slice(0,10); // or your week key
         const base = {
           advice: data.advice,
           engine: data.engine,
           modelUsed: data.modelUsed,
+          inputHash,
           createdAt: serverTimestamp(),
         };
-
-        // latest
         await setDoc(doc(db, 'users', uid, 'coachAdvice', 'latest-global'), base, { merge: true });
-        // weekly history (optional)
         await setDoc(doc(db, 'users', uid, 'coachAdvice', `${nowKey}-global`), base, { merge: true });
       }
 
-      return data.advice; // already normalized on server
-    } catch (e: any) {
-      setError(e?.message ?? 'Unknown error');
+      return data.advice;
+    } catch (e:any) {
+      setError(e.message ?? 'Unknown error');
       return null;
     } finally {
       setLoading(false);
