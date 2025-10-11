@@ -17,22 +17,32 @@ export function CoachSuggestions({ advice }: { advice: ReturnType<typeof normali
   return (
     <Card>
       <CardHeader><CardTitle>Priority suggestions</CardTitle></CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="space-y-4">
         {suggestions.map((item: any, i: number) => (
-          <div key={i} className="text-sm">
+          <div key={i} className="text-sm border-b border-border/50 pb-3 last:border-b-0 last:pb-0">
             {item.change ? ( // It's a 'tweak'
-              <>
+              <div className="space-y-1">
                 <div className="font-medium">{item.change}{item.day?.name ? ` on ${item.day.name}` : ''}</div>
                 <div>{item.details}</div>
-                {item.setsReps && <div className="text-muted-foreground">Sets/Reps: {item.setsReps.sets} × {item.setsReps.repsRange}{item.setsReps.rir ? ` (RIR ${item.setsReps.rir})` : ''}</div>}
-                <div className="text-muted-foreground">{item.rationale}</div>
-              </>
+                <div className="text-xs text-muted-foreground">Rationale: {item.rationale}</div>
+                {item.evidence?.length > 0 && (
+                  <div className="text-[11px] text-muted-foreground">Based on: {item.evidence.join('; ')}</div>
+                )}
+              </div>
             ) : ( // It's a 'priority'
-              <>
+              <div className="space-y-1">
                 <div className="font-medium">{item.area}</div>
                 <div>{item.advice}</div>
-                <div className="text-muted-foreground">{item.rationale}</div>
-              </>
+                {typeof item.setsDelta === 'number' && typeof item.targetSets === 'number' && (
+                  <div className="text-xs text-muted-foreground">
+                    Prescription: {item.setsDelta > 0 ? '+' : ''}{item.setsDelta} sets → target {item.targetSets}/wk
+                  </div>
+                )}
+                <div className="text-xs text-muted-foreground">Rationale: {item.rationale}</div>
+                {item.evidence?.length > 0 && (
+                  <div className="text-[11px] text-muted-foreground">Based on: {item.evidence.join('; ')}</div>
+                )}
+              </div>
             )}
           </div>
         ))}
@@ -40,3 +50,5 @@ export function CoachSuggestions({ advice }: { advice: ReturnType<typeof normali
     </Card>
   );
 }
+
+    

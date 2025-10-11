@@ -55,6 +55,7 @@ export function useCoachRun() {
           engine: data.engine,
           modelUsed: data.modelUsed,
           inputHash,
+          facts: data.facts ?? undefined, // <-- if returned
           createdAt: serverTimestamp(),
         };
         await setDoc(doc(db, 'users', uid, 'coachAdvice', 'latest-global'), base, { merge: true });
@@ -72,3 +73,5 @@ export function useCoachRun() {
 
   return { runCoach, loading, error };
 }
+
+    

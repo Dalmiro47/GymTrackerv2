@@ -7,6 +7,7 @@ import { normalizeAdviceUI } from '@/lib/coachNormalize';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
+// Fast first
 const MODEL_CANDIDATES = ['gemini-2.5-flash-lite','gemini-2.5-flash','gemini-2.0-flash'];
 
 function stripFences(s: string) {
@@ -56,9 +57,12 @@ function extractJsonFromCandidates(data: any) {
   throw new Error(`EMPTY_RESPONSE_PARTS: ${JSON.stringify(diag).slice(0, 500)}`);
 }
 
+// compact the payload for retry
 function compactPayload(profile: any, routineSummary: any, trainingSummary: any) {
   const ts = trainingSummary ?? {};
+  // keep only last 8 "weekly" items if it's large
   const weekly = Array.isArray(ts.weekly) ? ts.weekly.slice(-8) : [];
+  // drop any giant fields we don't need
   return {
     profile,
     routineSummary: {
@@ -93,8 +97,58 @@ async function callGeminiREST(model: string, apiKey: string, systemText: string,
   return { data, parsed: extractJsonFromCandidates(data) };
 }
 
-function lacksNumbers(s?: string) { return !/\d/.test(String(s||'')); }
+function lacksNumbers(s?: string) { return !/\d/.test(String(s ?? '')); }
 
+// Build a facts index and human labels (for UI evidence)
+function indexFacts(facts: any[] = []) {
+  const idx: Record<string, any> = {};
+  for (const f of facts) {
+    idx[f.id] = {
+      ...f,
+      label:
+        f.t === 'v' ? `${mgName(f.g)} last week = ${f.w} sets` :
+        f.t === 'i' ? `${mgName(f.hi)} vs ${mgName(f.lo)} diff = ${f.d} sets` :
+        f.t === 's' ? `Stall: ${f.n} (${f.w} wk, slope ${f.sl})` :
+        f.t === 'a' ? `Adherence: ${f.w} weeks logged (target ${f.targ}/wk)` :
+        f.id
+    };
+  }
+  return idx;
+}
+
+function mgName(code: string) {
+  const map: Record<string,string> = { CH:'Chest', BK:'Back', SH:'Shoulders', LE:'Legs', BI:'Biceps', TR:'Triceps', AB:'Abs' };
+  return map[code] ?? code;
+}
+
+// Score: higher = more important
+function scoreFromFactIds(factIds: string[] = [], idx: Record<string, any>) {
+  let s = 0;
+  for (const id of factIds) {
+    const f = idx[id];
+    if (!f) continue;
+    if (f.t === 'i') s = Math.max(s, Number(f.d || 0));          // big gap
+    else if (f.t === 'v') s = Math.max(s, Math.max(0, 20 - (f.w || 0))); // low volume
+  }
+  return s;
+}
+
+function rankAndDedupe(list: any[] = [], idx: Record<string, any>, keyer: (i:any)=>string) {
+  const seen = new Set<string>();
+  return list
+    .map((i) => ({ ...i, _score: scoreFromFactIds(i.factIds, idx) }))
+    .sort((a,b) => b._score - a._score)
+    .filter((i) => {
+      const k = keyer(i);
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    })
+    .slice(0, 3)
+    .map(({ _score, ...i }) => i);
+}
+
+// Guardrails: numbers present + prescriptions make sense
 function verifyNumbers(advice: any) {
   const bad: string[] = [];
   for (const [k, arr] of Object.entries({
@@ -108,6 +162,32 @@ function verifyNumbers(advice: any) {
   return bad;
 }
 
+function verifyPrescriptions(advice: any, idx: Record<string, any>) {
+  const offenders: string[] = [];
+  const check = (arr: any[], path: string) => {
+    arr.forEach((it, i) => {
+      const delta = Number(it?.setsDelta);
+      const target = Number(it?.targetSets);
+      if (!Number.isFinite(delta) || !Number.isFinite(target) || target < 0 || target > 20) {
+        offenders.push(`${path}[${i}]:bad-numbers`); return;
+      }
+      // get a current volume if any v: fact is cited
+      const v = (it.factIds || []).map((id: string) => idx[id]).find((f: any) => f?.t === 'v');
+      const current = Number(v?.w);
+      if (Number.isFinite(current)) {
+        if (current + delta !== target) offenders.push(`${path}[${i}]:mismatch`);
+      }
+      // crude sign check against text
+      const txt = String(it?.advice || '').toLowerCase();
+      if (delta > 0 && txt.includes('reduce')) offenders.push(`${path}[${i}]:sign`);
+      if (delta < 0 && txt.includes('add')) offenders.push(`${path}[${i}]:sign`);
+    });
+  };
+  check(advice?.prioritySuggestions ?? [], 'prioritySuggestions');
+  check(advice?.routineTweaks ?? [], 'routineTweaks');
+  return offenders;
+}
+
 export async function POST(req: Request) {
   const apiKey = (process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || '').trim();
   if (!apiKey) return NextResponse.json({ ok:false, engine:'none', error:'MISSING_API_KEY' }, { status:500 });
@@ -115,9 +195,8 @@ export async function POST(req: Request) {
   try {
     const { profile, routineSummary, trainingSummary } = await req.json();
     const scope = { mode: 'global' as const };
-
     const { facts } = buildCoachFactsCompact(profile, routineSummary, trainingSummary);
-    const factSet = new Set(facts.map((f:any)=>f.id));
+    const factIdx = indexFacts(facts);
 
     let used: string | null = null;
     let parsed: any | null = null;
@@ -128,55 +207,50 @@ export async function POST(req: Request) {
         const prompt = makeUserPrompt({ profile, routineSummary, trainingSummary, scope, facts, brief: false });
         let { parsed: p1 } = await callGeminiREST(model, apiKey, SYSTEM_PROMPT, prompt, 1200);
 
-        const badFactIds = (p1?.prioritySuggestions ?? []).concat(p1?.routineTweaks ?? [])
-          .some((item: any) => !item.factIds || item.factIds.length === 0 || !item.factIds.every((id:string) => factSet.has(id)));
-        const badNumbers = verifyNumbers(p1).length > 0;
-        
-        if (badFactIds || badNumbers) {
-          const repair = `REPAIR: Some suggestions were invalid.
-${badFactIds ? 'Every item MUST include valid factIds.' : ''}
-${badNumbers ? 'Every rationale MUST include numeric values from the facts.' : ''}
-Regenerate your response following all rules.`;
-
-          const promptBrief = makeUserPrompt({ profile, routineSummary, trainingSummary, scope, facts, brief: true }) + '\n\n' + repair;
-          const { parsed: p2 } = await callGeminiREST(model, apiKey, SYSTEM_PROMPT, promptBrief, 1400);
-
-          // Only accept the repair if it's valid this time
-          const repairedIsGood = !verifyNumbers(p2).length && !(p2?.prioritySuggestions ?? []).concat(p2?.routineTweaks ?? [])
-            .some((item: any) => !item.factIds || item.factIds.length === 0 || !item.factIds.every((id:string) => factSet.has(id)));
-          
-          if (repairedIsGood) {
-              parsed = p2;
-          }
-        } else {
-          parsed = p1;
-        }
-
-        if (parsed) {
-          used = model;
-          break;
-        }
-
-      } catch (e: any) {
-          const msg = String(e?.message || e);
-          if (msg.includes('MAX_TOKENS')) {
-            const promptBrief = makeUserPrompt({ profile, routineSummary, trainingSummary, scope, facts, brief: true });
+        let badNum = verifyNumbers(p1);
+        if (badNum.length) {
+            const repair = `REPAIR: These items lacked numeric rationale: ${badNum.join(', ')}. Include exact numbers from FACTS in each rationale.`;
+            const promptBrief = makeUserPrompt({ profile, routineSummary, trainingSummary, scope, facts, brief: true }) + '\n\n' + repair;
             const { parsed: p2 } = await callGeminiREST(model, apiKey, SYSTEM_PROMPT, promptBrief, 1400);
-            parsed = p2; used = model; break;
-          }
-          const m = msg.toLowerCase();
-          if (m.includes('404')||m.includes('unsupported')||m.includes('429')||m.includes('quota')||m.includes('rate')) {
-            lastErr = msg; continue;
-          }
-          throw e;
+            p1 = p2;
+        }
+
+        const offenders = verifyPrescriptions(p1, factIdx);
+        if (offenders.length) {
+            const repair2 = `REPAIR: Fix prescription fields for ${offenders.join(', ')} so that:
+- setsDelta is an integer; targetSets is 0..20
+- If a v: fact is cited, targetSets = current(w) + setsDelta
+- Text matches sign (add vs reduce).`;
+            const promptBrief2 = makeUserPrompt({ profile, routineSummary, trainingSummary, scope, facts, brief: true }) + '\n\n' + repair2;
+            const { parsed: p3 } = await callGeminiREST(model, apiKey, SYSTEM_PROMPT, promptBrief2, 1400);
+            p1 = p3;
+        }
+
+        parsed = p1;
+        used = model;
+        break;
+      } catch (e: any) {
+        lastErr = String(e?.message || e);
+        const m = lastErr.toLowerCase();
+        if (m.includes('404')||m.includes('unsupported')||m.includes('429')||m.includes('quota')||m.includes('rate')||m.includes('preview')) {
+          continue;
+        }
+        throw e;
       }
     }
 
-    if (!parsed) return NextResponse.json({ ok:false, engine:'none', error:`NO_MODEL_WORKED: ${lastErr}` }, { status:502 });
+    if (!parsed) {
+        return NextResponse.json({ ok: false, engine: 'none', error: `NO_MODEL_WORKED: ${lastErr}` }, { status: 502 });
+    }
 
-    const advice = normalizeAdviceUI(parsed, routineSummary);
-    return NextResponse.json({ ok:true, engine:'gemini', modelUsed: used, advice });
-  } catch (e:any) {
-    return NextResponse.json({ ok:false, engine:'none', error:String(e?.message || e) }, { status:502 });
+    parsed.prioritySuggestions = rankAndDedupe(parsed.prioritySuggestions, factIdx, (i)=>`${i.area || ''}|`);
+    parsed.routineTweaks = rankAndDedupe(parsed.routineTweaks, factIdx, (i)=>`${i.change || ''}|${i.dayId || ''}`);
+
+    const advice = normalizeAdviceUI(parsed, routineSummary, facts);
+    return NextResponse.json({ ok: true, engine: 'gemini', modelUsed: used, advice });
+  } catch (e: any) {
+    return NextResponse.json({ ok: false, engine: 'none', error: String(e?.message || e) }, { status: 502 });
   }
 }
+
+    

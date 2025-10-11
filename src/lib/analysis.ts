@@ -1,5 +1,4 @@
 
-
 import { parseISO, startOfISOWeek, formatISO } from 'date-fns';
 
 type SetLike = { reps: number; weight: number };
@@ -351,3 +350,5 @@ export function buildCoachFactsCompact(profile: any, _routineSummary: any, train
   // Hard cap to ~14 facts total
   return { facts: facts.slice(0,14) };
 }
+
+    
