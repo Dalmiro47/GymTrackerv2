@@ -1,4 +1,3 @@
-
 'use client';
 import React from 'react';
 import Link from 'next/link';
@@ -16,10 +15,11 @@ import { normalizeAdviceUI } from '@/lib/coachNormalize';
 export default function CoachPage() {
   const data = useCoachData({ weeks: 6 });
   const { runCoach, loading: isRunning, error } = useCoachRun();
+
   const [advice, setAdvice] = React.useState<any | null>(null);
+  const [lastAnalyzedAt, setLastAnalyzedAt] = React.useState<Date | null>(null);
   const [loaded, setLoaded] = React.useState(false);
 
-  // Load last saved advice on mount
   React.useEffect(() => {
     const uid = getAuth().currentUser?.uid;
     if (!uid) { setLoaded(true); return; }
@@ -29,6 +29,9 @@ export default function CoachPage() {
         if (snap.exists()) {
           const saved = snap.data();
           if (saved?.advice) setAdvice(saved.advice);
+          // Firestore Timestamp → Date (defensive)
+          const ts: any = saved?.createdAt;
+          if (ts?.toDate) setLastAnalyzedAt(ts.toDate());
         }
       } finally {
         setLoaded(true);
@@ -42,7 +45,10 @@ export default function CoachPage() {
       routineSummary: data.routineSummary,
       trainingSummary: data.summary,
     });
-    if (result) setAdvice(result);
+    if (result) {
+      setAdvice(result);
+      setLastAnalyzedAt(new Date()); // we just wrote it server-side, show now
+    }
   };
 
   const normalized = advice ? normalizeAdviceUI(advice, data.routineSummary) : null;
@@ -56,6 +62,9 @@ export default function CoachPage() {
           </h1>
           <p className="text-sm text-muted-foreground mt-2">
             Manage your profile in <Link href="/profile" className="underline">Profile</Link>.
+          </p>
+          <p className="text-xs text-muted-foreground mt-1">
+            Last analyzed: {lastAnalyzedAt ? lastAnalyzedAt.toLocaleString() : '—'}
           </p>
         </div>
         <Button onClick={handleRunCoach} disabled={isRunning || data.isLoading}>

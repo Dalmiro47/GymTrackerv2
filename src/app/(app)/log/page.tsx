@@ -62,7 +62,7 @@ import { Switch } from '@/components/ui/switch';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { SET_STRUCTURE_COLORS } from '@/types/setStructure';
 import { cn } from '@/lib/utils';
-import { CoachInline } from './CoachInline';
+import CoachInline from './CoachInline';
 
 // Get the effective structure for an exercise (override, then routine default, then normal)
 function effectiveOf(ex: { setStructure?: SetStructure; setStructureOverride?: SetStructure | null } | undefined): SetStructure {
