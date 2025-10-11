@@ -289,3 +289,60 @@ export function summarizeLogs(routines:any[], logs:WorkoutLog[], weeks=8) {
 
   return { weekly, balance, trends };
 }
+
+export type CoachFact =
+  | { id: string; type: 'mg_volume'; mg: string; lastWeekSets: number; avg4wSets?: number }
+  | { id: string; type: 'mg_imbalance'; mgHi: string; mgLo: string; diffSets: number }
+  | { id: string; type: 'stall'; exerciseId: string; name: string; weeks: number; e1rmSlope: number }
+  | { id: string; type: 'adherence'; weeksLogged: number; targetDays: number };
+
+export function buildCoachFacts(
+  profile: any,
+  routineSummary: any,
+  trainingSummary: any
+) {
+  const facts: CoachFact[] = [];
+
+  // 1) per-muscle-group weekly volume (use last week + 4w avg if you have it)
+  const byMgLast = new Map<string, number>();
+  for (const row of trainingSummary?.weekly ?? []) {
+    if (!row?.muscleGroup || row?.week !== trainingSummary?.weekly?.[0]?.week) continue;
+    byMgLast.set(row.muscleGroup, Number(row.hardSets || 0));
+  }
+  for (const [mg, lastWeekSets] of byMgLast) {
+    facts.push({ id: `mg_${mg}_vol`, type: 'mg_volume', mg, lastWeekSets });
+  }
+
+  // 2) simple imbalances vs max group (last week)
+  if (byMgLast.size) {
+    const arr = [...byMgLast.entries()].sort((a,b)=>b[1]-a[1]);
+    const hi = arr[0];
+    for (const [mg, sets] of arr.slice(1)) {
+      const diff = hi[1] - sets;
+      if (diff >= 5) facts.push({ id: `imb_${hi[0]}_${mg}`, type: 'mg_imbalance', mgHi: hi[0], mgLo: mg, diffSets: diff });
+    }
+  }
+
+  // 3) stalls (if you compute them elsewhere, plug in here)
+  for (const ex of trainingSummary?.stalls ?? []) {
+    facts.push({
+      id: `stall_${ex.id}`,
+      type: 'stall',
+      exerciseId: ex.id,
+      name: ex.name,
+      weeks: ex.weeks,
+      e1rmSlope: ex.slope,
+    });
+  }
+
+  // 4) adherence
+  const weeksLogged = new Set(trainingSummary?.weekly?.map((w:any)=>w.week)).size;
+  facts.push({
+    id: 'adh_1',
+    type: 'adherence',
+    weeksLogged,
+    targetDays: Number(profile?.daysPerWeekTarget || 0),
+  });
+
+  return { facts };
+}

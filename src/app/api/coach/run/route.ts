@@ -1,6 +1,7 @@
 
 import { NextResponse } from 'next/server';
 import { SYSTEM_PROMPT, makeUserPrompt, COACH_RESPONSE_SCHEMA } from '@/lib/ai/coachPrompt';
+import { buildCoachFacts } from '@/lib/analysis';
 import { normalizeAdviceUI } from '@/lib/coachNormalize';
 
 export const dynamic = 'force-dynamic';
@@ -12,51 +13,71 @@ const MODEL_CANDIDATES = [
   'gemini-2.0-flash',
 ];
 
-
+// ---- helpers at top-level (in the same file) ----
 function stripFences(s: string) {
   const t = s.trim();
-  if (t.startsWith('```')) return t.replace(/^```(?:json)?\s*/i,'').replace(/```$/,'').trim();
+  if (t.startsWith("```")) {
+    return t.replace(/^```(?:json)?\s*/i, "").replace(/```$/, "").trim();
+  }
   return t;
 }
-function tryParseJSON(s: string) { try { return JSON.parse(s); } catch { return null; } }
-function decodeInlineData(b64: string) {
-  try { return Buffer.from(b64, 'base64').toString('utf-8'); } catch { return ''; }
+
+function tryParseJSON(s: string) {
+  try { return JSON.parse(s); } catch { return null; }
 }
+
+function decodeInlineData(b64: string) {
+  try { return Buffer.from(b64, "base64").toString("utf-8"); } catch { return ""; }
+}
+
 function extractJsonFromCandidates(data: any) {
   const cand = data?.candidates?.[0];
   const parts = cand?.content?.parts;
 
+  // 1) text parts (also handle ```json fences)
   if (Array.isArray(parts)) {
     for (const p of parts) {
-      if (typeof p?.text === 'string' && p.text.trim()) {
-        const parsed = tryParseJSON(stripFences(p.text));
+      if (typeof p?.text === "string" && p.text.trim()) {
+        const text = stripFences(p.text);
+        const parsed = tryParseJSON(text);
         if (parsed) return parsed;
       }
     }
+  }
+
+  // 2) inline_data (application/json, base64)
+  if (Array.isArray(parts)) {
     for (const p of parts) {
       const id = p?.inline_data;
-      if (id?.mime_type?.toLowerCase().includes('json') && typeof id?.data === 'string') {
-        const parsed = tryParseJSON(decodeInlineData(id.data));
+      if (id?.mime_type?.toLowerCase().includes("json") && typeof id?.data === "string") {
+        const decoded = decodeInlineData(id.data);
+        const parsed = tryParseJSON(decoded);
         if (parsed) return parsed;
       }
     }
+  }
+
+  // 3) function call (if model used tool calling)
+  if (Array.isArray(parts)) {
     for (const p of parts) {
       const fc = p?.functionCall;
-      if (fc?.args) return fc.args;
-      if (typeof fc?.argsJson === 'string') {
+      if (fc?.args) return fc.args; // already JSON object
+      if (typeof fc?.argsJson === "string") {
         const parsed = tryParseJSON(fc.argsJson);
         if (parsed) return parsed;
       }
     }
   }
 
+  // nothing parsed → return a short diagnostic
   const diag = {
     keys: Object.keys(cand ?? {}),
-    partsType: Array.isArray(parts) ? 'array' : typeof parts,
+    partsType: Array.isArray(parts) ? "array" : typeof parts,
     partsLen: Array.isArray(parts) ? parts.length : 0,
     finishReason: cand?.finishReason,
+    promptFeedback: data?.promptFeedback
   };
-  throw new Error(`EMPTY_RESPONSE_PARTS: ${JSON.stringify(diag)}`);
+  throw new Error(`EMPTY_RESPONSE_PARTS: ${JSON.stringify(diag).slice(0, 500)}`);
 }
 
 // compact the payload for retry
@@ -96,8 +117,20 @@ async function callGeminiREST(model: string, apiKey: string, systemText: string,
   const rawText = await r.text();
   if (!r.ok) throw new Error(`HTTP_${r.status}: ${rawText.slice(0,800)}`);
   const data = JSON.parse(rawText);
-  const parsed = extractJsonFromCandidates(data);
-  return { data, parsed };
+  return { data, parsed: extractJsonFromCandidates(data) };
+}
+
+function verifyGrounding(advice: any, factIds: Set<string>) {
+  const bad: string[] = [];
+  const chk = (arr: any[], path: string) => {
+    for (let i=0;i<arr.length;i++) {
+      const ids = Array.isArray(arr[i]?.factIds) ? arr[i].factIds : [];
+      if (!ids.length || !ids.every((id:string)=>factIds.has(id))) bad.push(`${path}[${i}]`);
+    }
+  };
+  chk(advice?.prioritySuggestions ?? [], 'prioritySuggestions');
+  chk(advice?.routineTweaks ?? [], 'routineTweaks');
+  return bad;
 }
 
 export async function POST(req: Request) {
@@ -108,51 +141,43 @@ export async function POST(req: Request) {
     const { profile, routineSummary, trainingSummary } = await req.json();
     const scope = { mode: 'global' as const };
 
-    // always compact before prompting
     const compact = compactPayload(profile, routineSummary, trainingSummary);
+    const { facts } = buildCoachFacts(profile, routineSummary, compact.trainingSummary);
+    const factSet = new Set(facts.map((f:any)=>f.id));
 
-    let adviceRaw: any = null;
     let used: string | null = null;
-    let lastErr: string | null = null;
+    let parsed: any | null = null;
 
     for (const model of MODEL_CANDIDATES) {
       try {
-        // 1) Fast path (slightly bigger budget than 800)
-        try {
-          const prompt = makeUserPrompt({ ...compact, scope, brief: false });
-          const { parsed } = await callGeminiREST(model, apiKey, SYSTEM_PROMPT, prompt, 1100);
-          adviceRaw = parsed; used = model; break;
-        } catch (e: any) {
-          const msg = String(e?.message || e);
+        const prompt = makeUserPrompt({ ...compact, scope, facts, brief: false });
+        const { parsed: p1 } = await callGeminiREST(model, apiKey, SYSTEM_PROMPT, prompt, 1100);
+        let bad = verifyGrounding(p1, factSet);
 
-          // 2) Retry ONCE if token-limited → brief mode + larger cap (rare)
-          if (msg.includes('MAX_TOKENS')) {
-            const promptBrief = makeUserPrompt({ ...compact, scope, brief: true });
-            const { parsed } = await callGeminiREST(model, apiKey, SYSTEM_PROMPT, promptBrief, 1400);
-            adviceRaw = parsed; used = model; break;
-          }
-
-          // try next model on 404/429 etc.
-          const m = msg.toLowerCase();
-          if (m.includes('404') || m.includes('not found') || m.includes('unsupported') ||
-              m.includes('429') || m.includes('quota') || m.includes('rate') || m.includes('preview')) {
-            lastErr = msg; continue;
-          }
-          throw e;
+        if (bad.length) {
+          const repair = [
+            `REPAIR: Some items lacked valid factIds (${bad.join(', ')}).`,
+            `You MUST regenerate ensuring every item includes at least one valid id from the FACTS list.`
+          ].join('\n');
+          const promptBrief = makeUserPrompt({ ...compact, scope, facts, brief: true }) + '\n\n' + repair;
+          const { parsed: p2 } = await callGeminiREST(model, apiKey, SYSTEM_PROMPT, promptBrief, 1400);
+          bad = verifyGrounding(p2, factSet);
+          if (!bad.length) { parsed = p2; used = model; break; }
+        } else { parsed = p1; used = model; break; }
+      } catch (e) {
+        const msg = String((e as any)?.message || e);
+        if (msg.toLowerCase().includes('404') || msg.toLowerCase().includes('not found') || msg.toLowerCase().includes('unsupported') || msg.toLowerCase().includes('429') || msg.toLowerCase().includes('rate') || msg.toLowerCase().includes('quota') || msg.toLowerCase().includes('preview')) {
+            continue;
         }
-      } catch (e:any) {
-        lastErr = String(e?.message || e);
-        continue;
+        throw e;
       }
     }
 
-    if (!adviceRaw) {
-      return NextResponse.json({ ok:false, engine:'none', error:`NO_MODEL_WORKED: ${lastErr}` }, { status:502 });
-    }
+    if (!parsed) return NextResponse.json({ ok:false, engine:'none', error:'NO_MODEL_WORKED' }, { status:502 });
 
-    const advice = normalizeAdviceUI(adviceRaw, routineSummary);
-    return NextResponse.json({ ok:true, engine:'gemini', modelUsed: used, advice });
+    const advice = normalizeAdviceUI(parsed, routineSummary); // your normalizer already tolerates extras
+    return NextResponse.json({ ok:true, engine:'gemini', modelUsed: used, advice, facts });
   } catch (e:any) {
-    return NextResponse.json({ ok:false, engine:'none', error:String(e?.message || e) }, { status:502 });
+    return NextResponse.json({ ok:false, engine:'none', error:String(e?.message||e) }, { status:502 });
   }
 }
