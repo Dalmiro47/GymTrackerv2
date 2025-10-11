@@ -4,6 +4,7 @@ import { stripUndefinedDeep } from '@/lib/sanitize';
 import type { FunctionDeclarationsTool } from '@google/generative-ai';
 import { summarizeLogs, buildCoachAdviceLite, normalizeAdviceShape } from '@/lib/analysis';
 import type { CoachAdvice } from '@/lib/analysis';
+import { SYSTEM_PROMPT, makeUserPrompt } from '@/lib/ai/coachPrompt';
 
 // Optional import only if you have the SDK installed
 let GoogleGenerativeAI: any, HarmCategory: any, HarmBlockThreshold: any;
@@ -14,10 +15,9 @@ try {
 
 
 const MODEL_CANDIDATES = [
-    'gemini-1.5-flash',
-    'gemini-1.5-flash-latest',
-    'gemini-1.5-pro',
-    'gemini-1.5-pro-latest',
+    'gemini-2.5-flash',
+    'gemini-2.5-flash-lite',
+    'gemini-2.0-flash',
 ];
 
 const CoachAdviceParams = {
@@ -119,16 +119,6 @@ const CoachAdviceParams = {
   required: ['overview', 'routineTweaks', 'nextFourWeeks'],
 };
 
-const SYSTEM_PROMPT = `You are "AI Coach", a strength coach.
-Output: STRICT JSON only (validates against user-provided JSON Schema).
-Constraints:
-- Use ONLY provided metrics; never invent numbers or exercises.
-- Avoid generic hypertrophy guidance (e.g., "6–12 reps" or "keep technique-first") unless it is directly justified by the data.
-- Every suggestion MUST reference an observed metric (e.g., e1RM slope, weekly volume %, RIR trend).
-- Prefer minimal, testable prescriptions: sets×reps×RIR, load deltas (+2.5%), or weekly frequency changes.
-- If data is insufficient for a section, return [] for that section. No filler text.
-`;
-
 const tool: FunctionDeclarationsTool = {
   functionDeclarations: [
     {
@@ -146,7 +136,9 @@ async function runWithModel(genAI: any, modelName: string, promptText: string) {
         systemInstruction: { role: 'model', parts: [{ text: SYSTEM_PROMPT }] },
         tools: [tool],
         generationConfig: {
-            temperature: 0.3,
+            temperature: 0.2,
+            topP: 0.9,
+            maxOutputTokens: 900
         },
         safetySettings: [
           { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
@@ -162,34 +154,11 @@ async function runWithModel(genAI: any, modelName: string, promptText: string) {
     return { advice, raw: result };
 }
 
-function makeUserPrompt(params: {
-  profile: unknown;
-  routineSummary: unknown;
-  trainingSummary: unknown;
-  scope: { mode: 'global' };
-}) {
-  const { profile, routineSummary, trainingSummary, scope } = params;
-
-  return [
-    `PROFILE:\n${JSON.stringify(profile)}`,
-    `ROUTINE SUMMARY:\n${JSON.stringify(routineSummary)}`,
-    `TRAINING SUMMARY (last 6–8 weeks):\n${JSON.stringify(trainingSummary)}`,
-    `SCOPE:\n${JSON.stringify(scope)}`,
-    `GUIDANCE:
-- Identify: improvements (positive e1RM slope), plateaus (±1% ≥3 weeks), fatigue risk (volume↑ & RIR↓ & e1RM↓), imbalances (≥25–30% lower volume vs antagonist).
-- "prioritySuggestions": max 5 items, each with a clear action and a metric-based rationale.
-- "routineTweaks": concrete prescriptions per exercise or day (sets×reps×RIR / small load deltas).
-- "nextFourWeeks": 4 concise week-by-week directives (one per array item).
-Return STRICT JSON only.`
-  ].join('\n\n');
-}
-
 
 export async function POST(req: Request) {
   try {
-    const { profile, routineSummary, trainingSummary, logs } = await req.json();
+    const { profile, routineSummary, trainingSummary, logs, scope } = await req.json();
 
-    const scope = { mode: 'global' as const };
     const summary = trainingSummary ?? summarizeLogs(routineSummary?.days, logs);
 
     const apiKey = process.env.GOOGLE_API_KEY?.trim() || process.env.GEMINI_API_KEY?.trim();
@@ -223,6 +192,10 @@ export async function POST(req: Request) {
         ) {
           console.warn(`Model ${modelName} not found, trying next...`);
           continue; 
+        }
+        if (msg.includes('429') || msg.toLowerCase().includes('rate') || msg.toLowerCase().includes('quota')) {
+            console.warn(`Model ${modelName} rate-limited, trying next...`);
+            continue;
         }
         throw e;
       }
