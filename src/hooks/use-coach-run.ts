@@ -1,10 +1,8 @@
-
 import { useState } from 'react';
 import { getAuth } from 'firebase/auth';
 import { db } from '@/lib/firebaseConfig';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 
-// tiny stable hash
 function hash(obj: any) {
   const json = JSON.stringify(obj, Object.keys(obj).sort());
   let h = 0; for (let i = 0; i < json.length; i++) h = (h*31 + json.charCodeAt(i)) | 0;
@@ -15,17 +13,14 @@ function pickProfileForHash(p: any) {
   return {
     goal: p?.goal ?? null,
     daysPerWeekTarget: p?.daysPerWeekTarget ?? null,
-    sessionTimeTargetMin: p?.sessionTimeTargetMin ?? null, // keep if used in the prompt/prescriptions
+    sessionTimeTargetMin: p?.sessionTimeTargetMin ?? null,
   };
 }
-
 function pickRoutineForHash(rs: any) {
-  // Keep minimal structure that the server/UI rely on (days + muscle groups).
   return {
     days: (rs?.days ?? []).map((d: any) => ({
       id: d?.id,
-      name: d?.name,
-      exercises: (d?.exercises ?? []).map((e: any) => ({ mg: e?.muscleGroup })),
+      exercises: (d?.exercises ?? []).map((e: any) => e?.muscleGroup ?? null),
     })),
   };
 }
@@ -38,43 +33,48 @@ export function useCoachRun() {
     profile: any;
     routineSummary: any;
     trainingSummary: any;
-    scope?: { mode: 'global' | 'day'; dayId?: string; dayName?: string };
+    stamps?: { profileUpdatedAt:number; routinesUpdatedAt:number; logsUpdatedAt:number };
+    scope?: { mode: 'global'|'day'; dayId?:string; dayName?:string };
   }) {
-    setLoading(true);
-    setError(null);
+    setLoading(true); setError(null);
     try {
       const uid = getAuth().currentUser?.uid;
-      
-      // *** align client hash with server inputs ***
+
+      // 🔑 The cache key now includes only relevant fields + realtime stamps
       const inputHash = hash({
         profile: pickProfileForHash(payload.profile),
-        routineSummary: pickRoutineForHash(payload.routineSummary),
-        trainingSummary: payload.trainingSummary, // server uses this fully
+        routine: pickRoutineForHash(payload.routineSummary),
+        training: payload.trainingSummary,
+        stamps: payload.stamps ?? null,
       });
 
-      // 1) Fast-path: reuse latest if same input
+      // Fast-path reuse
       if (uid) {
         const latestRef = doc(db, 'users', uid, 'coachAdvice', 'latest-global');
         const snap = await getDoc(latestRef);
         const cached = snap.exists() ? snap.data() : null;
         if (cached?.inputHash === inputHash && cached?.advice) {
-          return cached.advice; // instant
+          return cached.advice;
         }
       }
 
-      // 2) Otherwise call API (compact payload already used on the server)
+      // API call
       const r = await fetch('/api/coach/run', {
         method: 'POST',
         cache: 'no-store',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ profile: payload.profile, routineSummary: payload.routineSummary, trainingSummary: payload.trainingSummary, scope: { mode: 'global' } })
+        body: JSON.stringify({
+          profile: payload.profile,
+          routineSummary: payload.routineSummary,
+          trainingSummary: payload.trainingSummary,
+          scope: { mode: 'global' }
+        })
       });
       const data = await r.json();
       if (!r.ok || !data?.ok) throw new Error(data?.error || `HTTP ${r.status}`);
 
-      // 3) Save result (+ inputHash) for next instant run
       if (uid) {
-        const nowKey = new Date().toISOString().slice(0,10); // or your week key
+        const nowKey = new Date().toISOString().slice(0,10);
         const base: any = {
           advice: data.advice,
           engine: data.engine,
@@ -82,17 +82,14 @@ export function useCoachRun() {
           inputHash,
           createdAt: serverTimestamp(),
         };
-
-        if (Array.isArray(data.facts)) {
-            base.facts = data.facts;
-        }
+        if (Array.isArray(data.facts)) base.facts = data.facts;
 
         await setDoc(doc(db, 'users', uid, 'coachAdvice', 'latest-global'), base, { merge: true });
         await setDoc(doc(db, 'users', uid, 'coachAdvice', `${nowKey}-global`), base, { merge: true });
       }
 
       return data.advice;
-    } catch (e:any) {
+    } catch (e: any) {
       setError(e.message ?? 'Unknown error');
       return null;
     } finally {
