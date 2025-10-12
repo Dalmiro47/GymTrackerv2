@@ -82,10 +82,10 @@ function compactPayload(profile: any, routineSummary: any, trainingSummary: any)
 
 const generationConfig = {
     temperature: 0.2,
-    maxOutputTokens: 2048,
+    maxOutputTokens: 900,
     responseMimeType: 'application/json',
 };
-  
+
 // helper: one request to a specific model
 async function callGeminiOnce(model: string, systemText: string, userText: string) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY}`;
@@ -249,6 +249,55 @@ function verifyChronology(plan: any[]) {
   return null;
 }
 
+function compactFactsForRetry(facts:any[]) {
+  const top = (facts ?? []).slice(0, 10);
+  return top.map((f:any) => {
+    const copy = { ...f };
+    for (const k of Object.keys(copy)) {
+      if (typeof copy[k] === 'string' && copy[k].length > 140) {
+        copy[k] = copy[k].slice(0, 140);
+      }
+    }
+    return copy;
+  });
+}
+
+const BRIEF_REPAIR_HINT = `
+Return a VERY COMPACT JSON. Keep strings under 140 characters.
+For nextFourWeeks: at most 2 actions per week. Avoid narrative text.
+Only include required fields from the schema; omit any optional commentary.
+`;
+
+function looksLikeMaxTokens(apiJson:any) {
+  try {
+    const cand = apiJson?.candidates?.[0];
+    const finish = cand?.finishReason || apiJson?.finishReason;
+    const parts = cand?.content?.parts;
+    return (finish === 'MAX_TOKENS') || !parts || parts.length === 0;
+  } catch { return false; }
+}
+
+async function generateWithRetry(systemText: string, userText: string, { facts }: { facts: any[] }) {
+    const { json: firstJson, modelUsed } = await generateWithFallback(systemText, userText);
+  
+    if (!looksLikeMaxTokens(firstJson)) {
+      return { json: firstJson, modelUsed };
+    }
+  
+    const compactedFacts = compactFactsForRetry(facts);
+    const briefUserText = makeUserPrompt({
+        facts: compactedFacts,
+        brief: true,
+        profile: {},
+        routineSummary: {},
+        trainingSummary: {},
+        scope: { mode: 'global' },
+      }) + '\n\n' + BRIEF_REPAIR_HINT;
+  
+    const repairJson = await callGeminiOnce(modelUsed, systemText, briefUserText);
+    return { json: repairJson, modelUsed };
+}
+
 export async function POST(req: Request) {
   const apiKey = (process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || '').trim();
   if (!apiKey) return NextResponse.json({ ok:false, engine:'none', error:'MISSING_API_KEY' }, { status:500 });
@@ -261,7 +310,9 @@ export async function POST(req: Request) {
     const { facts } = buildCoachFactsCompact(profile, routineSummary, compact.trainingSummary);
     const factIdx = indexFacts(facts);
 
-    const { json, modelUsed } = await generateWithFallback(SYSTEM_PROMPT, makeUserPrompt({ ...compact, scope, facts, brief: false }));
+    const userPrompt = makeUserPrompt({ ...compact, scope, facts, brief: false });
+    const { json, modelUsed } = await generateWithRetry(SYSTEM_PROMPT, userPrompt, { facts });
+    
     let p1 = extractJsonFromCandidates(json);
     
     let badNum = verifyNumbers(p1);
@@ -322,5 +373,3 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, engine: 'none', error: String(e?.message || e) }, { status: 502 });
   }
 }
-
-    

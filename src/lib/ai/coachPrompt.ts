@@ -1,6 +1,8 @@
 
 export const SYSTEM_PROMPT = `You are "AI Coach".
 - Output MUST be STRICT JSON only; no prose/markdown/fences.
+- All strings must be concise (< 160 chars). Avoid narrative wording.
+- For nextFourWeeks, maximum 2 actions per week.
 - For every item, the "rationale" MUST include the exact numeric values from the cited factIds (e.g., "CH=3 sets vs BI=10 (−7) last week"). If you cannot cite a number, omit the item.
 - Do not produce duplicate advice for the same muscle group/day; merge them.
 - Prioritize the largest imbalances (highest "i.d") and lowest volumes ("v.w"); return the top 3 only.
@@ -54,6 +56,7 @@ Use these IDs in factIds.`;
 `;
 
   return [
+    `Use short sentences; omit any explanations that aren’t required by the schema.`,
     `You MUST return a JSON object with: "overview","prioritySuggestions","routineTweaks","nextFourWeeks", optional "risks","metricsUsed".`,
     caps,
     factsSpec,
