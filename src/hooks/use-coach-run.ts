@@ -11,6 +11,25 @@ function hash(obj: any) {
   return (h >>> 0).toString(16);
 }
 
+function pickProfileForHash(p: any) {
+  return {
+    goal: p?.goal ?? null,
+    daysPerWeekTarget: p?.daysPerWeekTarget ?? null,
+    sessionTimeTargetMin: p?.sessionTimeTargetMin ?? null, // keep if used in the prompt/prescriptions
+  };
+}
+
+function pickRoutineForHash(rs: any) {
+  // Keep minimal structure that the server/UI rely on (days + muscle groups).
+  return {
+    days: (rs?.days ?? []).map((d: any) => ({
+      id: d?.id,
+      name: d?.name,
+      exercises: (d?.exercises ?? []).map((e: any) => ({ mg: e?.muscleGroup })),
+    })),
+  };
+}
+
 export function useCoachRun() {
   const [loading, setLoading] = useState(false);
   const [error, setError]   = useState<string | null>(null);
@@ -25,7 +44,13 @@ export function useCoachRun() {
     setError(null);
     try {
       const uid = getAuth().currentUser?.uid;
-      const inputHash = hash({ profile: payload.profile, routineSummary: payload.routineSummary, trainingSummary: payload.trainingSummary });
+      
+      // *** align client hash with server inputs ***
+      const inputHash = hash({
+        profile: pickProfileForHash(payload.profile),
+        routineSummary: pickRoutineForHash(payload.routineSummary),
+        trainingSummary: payload.trainingSummary, // server uses this fully
+      });
 
       // 1) Fast-path: reuse latest if same input
       if (uid) {
