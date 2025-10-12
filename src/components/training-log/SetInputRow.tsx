@@ -32,30 +32,47 @@ export function SetInputRow({ set, index, onSetChange, onRemoveSet, isProvisiona
     <div className="grid grid-cols-[2rem_1fr_auto_1fr_auto_2.25rem] items-center gap-2" data-dndkit-no-drag>
       <span className="font-medium text-sm text-muted-foreground text-center">{index + 1}.</span>
 
-      {/* Reps: integers only, 2 digits max handled upstream */}
+      {/* Reps: integers only, max 2 digits (0–99) */}
       <Input
-        type="number"
+        type="text"
         inputMode="numeric"
+        maxLength={2}
         draggable={false}
         placeholder="Reps"
         aria-label={`Reps for set ${index + 1}`}
         value={set.reps == null ? '' : String(set.reps)}
-        onChange={(e) => change('reps', e.target.value)}
+        onChange={(e) => {
+          const raw = e.target.value;
+          // Keep only digits; cap to 2 chars
+          const digits = raw.replace(/\D/g, '').slice(0, 2);
+          // Allow clearing
+          change('reps', digits);
+        }}
+        onBlur={(e) => {
+          // Normalize leading zeros and clamp on blur
+          const digits = e.currentTarget.value.replace(/\D/g, '');
+          if (digits === '') {
+            change('reps', '');
+            return;
+          }
+          // Clamp 0–99 (already max 2 digits, but normalize “00”, “01”, etc.)
+          const n = Math.max(0, Math.min(99, parseInt(digits, 10)));
+          change('reps', String(n));
+        }}
         onWheel={(e) => (e.currentTarget as HTMLInputElement).blur()}
         onPointerDownCapture={(e) => e.stopPropagation()}
         onMouseDownCapture={(e) => e.stopPropagation()}
         onTouchStartCapture={(e) => e.stopPropagation()}
         onClickCapture={(e) => e.stopPropagation()}
         onKeyDown={(e) => {
-          // block scientific notation and signs for reps
-          const block = ['e', 'E', '+', '-', '.'];
-          if (block.includes(e.key)) e.preventDefault();
+          // Block non-numeric editing (extra safety for some keyboards)
+          const blocked = ['e', 'E', '+', '-', '.', ','];
+          if (blocked.includes(e.key)) e.preventDefault();
         }}
         className={cn(
           "h-9 text-sm text-center placeholder:text-center",
           isProvisional && "bg-muted/40 dark:bg-muted/20 placeholder:text-muted-foreground/70 opacity-80"
         )}
-        min="0"
       />
 
       <span className="text-muted-foreground text-center">x</span>
@@ -159,3 +176,5 @@ export function SetInputRow({ set, index, onSetChange, onRemoveSet, isProvisiona
     </div>
   );
 }
+
+    

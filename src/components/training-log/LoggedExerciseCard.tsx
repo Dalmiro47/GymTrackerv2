@@ -195,11 +195,20 @@ export function LoggedExerciseCard({
       const next = [...prev];
       if (!next[index]) return prev;
   
-      const n = value === '' ? null : Number(value);
       if (field === 'weight') {
+        const n = value === '' ? null : Number(value);
         next[index] = { ...next[index], weight: Number.isFinite(n as number) ? (n as number) : null, isProvisional: false };
       } else {
-        next[index] = { ...next[index], reps: Number.isFinite(n as number) ? (n as number) : null, isProvisional: false };
+        // Reps: integer 0–99
+        let n = value === '' ? null : Number(value);
+        if (n != null && Number.isFinite(n)) {
+          n = Math.trunc(n);
+          if (n < 0) n = 0;
+          if (n > 99) n = 99;
+        } else {
+          n = null;
+        }
+        next[index] = { ...next[index], reps: n as number | null, isProvisional: false };
       }
   
       pushUp(next);
@@ -417,3 +426,5 @@ export function LoggedExerciseCard({
     </div>
   );
 }
+
+    
