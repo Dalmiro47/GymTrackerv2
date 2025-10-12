@@ -117,10 +117,12 @@ export function LoggedExerciseCard({
   );
 
   useEffect(() => {
-    setWeightDisplays((loggedExercise.sets ?? []).map(
-      s => s.weight == null ? '' : String(s.weight)
-    ));
-  }, [loggedExercise.sets]);
+    if (!isEditing) {
+      setWeightDisplays((loggedExercise.sets ?? []).map(
+        s => s.weight == null ? '' : String(s.weight)
+      ));
+    }
+  }, [loggedExercise.sets, isEditing]);
   
   const contentRef = useRef<HTMLDivElement | null>(null);
   const timeoutRef = useRef<number | null>(null);
@@ -174,7 +176,7 @@ export function LoggedExerciseCard({
     if (pushUpTimer.current) clearTimeout(pushUpTimer.current);
     pushUpTimer.current = window.setTimeout(() => {
       onUpdateSets(next);
-    }, 150);
+    }, 250);
   }
 
   const handleSetChange = (
@@ -184,6 +186,11 @@ export function LoggedExerciseCard({
   ) => {
     onMarkAsInteracted();
   
+    // Ignore transient "12." values for weight just in case
+    if (field === 'weight' && value.endsWith('.')) {
+      return;
+    }
+
     setLocalSets(prev => {
       const next = [...prev];
       if (!next[index]) return prev;
@@ -192,8 +199,16 @@ export function LoggedExerciseCard({
         const n = value === '' ? null : Number(value);
         next[index] = { ...next[index], weight: Number.isFinite(n as number) ? (n as number) : null, isProvisional: false };
       } else {
-        const n = value === '' ? null : Number(value);
-        next[index] = { ...next[index], reps: Number.isFinite(n as number) ? (n as number) : null, isProvisional: false };
+        // Reps: integer 0–99
+        let n = value === '' ? null : Number(value);
+        if (n != null && Number.isFinite(n)) {
+          n = Math.trunc(n);
+          if (n < 0) n = 0;
+          if (n > 99) n = 99;
+        } else {
+          n = null;
+        }
+        next[index] = { ...next[index], reps: n as number | null, isProvisional: false };
       }
   
       pushUp(next);
@@ -411,3 +426,5 @@ export function LoggedExerciseCard({
     </div>
   );
 }
+
+    
