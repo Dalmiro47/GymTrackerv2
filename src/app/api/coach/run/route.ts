@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 // Fast first
-const MODEL_CANDIDATES = ['gemini-2.5-flash-lite','gemini-2.5-flash','gemini-2.0-flash'];
+const MODEL_CANDIDATES = ['gemini-1.5-flash-latest', 'gemini-1.5-flash', 'gemini-1.5-pro-latest'];
 
 function stripFences(s: string) {
   const t = s.trim();
@@ -193,6 +193,20 @@ function verifyPrescriptions(advice: any, idx: Record<string, any>) {
   return offenders;
 }
 
+function verifyChronology(plan: any[]) {
+  if (!Array.isArray(plan) || plan.length !== 4) return 'LEN';
+  for (let i=0;i<4;i++){
+    const w = plan[i];
+    if (w.week !== i+1) return 'WEEK_INDEX';
+    if (!w.theme || !Array.isArray(w.actions) || w.actions.length === 0) return 'SHAPE';
+    for (const a of w.actions) {
+      if (!a.muscleGroup) return 'NO_GROUP';
+      if (a.setsDelta == null && a.targetSets == null && a.loadDeltaPct == null) return 'NO_METRIC';
+    }
+  }
+  return null;
+}
+
 export async function POST(req: Request) {
   const apiKey = (process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || '').trim();
   if (!apiKey) return NextResponse.json({ ok:false, engine:'none', error:'MISSING_API_KEY' }, { status:500 });
@@ -211,13 +225,13 @@ export async function POST(req: Request) {
 
     for (const model of MODEL_CANDIDATES) {
       try {
-        let { parsed: p1 } = await callGeminiREST(model, apiKey, SYSTEM_PROMPT, makeUserPrompt({ ...compact, scope, facts, brief: false }), 1200);
+        let { parsed: p1 } = await callGeminiREST(model, apiKey, SYSTEM_PROMPT, makeUserPrompt({ ...compact, scope, facts, brief: false }), 2048);
 
         let badNum = verifyNumbers(p1);
         if (badNum.length) {
             const repair = `REPAIR: These items lacked numeric rationale: ${badNum.join(', ')}. Include exact numbers from FACTS in each rationale.`;
             const promptBrief = makeUserPrompt({ ...compact, scope, facts, brief: true }) + '\n\n' + repair;
-            const { parsed: p2 } = await callGeminiREST(model, apiKey, SYSTEM_PROMPT, promptBrief, 1400);
+            const { parsed: p2 } = await callGeminiREST(model, apiKey, SYSTEM_PROMPT, promptBrief, 2048);
             p1 = p2;
         }
 
@@ -228,8 +242,16 @@ export async function POST(req: Request) {
 - If a v: fact is cited, targetSets = current(w) + setsDelta
 - Text matches sign (add vs reduce).`;
             const promptBrief2 = makeUserPrompt({ ...compact, scope, facts, brief: true }) + '\n\n' + repair2;
-            const { parsed: p3 } = await callGeminiREST(model, apiKey, SYSTEM_PROMPT, promptBrief2, 1400);
+            const { parsed: p3 } = await callGeminiREST(model, apiKey, SYSTEM_PROMPT, promptBrief2, 2048);
             p1 = p3;
+        }
+
+        const chronoErr = verifyChronology(p1.nextFourWeeks);
+        if (chronoErr) {
+            const repair3 = `REPAIR: Fix the 4-week plan (error: ${chronoErr}). Weeks must be 1..4, each with 1–3 actions containing either setsDelta, targetSets, or loadDeltaPct.`;
+            const promptBrief3 = makeUserPrompt({ ...compact, scope, facts, brief: true }) + '\n\n' + repair3;
+            const { parsed: p4 } = await callGeminiREST(model, apiKey, SYSTEM_PROMPT, promptBrief3, 2048);
+            p1 = p4;
         }
 
         parsed = p1;

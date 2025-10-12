@@ -1,3 +1,4 @@
+
 type RoutineSummary = { days?: Array<{ id: string; name: string }> };
 
 const arr = (x:any) => Array.isArray(x) ? x : [];
@@ -36,7 +37,6 @@ function stripWeekdays(s?: string) {
   return String(s ?? '').replace(WEEKDAY_PHRASE, '').replace(/\s{2,}/g, ' ').trim();
 }
 
-
 function dayLookup(routineSummary?: RoutineSummary) {
   const m = new Map<string,string>();
   routineSummary?.days?.forEach(d => m.set(String(d.id), String(d.name)));
@@ -51,6 +51,19 @@ function labelFromFact(f:any) {
   if (f.t === 'a') return `Adherence ${f.w}w (target ${f.targ})`;
   return f.id;
 }
+
+function formatWeek(w: any): string | null {
+    if (!w || !Array.isArray(w.actions)) return null;
+    const actions = w.actions.map((a: any) => {
+      const bits: string[] = [a.muscleGroup];
+      if (typeof a.setsDelta === 'number')   bits.push(`${a.setsDelta >= 0 ? '+' : ''}${a.setsDelta} sets`);
+      if (typeof a.targetSets === 'number')  bits.push(`→ target ${a.targetSets} sets`);
+      if (typeof a.loadDeltaPct === 'number') bits.push(`+${a.loadDeltaPct}% load`);
+      return `• ${bits.join(', ')}`;
+    }).join(' ');
+    return `${w.theme}. ${actions}`;
+  }
+  
 
 export function normalizeAdviceUI(adviceIn: any, routineSummary?: RoutineSummary, facts?: any[]) {
   const getDay = dayLookup(routineSummary);
@@ -96,11 +109,24 @@ export function normalizeAdviceUI(adviceIn: any, routineSummary?: RoutineSummary
     };
   });
 
+  // Handle both new structured and old string-array format for nextFourWeeks
+  let nextFourWeeksText: string[] = [];
+  if (Array.isArray(advice?.nextFourWeeks)) {
+    const firstItem = advice.nextFourWeeks[0];
+    if (typeof firstItem === 'object' && firstItem !== null && 'week' in firstItem && 'theme' in firstItem) {
+      // New structured format
+      nextFourWeeksText = advice.nextFourWeeks.map(formatWeek).filter((w): w is string => w !== null);
+    } else {
+      // Old string array format
+      nextFourWeeksText = advice.nextFourWeeks.map(str);
+    }
+  }
+
   return {
     overview: str(advice?.overview),
     prioritySuggestions,
     routineTweaks,
-    nextFourWeeks: arr(advice?.nextFourWeeks).map(str),
+    nextFourWeeks: nextFourWeeksText,
     risks: arr(advice?.risks).map(str),
     metricsUsed: arr(advice?.metricsUsed).map(str),
   };

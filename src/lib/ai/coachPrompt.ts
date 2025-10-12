@@ -10,6 +10,7 @@ export const SYSTEM_PROMPT = `You are "AI Coach".
   • Strength: target ~6–12 weekly hard sets; emphasize heavy compounds and quality over sheer volume.
   • General: middle ground; ~8–14 weekly sets.
 - When your prescription (setsDelta, targetSets) is influenced by the goal, include "g" in factIds.
+- Produce a 4-week progressive plan. Each week builds on the prior week. Forbid generic repetitions; require concrete changes (sets, load, or exercise swap). Each week's action must tie to a muscleGroup or lift and have setsDelta OR targetSets OR loadDeltaPct. Limit to 3 actions per week. No weekday names.
 `;
 
 export function makeUserPrompt(params: {
@@ -27,13 +28,13 @@ ULTRA-BRIEF:
 - overview ≤ 140 chars
 - prioritySuggestions ≤ 3
 - routineTweaks ≤ 3
-- nextFourWeeks: 4 items ≤ 110 chars (no "Week N:" prefixes; the UI will label them).
+- nextFourWeeks: 4 items, each with 1-2 actions
 - metricsUsed ≤ 4` : `
 Limits:
 - overview ≤ 220 chars
 - prioritySuggestions ≤ 4
 - routineTweaks ≤ 4
-- nextFourWeeks: 4 items ≤ 150 chars (no "Week N:" prefixes; the UI will label them).
+- nextFourWeeks: a 4-week progressive plan.
 - metricsUsed ≤ 6`;
 
   const factsSpec = `
@@ -42,12 +43,14 @@ FACT FORMAT (COMPACT):
 - Imbalance: {"id":"i:BI:CH","t":"i","hi":"BI","lo":"CH","d":7} // BI had 7 sets more than CH
 - Stall: {"id":"s:InclineD","t":"s","n":"Incline Dumbbell","w":3,"sl":-0.8}
 - Adherence: {"id":"a","t":"a","w":5,"targ":4}
+- Goal: {"id":"g","t":"g","goal":"Hypertrophy"}
 Use these IDs in factIds.`;
 
   const extraConstraints = `
 - Include "setsDelta" (int, e.g., +2 or -2) and "targetSets" (int) in each priority suggestion.
 - Priority suggestions MUST NOT mention weekdays or day names. Keep them muscle-group level only. If you want a specific day change, put it in "routineTweaks" with a valid dayId from routineSummary.days.
 - In human text ("advice", "rationale"), USE full muscle names (Chest, Back, Shoulders, Legs, Biceps, Triceps, Abs). DO NOT print fact-id codes like v:TR or i:AB:TR in the text. Keep codes only inside factIds[].
+- nextFourWeeks: provide one-line plan theme. Sequence weeks: W1 addresses biggest deficit, W2 consolidates, W3 progresses, W4 deloads/tapers. Use facts and keep numbers realistic.
 `;
 
   return [
@@ -98,7 +101,30 @@ export const COACH_RESPONSE_SCHEMA = {
         required: ['change','details','rationale','factIds']
       }
     },
-    nextFourWeeks: { type: 'ARRAY', items: { type: 'STRING' } },
+    nextFourWeeks: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          week: { type: 'NUMBER' },
+          theme: { type: 'STRING' },
+          actions: {
+            type: 'ARRAY',
+            items: {
+              type: 'OBJECT',
+              properties: {
+                muscleGroup: { type: 'STRING' },
+                setsDelta: { type: 'NUMBER' },
+                targetSets: { type: 'NUMBER' },
+                loadDeltaPct: { type: 'NUMBER' },
+              },
+              required: ['muscleGroup']
+            }
+          }
+        },
+        required: ['week', 'theme', 'actions']
+      }
+    },
     risks: { type: 'ARRAY', items: { type: 'STRING' } },
     metricsUsed: { type: 'ARRAY', items: { type: 'STRING' } }
   },
