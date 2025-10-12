@@ -7,8 +7,11 @@ import { normalizeAdviceUI } from '@/lib/coachNormalize';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-// Fast first
-const MODEL_CANDIDATES = ['gemini-1.5-flash-latest', 'gemini-1.5-flash', 'gemini-1.5-pro-latest'];
+const MODEL_CANDIDATES = [
+  'gemini-2.5-flash',
+  'gemini-2.5-flash-lite',
+  'gemini-2.0-flash',
+] as const;
 
 function stripFences(s: string) {
   const t = s.trim();
@@ -77,25 +80,64 @@ function compactPayload(profile: any, routineSummary: any, trainingSummary: any)
   };
 }
 
-async function callGeminiREST(model: string, apiKey: string, systemText: string, userText: string, maxTokens: number) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-  const body = {
-    system_instruction: { parts: [{ text: systemText }] },
-    contents: [{ role: 'user', parts: [{ text: userText }] }],
-    generationConfig: {
-      temperature: 0.2,
-      topP: 0.9,
-      maxOutputTokens: maxTokens,
-      response_mime_type: 'application/json',
-      response_schema: COACH_RESPONSE_SCHEMA
+const generationConfig = {
+    temperature: 0.2,
+    maxOutputTokens: 2048,
+    responseMimeType: 'application/json',
+};
+  
+// helper: one request to a specific model
+async function callGeminiOnce(model: string, systemText: string, userText: string) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY}`;
+    
+    const body = {
+        system_instruction: { parts: [{ text: systemText }] },
+        contents: [{ role: 'user', parts: [{ text: userText }] }],
+        generationConfig: {
+          ...generationConfig,
+          response_schema: COACH_RESPONSE_SCHEMA,
+        }
+    };
+
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  
+    if (r.status === 404) {
+      // model not found for this API version → signal the caller to try next model
+      const err = new Error('MODEL_404');
+      (err as any).code = 404;
+      throw err;
     }
-  };
-  const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-  const rawText = await r.text();
-  if (!r.ok) throw new Error(`HTTP_${r.status}: ${rawText.slice(0,800)}`);
-  const data = JSON.parse(rawText);
-  return { data, parsed: extractJsonFromCandidates(data) };
+    if (!r.ok) {
+      const body = await r.text().catch(() => '');
+      throw new Error(`HTTP_${r.status}: ${body}`);
+    }
+    return r.json();
 }
+  
+// try candidates in order until one works
+async function generateWithFallback(systemText: string, userText: string) {
+    let lastErr: any = null;
+    for (const m of MODEL_CANDIDATES) {
+      try {
+        const json = await callGeminiOnce(m, systemText, userText);
+        return { json, modelUsed: m };
+      } catch (e: any) {
+        lastErr = e;
+        // 404 → try next candidate
+        if (e?.code === 404) continue;
+        // 429/403 quota → also try next
+        if (String(e.message || '').startsWith('HTTP_429') || String(e.message || '').startsWith('HTTP_403')) continue;
+        // other error → stop early to avoid burning through all models
+        break;
+      }
+    }
+    throw new Error(`NO_MODEL_WORKED: ${lastErr?.message || lastErr}`);
+}
+
 
 function lacksNumbers(s?: string) { return !/\d/.test(String(s ?? '')); }
 
@@ -219,57 +261,37 @@ export async function POST(req: Request) {
     const { facts } = buildCoachFactsCompact(profile, routineSummary, compact.trainingSummary);
     const factIdx = indexFacts(facts);
 
-    let used: string | null = null;
-    let parsed: any | null = null;
-    let lastErr: string | null = null;
+    const { json, modelUsed } = await generateWithFallback(SYSTEM_PROMPT, makeUserPrompt({ ...compact, scope, facts, brief: false }));
+    let p1 = extractJsonFromCandidates(json);
+    
+    let badNum = verifyNumbers(p1);
+    if (badNum.length) {
+        const repair = `REPAIR: These items lacked numeric rationale: ${badNum.join(', ')}. Include exact numbers from FACTS in each rationale.`;
+        const promptBrief = makeUserPrompt({ ...compact, scope, facts, brief: true }) + '\n\n' + repair;
+        const p2Json = await callGeminiOnce(modelUsed, SYSTEM_PROMPT, promptBrief);
+        p1 = extractJsonFromCandidates(p2Json);
+    }
 
-    for (const model of MODEL_CANDIDATES) {
-      try {
-        let { parsed: p1 } = await callGeminiREST(model, apiKey, SYSTEM_PROMPT, makeUserPrompt({ ...compact, scope, facts, brief: false }), 2048);
-
-        let badNum = verifyNumbers(p1);
-        if (badNum.length) {
-            const repair = `REPAIR: These items lacked numeric rationale: ${badNum.join(', ')}. Include exact numbers from FACTS in each rationale.`;
-            const promptBrief = makeUserPrompt({ ...compact, scope, facts, brief: true }) + '\n\n' + repair;
-            const { parsed: p2 } = await callGeminiREST(model, apiKey, SYSTEM_PROMPT, promptBrief, 2048);
-            p1 = p2;
-        }
-
-        const offenders = verifyPrescriptions(p1, factIdx);
-        if (offenders.length) {
-            const repair2 = `REPAIR: Fix prescription fields for ${offenders.join(', ')} so that:
+    const offenders = verifyPrescriptions(p1, factIdx);
+    if (offenders.length) {
+        const repair2 = `REPAIR: Fix prescription fields for ${offenders.join(', ')} so that:
 - setsDelta is an integer; targetSets is 0..20
 - If a v: fact is cited, targetSets = current(w) + setsDelta
 - Text matches sign (add vs reduce).`;
-            const promptBrief2 = makeUserPrompt({ ...compact, scope, facts, brief: true }) + '\n\n' + repair2;
-            const { parsed: p3 } = await callGeminiREST(model, apiKey, SYSTEM_PROMPT, promptBrief2, 2048);
-            p1 = p3;
-        }
-
-        const chronoErr = verifyChronology(p1.nextFourWeeks);
-        if (chronoErr) {
-            const repair3 = `REPAIR: Fix the 4-week plan (error: ${chronoErr}). Weeks must be 1..4, each with 1–3 actions containing either setsDelta, targetSets, or loadDeltaPct.`;
-            const promptBrief3 = makeUserPrompt({ ...compact, scope, facts, brief: true }) + '\n\n' + repair3;
-            const { parsed: p4 } = await callGeminiREST(model, apiKey, SYSTEM_PROMPT, promptBrief3, 2048);
-            p1 = p4;
-        }
-
-        parsed = p1;
-        used = model;
-        break;
-      } catch (e: any) {
-        lastErr = String(e?.message || e);
-        const m = lastErr.toLowerCase();
-        if (m.includes('404')||m.includes('unsupported')||m.includes('429')||m.includes('quota')||m.includes('rate')||m.includes('preview')) {
-          continue;
-        }
-        throw e;
-      }
+        const promptBrief2 = makeUserPrompt({ ...compact, scope, facts, brief: true }) + '\n\n' + repair2;
+        const p3Json = await callGeminiOnce(modelUsed, SYSTEM_PROMPT, promptBrief2);
+        p1 = extractJsonFromCandidates(p3Json);
     }
 
-    if (!parsed) {
-        return NextResponse.json({ ok: false, engine: 'none', error: `NO_MODEL_WORKED: ${lastErr}` }, { status: 502 });
+    const chronoErr = verifyChronology(p1.nextFourWeeks);
+    if (chronoErr) {
+        const repair3 = `REPAIR: Fix the 4-week plan (error: ${chronoErr}). Weeks must be 1..4, each with 1–3 actions containing either setsDelta, targetSets, or loadDeltaPct.`;
+        const promptBrief3 = makeUserPrompt({ ...compact, scope, facts, brief: true }) + '\n\n' + repair3;
+        const p4Json = await callGeminiOnce(modelUsed, SYSTEM_PROMPT, promptBrief3);
+        p1 = extractJsonFromCandidates(p4Json);
     }
+
+    const parsed = p1;
 
     parsed.prioritySuggestions = rankAndDedupe(
       parsed.prioritySuggestions,
@@ -292,7 +314,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       ok: true,
       engine: 'gemini',
-      modelUsed: used,
+      modelUsed: modelUsed,
       advice,
       facts: Array.isArray(facts) ? facts : [],
     });
@@ -300,3 +322,5 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, engine: 'none', error: String(e?.message || e) }, { status: 502 });
   }
 }
+
+    
