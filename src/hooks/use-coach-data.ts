@@ -8,6 +8,7 @@ import {
 import { db } from '@/lib/firebaseConfig';
 import { summarizeLogs } from '@/lib/analysis';
 import type { UserProfile } from '@/lib/types.gym';
+import { useAuth } from '@/contexts/AuthContext';
 
 
 type CoachData = {
