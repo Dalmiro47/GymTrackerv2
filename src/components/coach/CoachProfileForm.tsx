@@ -1,6 +1,6 @@
 'use client';
 import React, { useEffect, useMemo, useState } from 'react';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebaseConfig';
 import { useAuth } from '@/contexts/AuthContext';
 import type { UserProfile, Goal, GenderOption } from '@/lib/types.gym';
@@ -40,6 +40,7 @@ export function CoachProfileForm({ initial, title = 'Profile' }: { initial: User
         ...form,
         sessionTimeTargetMin: clampSession(form.sessionTimeTargetMin),
         ...(form.gender === 'Self-describe' ? {} : { genderSelfDescribe: undefined }),
+        updatedAt: serverTimestamp(),
       });
       await setDoc(doc(db, 'users', user.id, 'profile', 'profile'), payload, { merge: true });
       setBaseline(form); // reset dirty baseline

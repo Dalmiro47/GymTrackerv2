@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { getAuth } from 'firebase/auth';
 import { db } from '@/lib/firebaseConfig';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
 
 function hash(obj: any) {
   const json = JSON.stringify(obj, Object.keys(obj).sort());
@@ -47,13 +47,25 @@ export function useCoachRun() {
         training: payload.trainingSummary,
         stamps: payload.stamps ?? null,
       });
+      
+      const latestChangedAt =
+        Math.max(
+          payload.stamps?.profileUpdatedAt ?? 0,
+          payload.stamps?.routinesUpdatedAt ?? 0,
+          payload.stamps?.logsUpdatedAt ?? 0,
+        );
 
       // Fast-path reuse
       if (uid) {
         const latestRef = doc(db, 'users', uid, 'coachAdvice', 'latest-global');
         const snap = await getDoc(latestRef);
         const cached = snap.exists() ? snap.data() : null;
-        if (cached?.inputHash === inputHash && cached?.advice) {
+
+        const cachedAtMs = (cached?.createdAt as Timestamp)?.toMillis?.() ?? 0;
+        const sameHash   = cached?.inputHash === inputHash;
+        const freshEnough = cachedAtMs >= latestChangedAt;
+
+        if (sameHash && freshEnough && cached?.advice) {
           return cached.advice;
         }
       }
@@ -74,7 +86,7 @@ export function useCoachRun() {
       if (!r.ok || !data?.ok) throw new Error(data?.error || `HTTP ${r.status}`);
 
       if (uid) {
-        const nowKey = new Date().toISOString().slice(0,10);
+        const todayKey = new Date().toISOString().slice(0,10);
         const base: any = {
           advice: data.advice,
           engine: data.engine,
@@ -85,7 +97,7 @@ export function useCoachRun() {
         if (Array.isArray(data.facts)) base.facts = data.facts;
 
         await setDoc(doc(db, 'users', uid, 'coachAdvice', 'latest-global'), base, { merge: true });
-        await setDoc(doc(db, 'users', uid, 'coachAdvice', `${nowKey}-global`), base, { merge: true });
+        await setDoc(doc(db, 'users', uid, 'coachAdvice', `${todayKey}-global`), base, { merge: true });
       }
 
       return data.advice;

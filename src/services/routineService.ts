@@ -14,7 +14,8 @@ import {
   orderBy,
   writeBatch, 
   Timestamp,
-  limit // Added limit import
+  limit, // Added limit import
+  serverTimestamp
 } from 'firebase/firestore';
 import { slugify } from '@/lib/utils'; 
 
@@ -45,10 +46,12 @@ export const addRoutine = async (userId: string, routineData: Omit<RoutineData, 
         setStructure: ex.setStructure || 'normal',
     }));
 
-    const dataToSave: RoutineData = {
+    const dataToSave: RoutineData & { createdAt: Timestamp; updatedAt: Timestamp } = {
       ...routineData,
       exercises: simplifiedExercises,
-      order: newOrder, 
+      order: newOrder,
+      createdAt: serverTimestamp() as Timestamp,
+      updatedAt: serverTimestamp() as Timestamp,
     };
 
     const routineIdSlug = slugify(routineData.name); 
@@ -110,7 +113,10 @@ export const updateRoutine = async (userId: string, routineId: string, routineDa
   try {
     const routineDocRef = doc(db, getUserRoutinesCollectionPath(userId), routineId);
     
-    let dataToUpdate: Partial<Omit<RoutineData, 'order'>> = { ...routineData };
+    let dataToUpdate: Partial<Omit<RoutineData, 'order'>> & { updatedAt: Timestamp } = { 
+        ...routineData, 
+        updatedAt: serverTimestamp() as Timestamp 
+    };
     if (routineData.exercises) {
         dataToUpdate.exercises = routineData.exercises.map(ex => ({
             id: ex.id,
@@ -158,7 +164,7 @@ export const updateRoutinesOrder = async (userId: string, orderedRoutineIds: str
 
   orderedRoutineIds.forEach((routineId, index) => {
     const routineDocRef = doc(userRoutinesColRef, routineId);
-    batch.update(routineDocRef, { order: index });
+    batch.update(routineDocRef, { order: index, updatedAt: serverTimestamp() });
   });
 
   try {
