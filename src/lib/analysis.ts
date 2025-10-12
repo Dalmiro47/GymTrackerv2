@@ -291,10 +291,11 @@ export function summarizeLogs(routines:any[], logs:WorkoutLog[], weeks=8) {
 }
 
 export type CoachFactCompact =
-  | { id: string; t: 'v'; g: string; w: number }              // volume: group code, last week sets
+  | { id: string; t: 'v'; g: string; w: number } // volume: group code, last week sets
   | { id: string; t: 'i'; hi: string; lo: string; d: number } // imbalance: hi vs lo (diff sets)
-  | { id: string; t: 's'; n: string; w: number; sl: number }  // stall: name, weeks, slope
-  | { id: string; t: 'a'; w: number; targ: number };          // adherence
+  | { id: string; t: 's'; n: string; w: number; sl: number } // stall: name, weeks, slope
+  | { id: string; t: 'a'; w: number; targ: number } // adherence
+  | { id: string; t: 'g'; goal: 'Strength' | 'Hypertrophy' | 'General' }; // NEW: goal
 
 const MG = (s: string) => {
   const k = s.toLowerCase();
@@ -347,8 +348,13 @@ export function buildCoachFactsCompact(profile: any, _routineSummary: any, train
   const weeksLogged = new Set((trainingSummary?.weekly ?? []).map((w:any)=>w.week)).size;
   facts.push({ id: 'a', t: 'a', w: weeksLogged, targ: Number(profile?.daysPerWeekTarget || 0) });
 
-  // Hard cap to ~14 facts total
-  return { facts: facts.slice(0,14) };
-}
+  // NEW: goal fact (kept tiny and explicit)
+  const rawGoal = String(profile?.goal || '').toLowerCase();
+  const goal: 'Strength' | 'Hypertrophy' | 'General' =
+    rawGoal.includes('strength') ? 'Strength' :
+    rawGoal.includes('hyper')    ? 'Hypertrophy' : 'General';
+  facts.push({ id: 'g', t: 'g', goal });
 
-    
+  // Hard cap to ~14 facts total
+  return { facts: facts.slice(0,15) }; // Bumped to 15 to ensure goal is not cut off
+}

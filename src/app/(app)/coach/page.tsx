@@ -51,6 +51,7 @@ export default function CoachPage() {
       profile: data.profile,
       routineSummary: data.routineSummary,
       trainingSummary: data.summary,
+      stamps: data.stamps,
     });
     if (result) {
       setAdvice(result);
