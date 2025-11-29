@@ -61,7 +61,6 @@ export function AddEditRoutineDialog({
 
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [selectedExerciseObjects, setSelectedExerciseObjects] = useState<RoutineExercise[]>([]);
-  // Track where new exercises should be inserted (null = end of list)
   const [insertionIndex, setInsertionIndex] = useState<number | null>(null);
   
   const exerciseIdMap = useMemo(
@@ -101,7 +100,6 @@ export function AddEditRoutineDialog({
   const handleExerciseSelectionChange = (exerciseId: string, isSelected: boolean) => {
     setSelectedExerciseObjects(prevSelected => {
       if (isSelected) {
-        // Prevent duplicates
         if (prevSelected.find(e => e.id === exerciseId)) return prevSelected;
 
         const exerciseToAdd = allUserExercises.find(ex => ex.id === exerciseId);
@@ -109,11 +107,9 @@ export function AddEditRoutineDialog({
         
         const routineExercise: RoutineExercise = { ...exerciseToAdd, setStructure: 'normal' };
         
-        // If we have an insertion index, splice it in. Otherwise append.
         if (insertionIndex !== null) {
             const newList = [...prevSelected];
             newList.splice(insertionIndex, 0, routineExercise);
-            // Increment index so subsequent selections add after this one (keeping order)
             setInsertionIndex(insertionIndex + 1); 
             return newList;
         } else {
@@ -121,9 +117,7 @@ export function AddEditRoutineDialog({
         }
 
       } else {
-        // Removing
         const indexRemoved = prevSelected.findIndex(e => e.id === exerciseId);
-        // Adjust insertion index if we removed something before it
         if (insertionIndex !== null && indexRemoved !== -1 && indexRemoved < insertionIndex) {
             setInsertionIndex(prev => (prev !== null ? Math.max(0, prev - 1) : null));
         }
@@ -164,7 +158,7 @@ export function AddEditRoutineDialog({
     e.preventDefault();
     e.stopPropagation();
     setIsPickerOpen(false);
-    setInsertionIndex(null); // Reset insertion point
+    setInsertionIndex(null);
   };
 
   const openPickerAtIndex = (index: number | null) => {
@@ -254,19 +248,13 @@ export function AddEditRoutineDialog({
                             onRemoveExercise={(exerciseId) => handleExerciseSelectionChange(exerciseId, false)}
                             onReorderExercises={handleReorderExercises}
                             onUpdateSetStructure={handleUpdateSetStructure}
-                            onInsertExercise={openPickerAtIndex} // Pass the handler
+                            onInsertExercise={openPickerAtIndex}
                         />
                     )}
                 </div>
-
-                <Button 
-                    type="button" 
-                    variant="outline" 
-                    className="w-full border-dashed border-2 h-12 text-muted-foreground hover:text-primary hover:border-primary/50"
-                    onClick={(e) => { e.preventDefault(); openPickerAtIndex(null); }}
-                >
-                    <Plus className="mr-2 h-4 w-4" /> Add Exercises at End
-                </Button>
+                
+                {/* Redundant button removed here */}
+                
               </div>
             </form>
           )}
