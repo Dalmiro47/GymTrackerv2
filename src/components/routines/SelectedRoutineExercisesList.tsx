@@ -57,19 +57,15 @@ function SortableExerciseItem({ exercise, index, onRemoveExercise, onUpdateSetSt
       ref={setNodeRef}
       style={style}
       className={cn(
-        "group relative bg-card border rounded-lg shadow-sm transition-all touch-none overflow-hidden",
+        "group relative bg-card border rounded-lg shadow-sm transition-all touch-none overflow-hidden hover:border-primary/30",
         isDragging && "shadow-md ring-2 ring-primary/20 z-50",
         exercise.isMissing && "border-destructive/50 bg-destructive/5"
       )}
     >
-      {/* Responsive Grid Layout:
-        - Mobile: Flex column or tight grid
-        - Tablet/Desktop: 4-column grid [Drag/Index (auto) | Name (1fr) | Set Structure (auto) | Delete (auto)]
-      */}
-      <div className="flex flex-col sm:grid sm:grid-cols-[auto_1fr_auto_auto] sm:items-center gap-3 p-3">
+      <div className="flex items-center gap-3 p-3">
         
         {/* COL 1: Drag Handle & Index */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 shrink-0">
           <button
             type="button"
             {...attributes}
@@ -85,45 +81,47 @@ function SortableExerciseItem({ exercise, index, onRemoveExercise, onUpdateSetSt
           </span>
         </div>
 
-        {/* COL 2: Name & Metadata */}
-        <div className="flex flex-col justify-center min-w-0 mr-4">
-          <div className="flex items-center gap-2">
-             <p className="text-sm font-semibold truncate text-foreground">{exercise.name}</p>
-             {exercise.isMissing && (
-                <Badge variant="destructive" className="h-5 px-1 text-[10px] gap-1 shrink-0">
-                    <AlertTriangle className="h-3 w-3"/> Missing
+        {/* COL 2: Name & Controls Grouped Left */}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 flex-grow min-w-0">
+          
+          {/* Name & Badge */}
+          <div className="min-w-0">
+             <div className="flex items-center gap-2">
+                <p className="text-sm font-semibold truncate text-foreground">{exercise.name}</p>
+                {exercise.isMissing && (
+                    <Badge variant="destructive" className="h-5 px-1 text-[10px] gap-1 shrink-0">
+                        <AlertTriangle className="h-3 w-3"/> Missing
+                    </Badge>
+                )}
+             </div>
+             <div className="flex items-center mt-0.5">
+                <Badge variant="secondary" className="text-[10px] h-4 px-1.5 font-normal text-muted-foreground bg-muted/50 border-transparent">
+                  {exercise.muscleGroup}
                 </Badge>
-             )}
+             </div>
           </div>
-          <div className="flex items-center mt-1">
-             <Badge variant="secondary" className="text-[10px] h-5 px-1.5 font-normal text-muted-foreground bg-muted/50 border-transparent">
-               {exercise.muscleGroup}
-             </Badge>
-          </div>
-        </div>
 
-        {/* COL 3: Set Structure Picker */}
-        <div className="flex items-center sm:justify-end">
-           {!exercise.isMissing && (
-              <div className="w-full sm:w-[160px]">
+          {/* Set Picker - Now moved closer to the name on desktop */}
+          {!exercise.isMissing && (
+              <div className="w-[130px] shrink-0">
                  <SetStructurePicker
                     value={exercise.setStructure ?? 'normal'}
                     onChange={(value) => onUpdateSetStructure(exercise.id, value)}
-                    className="h-8 text-xs w-full"
+                    className="h-7 text-xs w-full border-dashed" 
                   />
               </div>
            )}
         </div>
 
-        {/* COL 4: Remove Button */}
-        <div className="flex justify-end sm:justify-center">
+        {/* COL 3: Delete Button (Far Right) */}
+        <div className="shrink-0 pl-2 border-l ml-2">
           <Button
             type="button"
             variant="ghost"
             size="icon"
             onClick={() => onRemoveExercise(exercise.id)}
             aria-label={`Remove ${exercise.name}`}
-            className="text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10 h-8 w-8"
+            className="text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10 h-8 w-8"
           >
             <Trash2 className="h-4 w-4" />
           </Button>
