@@ -1,8 +1,9 @@
 
+
 export const SYSTEM_PROMPT = `You are "AI Coach".
 - Output MUST be STRICT JSON only; no prose/markdown/fences.
 - All strings must be concise (< 160 chars). Avoid narrative wording.
-- For nextFourWeeks, maximum 1 concrete action per week.
+- Your response for 'nextFourWeeks' must be an array of 4 simple strings, one for each week.
 - Limit prioritySuggestions to the top 2.
 - Limit routineTweaks to the top 3.
 - For every item, the "rationale" MUST include the exact numeric values from the cited factIds (e.g., "CH=3 sets vs BI=10 (−7) last week"). If you cannot cite a number, omit the item.
@@ -14,7 +15,7 @@ export const SYSTEM_PROMPT = `You are "AI Coach".
   • Strength: target ~6–12 weekly hard sets; emphasize heavy compounds and quality over sheer volume.
   • General: middle ground; ~8–14 weekly sets.
 - When your prescription (setsDelta, targetSets) is influenced by the goal, include "g" in factIds.
-- Produce a 4-week progressive plan. Each week builds on the prior week. Forbid generic repetitions; require concrete changes (sets, load, or exercise swap). Each week's action must tie to a muscleGroup or lift and have setsDelta OR targetSets OR loadDeltaPct.`;
+- Produce a 4-week progressive plan. Each week must be summarized in a single string, directly addressing the fact-based advice.`;
 
 export function makeUserPrompt(params: {
   profile: unknown;
@@ -105,29 +106,11 @@ export const COACH_RESPONSE_SCHEMA = {
         required: ['change','details','rationale','factIds']
       }
     },
+    // Simplified structure to save tokens
     nextFourWeeks: {
       type: 'ARRAY',
-      items: {
-        type: 'OBJECT',
-        properties: {
-          week: { type: 'NUMBER' },
-          theme: { type: 'STRING' },
-          actions: {
-            type: 'ARRAY',
-            items: {
-              type: 'OBJECT',
-              properties: {
-                muscleGroup: { type: 'STRING' },
-                setsDelta: { type: 'NUMBER' },
-                targetSets: { type: 'NUMBER' },
-                loadDeltaPct: { type: 'NUMBER' },
-              },
-              required: ['muscleGroup']
-            }
-          }
-        },
-        required: ['week', 'theme', 'actions']
-      }
+      items: { type: 'STRING' },
+      description: 'A list of 4 strings. Each string is a weekly plan (e.g., "Week 1: Add 1 set to chest press and lower biceps volume by 2 sets"). Must be 4 items.'
     },
     risks: { type: 'ARRAY', items: { type: 'STRING' } },
     metricsUsed: { type: 'ARRAY', items: { type: 'STRING' } }

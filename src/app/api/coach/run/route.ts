@@ -1,4 +1,5 @@
 
+
 import { NextResponse } from 'next/server';
 import { SYSTEM_PROMPT, makeUserPrompt, COACH_RESPONSE_SCHEMA } from '@/lib/ai/coachPrompt';
 import { buildCoachFactsCompact } from '@/lib/analysis';
@@ -82,12 +83,12 @@ function compactPayload(profile: any, routineSummary: any, trainingSummary: any)
 
 const generationConfig = {
     temperature: 0.2,
-    maxOutputTokens: 900,
+    maxOutputTokens: 2048,
     responseMimeType: 'application/json',
 };
 
 // helper: one request to a specific model
-async function callGeminiOnce(model: string, systemText: string, userText: string) {
+async function callGeminiOnce(model: string, systemText: string, userText: string, config?: any) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY}`;
     
     const body = {
@@ -95,6 +96,7 @@ async function callGeminiOnce(model: string, systemText: string, userText: strin
         contents: [{ role: 'user', parts: [{ text: userText }] }],
         generationConfig: {
           ...generationConfig,
+          ...config,
           response_schema: COACH_RESPONSE_SCHEMA,
         }
     };
@@ -119,11 +121,11 @@ async function callGeminiOnce(model: string, systemText: string, userText: strin
 }
   
 // try candidates in order until one works
-async function generateWithFallback(systemText: string, userText: string) {
+async function generateWithFallback(systemText: string, userText: string, config?: any) {
     let lastErr: any = null;
     for (const m of MODEL_CANDIDATES) {
       try {
-        const json = await callGeminiOnce(m, systemText, userText);
+        const json = await callGeminiOnce(m, systemText, userText, config);
         return { json, modelUsed: m };
       } catch (e: any) {
         lastErr = e;
@@ -236,18 +238,14 @@ function verifyPrescriptions(advice: any, idx: Record<string, any>) {
 }
 
 function verifyChronology(plan: any[]) {
-  if (!Array.isArray(plan) || plan.length !== 4) return 'LEN';
-  for (let i=0;i<4;i++){
-    const w = plan[i];
-    if (w.week !== i+1) return 'WEEK_INDEX';
-    if (!w.theme || !Array.isArray(w.actions) || w.actions.length === 0) return 'SHAPE';
-    for (const a of w.actions) {
-      if (!a.muscleGroup) return 'NO_GROUP';
-      if (a.setsDelta == null && a.targetSets == null && a.loadDeltaPct == null) return 'NO_METRIC';
+    if (!Array.isArray(plan) || plan.length !== 4) return 'LEN';
+    // Simplified for string array
+    if (plan.some(item => typeof item !== 'string' || item.trim() === '')) {
+        return 'SHAPE';
     }
-  }
-  return null;
+    return null;
 }
+
 
 function compactFactsForRetry(facts:any[]) {
   const top = (facts ?? []).slice(0, 10);
@@ -264,7 +262,7 @@ function compactFactsForRetry(facts:any[]) {
 
 const BRIEF_REPAIR_HINT = `
 Return a VERY COMPACT JSON. Keep strings under 140 characters.
-For nextFourWeeks: at most 2 actions per week. Avoid narrative text.
+For nextFourWeeks: array of 4 simple strings.
 Only include required fields from the schema; omit any optional commentary.
 `;
 
@@ -277,14 +275,14 @@ function looksLikeMaxTokens(apiJson:any) {
   } catch { return false; }
 }
 
-async function generateWithRetry(systemText: string, userText: string, { facts }: { facts: any[] }) {
-    const { json: firstJson, modelUsed } = await generateWithFallback(systemText, userText);
+async function generateWithRetry(systemText: string, userText: string, config: { facts: any[], max_output_tokens?: number }) {
+    const { json: firstJson, modelUsed } = await generateWithFallback(systemText, userText, config);
   
     if (!looksLikeMaxTokens(firstJson)) {
       return { json: firstJson, modelUsed };
     }
   
-    const compactedFacts = compactFactsForRetry(facts);
+    const compactedFacts = compactFactsForRetry(config.facts);
     const briefUserText = makeUserPrompt({
         facts: compactedFacts,
         brief: true,
@@ -294,7 +292,7 @@ async function generateWithRetry(systemText: string, userText: string, { facts }
         scope: { mode: 'global' },
       }) + '\n\n' + BRIEF_REPAIR_HINT;
   
-    const repairJson = await callGeminiOnce(modelUsed, systemText, briefUserText);
+    const repairJson = await callGeminiOnce(modelUsed, systemText, briefUserText, config);
     return { json: repairJson, modelUsed };
 }
 
@@ -311,7 +309,12 @@ export async function POST(req: Request) {
     const factIdx = indexFacts(facts);
 
     const userPrompt = makeUserPrompt({ ...compact, scope, facts, brief: false });
-    const { json, modelUsed } = await generateWithRetry(SYSTEM_PROMPT, userPrompt, { facts });
+    
+    const aiConfig = {
+        facts: facts,
+        max_output_tokens: 2048,
+    };
+    const { json, modelUsed } = await generateWithRetry(SYSTEM_PROMPT, userPrompt, aiConfig);
     
     let p1 = extractJsonFromCandidates(json);
     
@@ -319,7 +322,7 @@ export async function POST(req: Request) {
     if (badNum.length) {
         const repair = `REPAIR: These items lacked numeric rationale: ${badNum.join(', ')}. Include exact numbers from FACTS in each rationale.`;
         const promptBrief = makeUserPrompt({ ...compact, scope, facts, brief: true }) + '\n\n' + repair;
-        const p2Json = await callGeminiOnce(modelUsed, SYSTEM_PROMPT, promptBrief);
+        const p2Json = await callGeminiOnce(modelUsed, SYSTEM_PROMPT, promptBrief, aiConfig);
         p1 = extractJsonFromCandidates(p2Json);
     }
 
@@ -330,15 +333,15 @@ export async function POST(req: Request) {
 - If a v: fact is cited, targetSets = current(w) + setsDelta
 - Text matches sign (add vs reduce).`;
         const promptBrief2 = makeUserPrompt({ ...compact, scope, facts, brief: true }) + '\n\n' + repair2;
-        const p3Json = await callGeminiOnce(modelUsed, SYSTEM_PROMPT, promptBrief2);
+        const p3Json = await callGeminiOnce(modelUsed, SYSTEM_PROMPT, promptBrief2, aiConfig);
         p1 = extractJsonFromCandidates(p3Json);
     }
 
     const chronoErr = verifyChronology(p1.nextFourWeeks);
     if (chronoErr) {
-        const repair3 = `REPAIR: Fix the 4-week plan (error: ${chronoErr}). Weeks must be 1..4, each with 1–3 actions containing either setsDelta, targetSets, or loadDeltaPct.`;
+        const repair3 = `REPAIR: Fix the 4-week plan (error: ${chronoErr}). Must be array of 4 simple strings.`;
         const promptBrief3 = makeUserPrompt({ ...compact, scope, facts, brief: true }) + '\n\n' + repair3;
-        const p4Json = await callGeminiOnce(modelUsed, SYSTEM_PROMPT, promptBrief3);
+        const p4Json = await callGeminiOnce(modelUsed, SYSTEM_PROMPT, promptBrief3, aiConfig);
         p1 = extractJsonFromCandidates(p4Json);
     }
 
