@@ -835,15 +835,75 @@ export const useTrainingLog = (initialDate: Date) => {
 
   }, [user?.id, currentLog?.id, toast]); // currentLog.id is key to exclude current log
 
-  const getOverloadAdvice = useCallback(async (exerciseId: string, history: any[], currentSets: LoggedSet[]) => {
-    // TASK 4: Implement API call logic here
-    console.log(`[Placeholder] Calling AI for advice for ${exerciseId}`);
-    setAdviceMap(prev => ({
-        ...prev,
-        [exerciseId]: 'Thinking...' // Temporary message
+  const getOverloadAdvice = useCallback(async (
+    exerciseId: string, 
+    history: WorkoutLog[], // Now correctly typed from Task 2
+    currentSets: LoggedSet[]
+  ) => {
+    // 1. Find the exercise details needed for the AI prompt
+    const exerciseDetails = availableExercises.find(e => e.id === exerciseId);
+    
+    if (!exerciseDetails) {
+        setAdviceMap(prev => ({ ...prev, [exerciseId]: 'Error: Exercise details not found.' }));
+        toast({ title: "Error", description: "Cannot find exercise details for AI analysis.", variant: "destructive" });
+        return 'Error: Exercise details not found.';
+    }
+
+    // Set the loading state and initial 'Thinking...' message
+    setIsAdviceLoading(true);
+    setAdviceMap(prev => ({ 
+        ...prev, 
+        [exerciseId]: 'Thinking...'
     }));
-    return 'Placeholder Advice';
-  }, [user?.id, currentLog?.exercises, availableExercises, availableRoutines, isDeload]);
+
+    try {
+        const response = await fetch('/api/coach/overload', {
+            method: 'POST',
+            cache: 'no-store',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                exerciseId: exerciseId,
+                exerciseName: exerciseDetails.name,
+                currentSets: currentSets.filter(s => (s.reps ?? 0) > 0 || (s.weight ?? 0) > 0), // Filter out empty sets
+                history: history, // Send the logs fetched in Task 2
+            })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok || !data.ok) {
+            throw new Error(data.error || `HTTP Error: ${response.status}`);
+        }
+
+        // Success: Update the advice map with the AI's recommendation
+        // Combine advice and rationale for a single, useful message
+        const adviceMessage = `${data.advice} (${data.rationale})`; 
+        setAdviceMap(prev => ({ 
+            ...prev, 
+            [exerciseId]: adviceMessage
+        }));
+        
+        return data.advice;
+
+    } catch (error: any) {
+        console.error('AI Overload Advice API failed:', error);
+        toast({ 
+            title: "AI Coach Error", 
+            description: `Could not get advice. ${error.message}`, 
+            variant: "destructive" 
+        });
+        
+        // On error, revert to a failure message
+        setAdviceMap(prev => ({ 
+            ...prev, 
+            [exerciseId]: 'AI failed to get advice. Try again.'
+        }));
+        return 'AI failed to get advice.';
+        
+    } finally {
+        setIsAdviceLoading(false);
+    }
+  }, [availableExercises, toast, setIsAdviceLoading, setAdviceMap]); // Dependencies for hook
 
   return {
     selectedDate,
@@ -890,5 +950,6 @@ export const useTrainingLog = (initialDate: Date) => {
 
 
     
+
 
 
