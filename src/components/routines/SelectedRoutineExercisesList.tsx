@@ -3,7 +3,7 @@
 import type { RoutineExercise, SetStructure } from '@/types';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Trash2, GripVertical, AlertTriangle, Dumbbell } from 'lucide-react';
+import { Trash2, GripVertical, AlertTriangle, Dumbbell, ChevronDown } from 'lucide-react';
 import React from 'react';
 import {
   DndContext,
@@ -101,14 +101,18 @@ function SortableExerciseItem({ exercise, index, onRemoveExercise, onUpdateSetSt
         {/* COL 3: Controls Group (Right Aligned) */}
         <div className="flex items-center gap-4 ml-auto shrink-0">
           
-          {/* Set Picker - Distinct Box */}
+          {/* Set Picker - Distinct Box with Manual Chevron */}
           {!exercise.isMissing && (
-              <div className="w-[140px] border rounded-md bg-background shadow-sm overflow-hidden">
+              <div className="relative w-[140px] border rounded-md bg-background shadow-sm overflow-hidden group/picker">
                  <SetStructurePicker
                     value={exercise.setStructure ?? 'normal'}
                     onChange={(value) => onUpdateSetStructure(exercise.id, value)}
-                    className="h-8 text-xs w-full border-none focus:ring-0" 
+                    className="h-8 text-xs w-full border-none focus:ring-0 pr-6 relative z-10 bg-transparent" 
                   />
+                  {/* Manually placed Chevron for consistent desktop visibility */}
+                  <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none z-0 text-muted-foreground/50 group-hover/picker:text-foreground">
+                      <ChevronDown className="h-3.5 w-3.5" />
+                  </div>
               </div>
            )}
 
