@@ -1,4 +1,3 @@
-
 'use client';
 import React from 'react';
 import Link from 'next/link';
@@ -60,7 +59,7 @@ export default function CoachPage() {
 
 
   // Handler function: removed the 500ms delay as the stale check is now explicit
-  const handleRunCoach = async () => {
+  const handleRunCoach = React.useCallback(async () => {
     if (isRunning || data.isLoading) return;
     
     // Pass the current data state directly
@@ -81,48 +80,83 @@ export default function CoachPage() {
     } catch (e: any) {
         // Error handling is inside useCoachRun, but good practice to catch here too
     }
-  };
+  }, [isRunning, data, runCoach]);
 
   const normalized = React.useMemo(() => advice ? normalizeAdviceUI(advice, data.routineSummary, []) : null, [advice, data.routineSummary]);
+
+
+  // Helper component for the control area
+  const CoachControlArea = React.useMemo(() => {
+    if (isRunning || data.isLoading) {
+      // Priority 1: Loading/Running state
+      return (
+        <Button disabled>
+          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          {isRunning ? 'Analyzing…' : 'Loading Data…'}
+        </Button>
+      );
+    }
+    
+    // Scenario 1: No analysis done (no advice, but data loaded)
+    if (loaded && !advice) {
+      return (
+        <Button onClick={handleRunCoach}>
+          Run AI Coach
+        </Button>
+      );
+    }
+
+    // Scenario 2: Existing analysis is stale (new data detected)
+    if (loaded && isStale) {
+      return (
+        <div className="flex items-center">
+            <p className="text-sm text-yellow-800 dark:text-yellow-200 mr-4">
+                New training logs or profile changes detected.
+            </p>
+            <Button onClick={handleRunCoach} variant="outline" className="text-yellow-700 hover:bg-yellow-100 dark:text-yellow-200 dark:hover:bg-yellow-900/50">
+                <Sparkles className="mr-2 h-4 w-4" />
+                Re-analyze Now
+            </Button>
+        </div>
+      );
+    }
+
+    // Scenario 3: Existing analysis is up-to-date
+    if (loaded && !isStale && advice) {
+      return (
+        <div className="p-2 px-3 border border-green-500/50 bg-green-500/10 rounded-md">
+            <p className="text-sm text-green-800 dark:text-green-200">
+                Analysis is up to date.
+            </p>
+        </div>
+      );
+    }
+    
+    // Fallback (e.g., waiting for initial load)
+    return null;
+
+  }, [isRunning, data.isLoading, loaded, advice, isStale, handleRunCoach]);
 
 
   return (
     <div className="container mx-auto space-y-6 py-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold flex items-center gap-2">
-            <Sparkles className="h-5 w-5" /> Coach
-          </h1>
-          <p className="text-sm text-muted-foreground mt-2">
-            Manage your profile in <Link href="/profile" className="underline">Profile</Link>.
-          </p>
-          <p className="text-xs text-muted-foreground mt-1">
+          <h2 className="text-xl font-bold tracking-tight">
+            <Sparkles className="inline-block mr-2 h-5 w-5 text-yellow-500" />
+            AI Coach
+          </h2>
+          <p className="text-sm text-muted-foreground mt-1">
             Last analyzed: {lastAnalyzedAt ? lastAnalyzedAt.toLocaleString() : '—'}
           </p>
         </div>
-        {/* Main Run Button - Hidden if stale data is detected */}
-        {(!isStale || !loaded) && (
-            <Button onClick={handleRunCoach} disabled={isRunning || data.isLoading}>
-                {isRunning ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Analyzing…</> : 'Run coach'}
-            </Button>
-        )}
+        {/* Render the control area instead of separate buttons */}
+        {CoachControlArea} 
       </div>
-
-      {/* New Re-analyze Link (Visible when stale) */}
-      {loaded && isStale && (
-          <div className="flex items-center justify-between p-3 border border-yellow-500/50 bg-yellow-500/10 rounded-lg">
-              <p className="text-sm text-yellow-800 dark:text-yellow-200">
-                  New workout logs or profile changes detected.
-              </p>
-              <Button onClick={handleRunCoach} disabled={isRunning || data.isLoading} variant="outline" className="text-yellow-700 hover:bg-yellow-100 dark:text-yellow-200 dark:hover:bg-yellow-900/50">
-                  {isRunning ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Re-analyzing…</> : 'Re-analyze now'}
-              </Button>
-          </div>
-      )}
-
-
+      
       {error && <p className="text-sm text-destructive">{error}</p>}
 
+      {/* Render Advice/Empty message based on state */}
       {normalized && normalized.overview ? (
         <>
           <Card>
@@ -147,7 +181,10 @@ export default function CoachPage() {
         </>
       ) : (
         !isRunning && loaded && (
-          <p className="text-sm text-muted-foreground">Run the coach to generate your first report.</p>
+          <p className="text-sm text-muted-foreground">
+            {/* Display message if loaded but no advice exists (Scenario 1 state) */}
+            Run the coach to generate your first report.
+          </p>
         )
       )}
     </div>
