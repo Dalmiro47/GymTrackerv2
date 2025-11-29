@@ -1,8 +1,6 @@
-
-
-
 // --- RESPONSE SCHEMA ---
 // We define a simple, strict schema for the AI to follow.
+// NOTE: We use string literals ('OBJECT', 'STRING') to avoid SDK import dependency issues.
 export const OVERLOAD_ADVICE_SCHEMA = {
     type: 'OBJECT',
     properties: {
