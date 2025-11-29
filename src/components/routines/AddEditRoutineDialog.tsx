@@ -140,6 +140,13 @@ export function AddEditRoutineDialog({
     await onSave(routineData, routineToEdit?.id);
   };
 
+  // Explicit handler to return to builder view
+  const handleDoneAdding = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsPickerOpen(false);
+  };
+
   const selectedExerciseIds = selectedExerciseObjects.map(ex => ex.id);
 
   return (
@@ -220,7 +227,7 @@ export function AddEditRoutineDialog({
                             <Button 
                                 type="button" 
                                 variant="link" 
-                                onClick={() => setIsPickerOpen(true)}
+                                onClick={(e) => { e.preventDefault(); setIsPickerOpen(true); }}
                             >
                                 Browse Library
                             </Button>
@@ -239,7 +246,7 @@ export function AddEditRoutineDialog({
                     type="button" 
                     variant="outline" 
                     className="w-full border-dashed border-2 h-12 text-muted-foreground hover:text-primary hover:border-primary/50"
-                    onClick={() => setIsPickerOpen(true)}
+                    onClick={(e) => { e.preventDefault(); setIsPickerOpen(true); }}
                 >
                     <Plus className="mr-2 h-4 w-4" /> Add Exercises
                 </Button>
@@ -252,16 +259,29 @@ export function AddEditRoutineDialog({
         <DialogFooter className="p-4 border-t bg-background shrink-0 flex-row gap-2 sm:justify-between items-center">
           {isPickerOpen ? (
             <>
-                <Button type="button" variant="ghost" onClick={() => setIsPickerOpen(false)}>
+                <Button 
+                    type="button" 
+                    variant="ghost" 
+                    onClick={(e) => { e.preventDefault(); setIsPickerOpen(false); }}
+                >
                     <ArrowLeft className="mr-2 h-4 w-4" /> Back
                 </Button>
-                <Button type="button" onClick={() => setIsPickerOpen(false)} className="bg-primary">
+                <Button 
+                    type="button" 
+                    onClick={handleDoneAdding} 
+                    className="bg-primary"
+                >
                     <Check className="mr-2 h-4 w-4" /> Done Adding
                 </Button>
             </>
           ) : (
             <>
-                <Button type="button" variant="outline" onClick={() => setIsOpen(false)} disabled={isSaving}>
+                <Button 
+                    type="button" 
+                    variant="outline" 
+                    onClick={() => setIsOpen(false)} 
+                    disabled={isSaving}
+                >
                     Cancel
                 </Button>
                 <Button 
