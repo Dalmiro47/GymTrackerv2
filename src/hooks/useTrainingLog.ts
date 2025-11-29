@@ -864,6 +864,7 @@ export const useTrainingLog = (initialDate: Date) => {
             body: JSON.stringify({
                 exerciseId: exerciseId,
                 exerciseName: exerciseDetails.name,
+                targetRange: exerciseDetails.progressiveOverload || null,
                 currentSets: currentSets.filter(s => (s.reps ?? 0) > 0 || (s.weight ?? 0) > 0), // Filter out empty sets
                 history: history, // Send the logs fetched in Task 2
             })
@@ -903,7 +904,7 @@ export const useTrainingLog = (initialDate: Date) => {
     } finally {
         setIsAdviceLoading(false);
     }
-  }, [availableExercises, toast, setIsAdviceLoading, setAdviceMap]); // Dependencies for hook
+  }, [availableExercises, toast]); // Dependencies for hook
 
   return {
     selectedDate,
@@ -950,6 +951,7 @@ export const useTrainingLog = (initialDate: Date) => {
 
 
     
+
 
 
 

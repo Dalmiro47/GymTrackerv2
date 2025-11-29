@@ -39,12 +39,14 @@ export async function POST(req: Request) {
             exerciseId, 
             exerciseName,
             currentSets, 
-            history 
+            history,
+            targetRange
         }: { 
             exerciseId: string;
             exerciseName: string; 
             currentSets: LoggedSet[]; 
-            history: WorkoutLog[]; 
+            history: WorkoutLog[];
+            targetRange?: string;
         } = await req.json();
 
         if (!exerciseId || !exerciseName || !currentSets || !history) {
@@ -57,6 +59,7 @@ export async function POST(req: Request) {
         // 1. Prepare the Data Payload for the AI
         const inputData = {
             exerciseName: exerciseName,
+            targetRepRange: targetRange ? targetRange : "Default (8-12)",
             currentLogSets: currentSets.map((s, i) => 
                 `Set ${i + 1}: ${s.weight ?? 0}kg x ${s.reps ?? 0} reps`
             ).join('\n'),
@@ -76,6 +79,7 @@ export async function POST(req: Request) {
         // 2. Construct the final prompt
         const userPrompt = `
         EXERCISE NAME: ${inputData.exerciseName}
+        TARGET REP RANGE: ${inputData.targetRepRange}
         
         CURRENT SETS (In Progress):
         ${inputData.currentLogSets}
@@ -83,7 +87,7 @@ export async function POST(req: Request) {
         RECENT HISTORY (Last ${history.length} Logs):
         ${inputData.historicalLogs}
 
-        Based on the current sets and history, provide a progressive overload recommendation using the rules in the system prompt.
+        Based on the current sets, history, and the TARGET REP RANGE, provide a progressive overload recommendation.
         `;
 
         // 3. Call the Gemini API
