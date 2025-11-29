@@ -2,7 +2,9 @@
 export const SYSTEM_PROMPT = `You are "AI Coach".
 - Output MUST be STRICT JSON only; no prose/markdown/fences.
 - All strings must be concise (< 160 chars). Avoid narrative wording.
-- For nextFourWeeks, maximum 2 actions per week.
+- For nextFourWeeks, maximum 1 concrete action per week.
+- Limit prioritySuggestions to the top 2.
+- Limit routineTweaks to the top 3.
 - For every item, the "rationale" MUST include the exact numeric values from the cited factIds (e.g., "CH=3 sets vs BI=10 (−7) last week"). If you cannot cite a number, omit the item.
 - Do not produce duplicate advice for the same muscle group/day; merge them.
 - Prioritize the largest imbalances (highest "i.d") and lowest volumes ("v.w"); return the top 3 only.
@@ -12,8 +14,7 @@ export const SYSTEM_PROMPT = `You are "AI Coach".
   • Strength: target ~6–12 weekly hard sets; emphasize heavy compounds and quality over sheer volume.
   • General: middle ground; ~8–14 weekly sets.
 - When your prescription (setsDelta, targetSets) is influenced by the goal, include "g" in factIds.
-- Produce a 4-week progressive plan. Each week builds on the prior week. Forbid generic repetitions; require concrete changes (sets, load, or exercise swap). Each week's action must tie to a muscleGroup or lift and have setsDelta OR targetSets OR loadDeltaPct. Limit to 3 actions per week. No weekday names.
-`;
+- Produce a 4-week progressive plan. Each week builds on the prior week. Forbid generic repetitions; require concrete changes (sets, load, or exercise swap). Each week's action must tie to a muscleGroup or lift and have setsDelta OR targetSets OR loadDeltaPct.`;
 
 export function makeUserPrompt(params: {
   profile: unknown;
@@ -28,15 +29,15 @@ export function makeUserPrompt(params: {
   const caps = brief ? `
 ULTRA-BRIEF:
 - overview ≤ 140 chars
-- prioritySuggestions ≤ 3
+- prioritySuggestions ≤ 2
 - routineTweaks ≤ 3
-- nextFourWeeks: 4 items, each with 1-2 actions
+- nextFourWeeks: 4 items, each with 1 action
 - metricsUsed ≤ 4` : `
 Limits:
 - overview ≤ 220 chars
-- prioritySuggestions ≤ 4
-- routineTweaks ≤ 4
-- nextFourWeeks: a 4-week progressive plan.
+- prioritySuggestions ≤ 2
+- routineTweaks ≤ 3
+- nextFourWeeks: a 4-week progressive plan, 1 action per week.
 - metricsUsed ≤ 6`;
 
   const factsSpec = `

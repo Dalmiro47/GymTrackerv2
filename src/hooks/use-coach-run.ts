@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import { getAuth } from 'firebase/auth';
 import { db } from '@/lib/firebaseConfig';
@@ -25,6 +26,9 @@ function pickRoutineForHash(rs: any) {
   };
 }
 
+// Set a minimum delay between successful runs (in milliseconds)
+const RUN_COACH_DELAY_MS = 30000; // 30 seconds
+
 export function useCoachRun() {
   const [loading, setLoading] = useState(false);
   const [error, setError]   = useState<string | null>(null);
@@ -34,58 +38,79 @@ export function useCoachRun() {
     routineSummary: any;
     trainingSummary: any;
     stamps?: { profileUpdatedAt:number; routinesUpdatedAt:number; logsUpdatedAt:number };
-    scope?: { mode: 'global'|'day'; dayId?:string; dayName?:string };
+    scope?: { mode: 'global'|'...' };
   }) {
-    setLoading(true); setError(null);
-    try {
-      const uid = getAuth().currentUser?.uid;
+    setLoading(true);
+    setError(null);
+    const auth = getAuth();
+    const uid = auth.currentUser?.uid;
 
-      // 🔑 The cache key now includes only relevant fields + realtime stamps
+    if (!uid) {
+      setLoading(false);
+      setError('User not authenticated.');
+      return;
+    }
+
+    try {
+      // Client-side rate limit check
+      const lastRunKey = `coach-last-run-${uid}`;
+      const lastRunTime = localStorage.getItem(lastRunKey);
+      const now = Date.now();
+      
+      if (lastRunTime && now - parseInt(lastRunTime, 10) < RUN_COACH_DELAY_MS) {
+        const remaining = Math.ceil((RUN_COACH_DELAY_MS - (now - parseInt(lastRunTime, 10))) / 1000);
+        throw new Error(`Please wait ${remaining} seconds before running the coach again.`);
+      }
+
+      // 1. Creates a unique hash of all current data + timestamps.
       const inputHash = hash({
         profile: pickProfileForHash(payload.profile),
         routine: pickRoutineForHash(payload.routineSummary),
         training: payload.trainingSummary,
         stamps: payload.stamps ?? null,
       });
-      
-      const latestChangedAt =
-        Math.max(
-          payload.stamps?.profileUpdatedAt ?? 0,
-          payload.stamps?.routinesUpdatedAt ?? 0,
-          payload.stamps?.logsUpdatedAt ?? 0,
-        );
 
-      // Fast-path reuse
-      if (uid) {
-        const latestRef = doc(db, 'users', uid, 'coachAdvice', 'latest-global');
-        const snap = await getDoc(latestRef);
-        const cached = snap.exists() ? snap.data() : null;
+      // 2. Calculates the most recent time ANY of the data changed.
+      const latestChangedAt = Math.max(
+        payload.stamps?.profileUpdatedAt ?? 0,
+        payload.stamps?.routinesUpdatedAt ?? 0,
+        payload.stamps?.logsUpdatedAt ?? 0,
+      );
 
-        const cachedAtMs = (cached?.createdAt as Timestamp)?.toMillis?.() ?? 0;
-        const sameHash   = cached?.inputHash === inputHash;
-        const freshEnough = cachedAtMs >= latestChangedAt;
+      // 3. Fast-path: checks for a cached result.
+      let adviceToReturn = null;
+      const latestRef = doc(db, 'users', uid, 'coachAdvice', 'latest-global');
+      const snap = await getDoc(latestRef);
+      const cached = snap.exists() ? snap.data() : null;
 
-        if (sameHash && freshEnough && cached?.advice) {
-          return cached.advice;
-        }
+      const cachedAtMs = (cached?.createdAt as Timestamp)?.toMillis?.() ?? 0;
+      const sameHash = cached?.inputHash === inputHash;
+      const freshEnough = cachedAtMs >= latestChangedAt;
+
+      // 4. If hash matches AND cache is fresh, return it instantly.
+      if (sameHash && freshEnough && cached?.advice) {
+        adviceToReturn = cached.advice; // ✅ CACHE HIT
       }
+      
+      if (!adviceToReturn) {
+        // API call
+        const r = await fetch('/api/coach/run', {
+          method: 'POST',
+          cache: 'no-store',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            profile: payload.profile,
+            routineSummary: payload.routineSummary,
+            trainingSummary: payload.trainingSummary,
+            scope: { mode: 'global' }
+          })
+        });
+        const data = await r.json();
+        if (!r.ok || !data?.ok) throw new Error(data?.error || `HTTP ${r.status}`);
+        
+        adviceToReturn = data.advice;
 
-      // API call
-      const r = await fetch('/api/coach/run', {
-        method: 'POST',
-        cache: 'no-store',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          profile: payload.profile,
-          routineSummary: payload.routineSummary,
-          trainingSummary: payload.trainingSummary,
-          scope: { mode: 'global' }
-        })
-      });
-      const data = await r.json();
-      if (!r.ok || !data?.ok) throw new Error(data?.error || `HTTP ${r.status}`);
-
-      if (uid) {
+        // Save the new result and hash for next time.
         const todayKey = new Date().toISOString().slice(0,10);
         const base: any = {
           advice: data.advice,
@@ -96,13 +121,16 @@ export function useCoachRun() {
         };
         if (Array.isArray(data.facts)) base.facts = data.facts;
 
-        await setDoc(doc(db, 'users', uid, 'coachAdvice', 'latest-global'), base, { merge: true });
+        await setDoc(latestRef, base, { merge: true });
         await setDoc(doc(db, 'users', uid, 'coachAdvice', `${todayKey}-global`), base, { merge: true });
       }
-
-      return data.advice;
+      
+      // Update last run time in local storage on success
+      localStorage.setItem(lastRunKey, now.toString());
+      return adviceToReturn;
+      
     } catch (e: any) {
-      setError(e.message ?? 'Unknown error');
+      setError(e.message || 'An unknown error occurred during coach analysis.');
       return null;
     } finally {
       setLoading(false);
