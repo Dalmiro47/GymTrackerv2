@@ -318,7 +318,7 @@ export function LoggedExerciseCard({
                   size="icon" 
                   onClick={handleGetOverloadAdvice}
                   disabled={isThinking || isAdviceLoading}
-                  className="text-yellow-500 hover:bg-yellow-100/50 h-8 w-8"
+                  className="text-cyan-500 hover:bg-cyan-100/50 dark:text-cyan-400 dark:hover:bg-cyan-900/50 h-8 w-8"
                   title="AI Progressive Overload Advice"
               >
                   {(isThinking || isAdviceLoading) ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
@@ -473,5 +473,7 @@ export function LoggedExerciseCard({
     </div>
   );
 }
+
+    
 
     
