@@ -1,17 +1,12 @@
-
-"use client";
-
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import type { Exercise } from '@/types';
-import type { MuscleGroup } from '@/lib/constants';
-import { MUSCLE_GROUPS_LIST } from '@/lib/constants';
-import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Search, Filter, Loader2 } from 'lucide-react';
-import { assertMuscleGroup } from '@/lib/muscleGroup';
+import { MUSCLE_GROUPS_LIST } from '@/lib/constants';
 
 interface AvailableExercisesSelectorProps {
   allExercises: Exercise[];
@@ -27,115 +22,90 @@ export function AvailableExercisesSelector({
   isLoadingExercises,
 }: AvailableExercisesSelectorProps) {
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedMuscleGroup, setSelectedMuscleGroup] = useState<MuscleGroup | 'All'>('All');
-  
-  const canonicalExercises = useMemo(() => {
-      return allExercises.map(e => ({...e, muscleGroup: assertMuscleGroup(e.muscleGroup as any)}));
-  }, [allExercises]);
-
-  const { availableMuscleGroups, muscleGroupCounts } = useMemo(() => {
-    const counts: Record<string, number> = {};
-    const seenGroups = new Set<MuscleGroup>();
-
-    canonicalExercises.forEach(ex => {
-      const group = ex.muscleGroup;
-      seenGroups.add(group);
-      counts[group] = (counts[group] || 0) + 1;
-    });
-    
-    const available = MUSCLE_GROUPS_LIST.filter(group => seenGroups.has(group));
-    
-    return { availableMuscleGroups: available, muscleGroupCounts: counts };
-  }, [canonicalExercises]);
-  
-  useEffect(() => {
-    if (selectedMuscleGroup !== 'All' && !availableMuscleGroups.includes(selectedMuscleGroup)) {
-      setSelectedMuscleGroup('All');
-    }
-  }, [availableMuscleGroups, selectedMuscleGroup]);
-
+  const [selectedMuscleGroup, setSelectedMuscleGroup] = useState<string>('All');
 
   const filteredExercises = useMemo(() => {
-    let tempExercises = [...canonicalExercises];
+    let temp = [...allExercises];
     if (searchTerm.trim() !== '') {
-      tempExercises = tempExercises.filter(ex =>
-        ex.name.toLowerCase().includes(searchTerm.toLowerCase().trim())
-      );
+      const q = searchTerm.toLowerCase().trim();
+      temp = temp.filter(ex => ex.name.toLowerCase().includes(q));
     }
     if (selectedMuscleGroup !== 'All') {
-      tempExercises = tempExercises.filter(ex => ex.muscleGroup === selectedMuscleGroup);
+      temp = temp.filter(ex => ex.muscleGroup === selectedMuscleGroup);
     }
-    return tempExercises;
-  }, [canonicalExercises, searchTerm, selectedMuscleGroup]);
-
-  if (isLoadingExercises) {
-    return (
-      <div className="flex flex-col space-y-3 p-4 border rounded-md min-h-[300px] justify-center items-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        <p className="text-muted-foreground">Loading exercises...</p>
-      </div>
-    );
-  }
+    return temp;
+  }, [allExercises, searchTerm, selectedMuscleGroup]);
 
   return (
-    <div className="space-y-4 p-1 h-full flex flex-col">
-      <h3 className="text-lg font-medium flex-shrink-0">Available Exercises</h3>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 flex-shrink-0">
-        <div className="relative">
-          <Filter className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Select
-            value={selectedMuscleGroup}
-            onValueChange={(value) => setSelectedMuscleGroup(value as MuscleGroup | 'All')}
-          >
-            <SelectTrigger className="w-full pl-9" aria-label="Filter by muscle group">
-              <SelectValue placeholder="Filter by muscle group" />
+    <div className="flex flex-col h-full gap-3">
+      {/* Search and Filter Row */}
+      <div className="flex gap-2">
+        <div className="relative flex-grow">
+          <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Search exercises..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+        <div className="w-1/3 min-w-[140px]">
+           <Select value={selectedMuscleGroup} onValueChange={setSelectedMuscleGroup}>
+            <SelectTrigger className="w-full">
+               <div className="flex items-center truncate">
+                  <Filter className="mr-2 h-3.5 w-3.5 text-muted-foreground opacity-70" />
+                  <SelectValue placeholder="Muscle" />
+               </div>
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="All">All Muscle Groups</SelectItem>
-              {availableMuscleGroups.map(group => (
-                <SelectItem key={group} value={group}>
-                  {group} ({muscleGroupCounts[group] || 0})
-                </SelectItem>
+              <SelectItem value="All">All Muscles</SelectItem>
+              {MUSCLE_GROUPS_LIST.map(mg => (
+                <SelectItem key={mg} value={mg}>{mg}</SelectItem>
               ))}
             </SelectContent>
           </Select>
         </div>
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            type="search"
-            placeholder="Search exercise by name..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9"
-            aria-label="Search exercises"
-          />
-        </div>
       </div>
 
-      <div className="flex-grow min-h-0">
-        <ScrollArea className="h-[calc(100vh-28rem)] sm:h-[300px] w-full rounded-md border p-4">
-          {filteredExercises.length > 0 ? (
-            <div className="space-y-3">
-              {filteredExercises.map(exercise => (
-                <div key={exercise.id} className="flex items-center space-x-2">
-                  <Checkbox
-                    id={`ex-${exercise.id}`}
-                    checked={selectedExerciseIds.includes(exercise.id)}
-                    onCheckedChange={(checked) => onSelectionChange(exercise.id, !!checked)}
-                  />
-                  <Label htmlFor={`ex-${exercise.id}`} className="flex-1 cursor-pointer">
-                    {exercise.name} <span className="text-xs text-muted-foreground">({exercise.muscleGroup})</span>
-                  </Label>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground text-center py-4">
-              No exercises match your criteria.
-            </p>
-          )}
-        </ScrollArea>
+      {/* List Area - Set to flex-grow to fill remaining height */}
+      <div className="flex-grow border rounded-md bg-background overflow-hidden relative">
+         <ScrollArea className="h-full w-full p-2">
+            {isLoadingExercises ? (
+              <div className="flex justify-center items-center h-32">
+                <Loader2 className="h-6 w-6 animate-spin text-primary" />
+              </div>
+            ) : filteredExercises.length > 0 ? (
+              <div className="space-y-1">
+                {filteredExercises.map(exercise => {
+                  const isSelected = selectedExerciseIds.includes(exercise.id);
+                  return (
+                    <div
+                      key={exercise.id}
+                      className={`flex items-center space-x-3 p-2 rounded-md hover:bg-muted/50 cursor-pointer transition-colors ${isSelected ? 'bg-primary/5' : ''}`}
+                      onClick={() => onSelectionChange(exercise.id, !isSelected)}
+                    >
+                      <Checkbox
+                        id={exercise.id}
+                        checked={isSelected}
+                        onCheckedChange={(checked) => onSelectionChange(exercise.id, checked as boolean)}
+                        className="pointer-events-none" // let the parent div handle click
+                      />
+                      <div className="flex-grow">
+                        <Label htmlFor={exercise.id} className="text-sm font-medium cursor-pointer pointer-events-none">
+                          {exercise.name}
+                        </Label>
+                        <p className="text-xs text-muted-foreground">{exercise.muscleGroup}</p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center h-32 text-muted-foreground text-sm">
+                <p>No exercises found.</p>
+              </div>
+            )}
+         </ScrollArea>
       </div>
     </div>
   );

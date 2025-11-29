@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect, useMemo } from 'react';
@@ -7,7 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import type { Exercise, Routine, RoutineData, RoutineExercise, SetStructure } from '@/types';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Plus, ArrowLeft, Check } from 'lucide-react'; 
 
 import { Button } from '@/components/ui/button';
 import {
@@ -23,6 +22,7 @@ import { SelectedRoutineExercisesList } from './SelectedRoutineExercisesList';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Badge } from '@/components/ui/badge'; 
 
 const routineFormSchema = z.object({
   name: z.string().min(3, "Routine name must be at least 3 characters."),
@@ -51,13 +51,16 @@ export function AddEditRoutineDialog({
   isLoadingExercises,
 }: AddEditRoutineDialogProps) {
   const { toast } = useToast();
-  const { control, register, handleSubmit, reset, formState: { errors } } = useForm<RoutineFormData>({
+  const { register, handleSubmit, reset, formState: { errors } } = useForm<RoutineFormData>({
     resolver: zodResolver(routineFormSchema),
     defaultValues: {
       name: '',
       description: '',
     },
   });
+
+  // State to toggle between "Builder View" and "Picker View"
+  const [isPickerOpen, setIsPickerOpen] = useState(false);
 
   const [selectedExerciseObjects, setSelectedExerciseObjects] = useState<RoutineExercise[]>([]);
   
@@ -67,13 +70,12 @@ export function AddEditRoutineDialog({
   );
 
   useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
+    if (!isOpen) return;
   
     if (!routineToEdit) {
       reset({ name: '', description: '' });
       setSelectedExerciseObjects([]);
+      setIsPickerOpen(false); // Always start in builder view
       return;
     }
   
@@ -82,18 +84,14 @@ export function AddEditRoutineDialog({
       description: routineToEdit.description || '',
     });
   
-    if (isLoadingExercises) {
-      return;
-    }
+    if (isLoadingExercises) return;
   
     const hydratedExercises = routineToEdit.exercises.map(routineEx => {
       const fullDef = exerciseIdMap.get(routineEx.id);
-      if (fullDef) {
-        return { ...routineEx, isMissing: false };
-      }
-      return { ...routineEx, isMissing: true };
+      return fullDef ? { ...routineEx, isMissing: false } : { ...routineEx, isMissing: true };
     });
     setSelectedExerciseObjects(hydratedExercises);
+    setIsPickerOpen(false);
   
   }, [routineToEdit, reset, isOpen, isLoadingExercises, exerciseIdMap]);
 
@@ -103,11 +101,11 @@ export function AddEditRoutineDialog({
       if (isSelected) {
         const exerciseToAdd = allUserExercises.find(ex => ex.id === exerciseId);
         if (!exerciseToAdd) return prevSelected;
-        if (!prevSelected.find(e => e.id === exerciseId)) {
-          const routineExercise: RoutineExercise = { ...exerciseToAdd, setStructure: 'normal' };
-          return [...prevSelected, routineExercise];
-        }
-        return prevSelected;
+        // Don't add duplicates
+        if (prevSelected.find(e => e.id === exerciseId)) return prevSelected;
+        
+        const routineExercise: RoutineExercise = { ...exerciseToAdd, setStructure: 'normal' };
+        return [...prevSelected, routineExercise];
       } else {
         return prevSelected.filter(e => e.id !== exerciseId);
       }
@@ -129,8 +127,8 @@ export function AddEditRoutineDialog({
 
     if (validExercises.length === 0) {
         toast({
-            title: "No Valid Exercises Selected",
-            description: "Please select at least one valid exercise for the routine.",
+            title: "No Exercises Selected",
+            description: "Please add at least one exercise to your routine.",
             variant: "destructive",
         });
         return;
@@ -146,53 +144,137 @@ export function AddEditRoutineDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogContent className="max-w-4xl flex flex-col h-full sm:h-auto max-h-[95vh]">
-        <DialogHeader className="flex-shrink-0">
-          <DialogTitle className="font-headline text-xl">
-            {routineToEdit ? 'Edit Routine' : 'Create New Routine'}
-          </DialogTitle>
+      {/* Increased height for mobile friendliness */}
+      <DialogContent className="max-w-2xl flex flex-col h-[90vh] sm:h-[85vh] p-0 gap-0 overflow-hidden">
+        
+        {/* HEADER */}
+        <DialogHeader className="p-6 pb-4 border-b shrink-0 bg-background z-10">
+          <div className="flex items-center justify-between">
+            <DialogTitle className="font-headline text-xl">
+              {isPickerOpen ? 'Select Exercises' : (routineToEdit ? 'Edit Routine' : 'Create Routine')}
+            </DialogTitle>
+            {isPickerOpen && (
+               <Badge variant="secondary" className="ml-2">
+                 {selectedExerciseObjects.length} Selected
+               </Badge>
+            )}
+          </div>
           <DialogDescription>
-            {routineToEdit ? 'Update the details for this routine.' : 'Fill in the details and select exercises for your new routine.'}
+            {isPickerOpen 
+              ? 'Search and select exercises to add to your routine.' 
+              : 'Organize your routine details below.'}
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="flex-grow overflow-y-auto space-y-6 pr-4 -mr-4">
-          <div className="grid grid-cols-1 gap-4">
-            <div>
-              <Label htmlFor="name">Routine Name</Label>
-              <Input id="name" {...register('name')} aria-invalid={errors.name ? "true" : "false"} />
-              {errors.name && <p className="text-sm text-destructive mt-1">{errors.name.message}</p>}
+        {/* CONTENT AREA - Scrollable */}
+        <div className="flex-grow overflow-y-auto p-6 bg-muted/5">
+          
+          {/* VIEW 1: PICKER MODE */}
+          {isPickerOpen ? (
+            <div className="h-full flex flex-col gap-4">
+               {/* Reusing your existing component, but now it takes full width */}
+               <AvailableExercisesSelector
+                  allExercises={allUserExercises}
+                  selectedExerciseIds={selectedExerciseIds}
+                  onSelectionChange={handleExerciseSelectionChange}
+                  isLoadingExercises={isLoadingExercises}
+                />
             </div>
-            <div>
-              <Label htmlFor="description">Description (Optional)</Label>
-              <Textarea id="description" {...register('description')} rows={2} />
-            </div>
-          </div>
+          ) : (
+            
+          /* VIEW 2: BUILDER MODE */
+            <form id="routine-form" onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+              <div className="grid grid-cols-1 gap-4 p-1">
+                <div className="space-y-2">
+                  <Label htmlFor="name">Routine Name</Label>
+                  <Input 
+                    id="name" 
+                    {...register('name')} 
+                    placeholder="e.g., Push Day A"
+                    className="text-lg font-medium"
+                    aria-invalid={errors.name ? "true" : "false"} 
+                  />
+                  {errors.name && <p className="text-sm text-destructive">{errors.name.message}</p>}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="description">Description (Optional)</Label>
+                  <Textarea 
+                    id="description" 
+                    {...register('description')} 
+                    placeholder="Notes about this routine..."
+                    rows={2} 
+                  />
+                </div>
+              </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <AvailableExercisesSelector
-              allExercises={allUserExercises}
-              selectedExerciseIds={selectedExerciseIds}
-              onSelectionChange={handleExerciseSelectionChange}
-              isLoadingExercises={isLoadingExercises}
-            />
-            <SelectedRoutineExercisesList
-              selectedExercises={selectedExerciseObjects}
-              onRemoveExercise={(exerciseId) => handleExerciseSelectionChange(exerciseId, false)}
-              onReorderExercises={handleReorderExercises}
-              onUpdateSetStructure={handleUpdateSetStructure}
-            />
-          </div>
-        </form>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                    <Label className="text-base font-semibold">Exercises ({selectedExerciseObjects.length})</Label>
+                </div>
+                
+                {/* Selected List - Now Full Width */}
+                <div className="min-h-[100px] rounded-md border bg-card">
+                    {selectedExerciseObjects.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center h-32 text-muted-foreground">
+                            <p>No exercises added yet.</p>
+                            <Button 
+                                type="button" 
+                                variant="link" 
+                                onClick={() => setIsPickerOpen(true)}
+                            >
+                                Browse Library
+                            </Button>
+                        </div>
+                    ) : (
+                        <SelectedRoutineExercisesList
+                            selectedExercises={selectedExerciseObjects}
+                            onRemoveExercise={(exerciseId) => handleExerciseSelectionChange(exerciseId, false)}
+                            onReorderExercises={handleReorderExercises}
+                            onUpdateSetStructure={handleUpdateSetStructure}
+                        />
+                    )}
+                </div>
 
-        <DialogFooter className="flex-shrink-0 pt-4 border-t">
-          <Button type="button" variant="outline" onClick={() => setIsOpen(false)} disabled={isSaving}>
-            Cancel
-          </Button>
-          <Button type="button" onClick={handleSubmit(onSubmit)} disabled={isSaving || isLoadingExercises} className="bg-primary hover:bg-primary/90 text-primary-foreground">
-            {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-            {isSaving ? (routineToEdit ? "Saving..." : "Creating...") : (routineToEdit ? "Save Changes" : "Save Routine")}
-          </Button>
+                <Button 
+                    type="button" 
+                    variant="outline" 
+                    className="w-full border-dashed border-2 h-12 text-muted-foreground hover:text-primary hover:border-primary/50"
+                    onClick={() => setIsPickerOpen(true)}
+                >
+                    <Plus className="mr-2 h-4 w-4" /> Add Exercises
+                </Button>
+              </div>
+            </form>
+          )}
+        </div>
+
+        {/* FOOTER */}
+        <DialogFooter className="p-4 border-t bg-background shrink-0 flex-row gap-2 sm:justify-between items-center">
+          {isPickerOpen ? (
+            <>
+                <Button type="button" variant="ghost" onClick={() => setIsPickerOpen(false)}>
+                    <ArrowLeft className="mr-2 h-4 w-4" /> Back
+                </Button>
+                <Button type="button" onClick={() => setIsPickerOpen(false)} className="bg-primary">
+                    <Check className="mr-2 h-4 w-4" /> Done Adding
+                </Button>
+            </>
+          ) : (
+            <>
+                <Button type="button" variant="outline" onClick={() => setIsOpen(false)} disabled={isSaving}>
+                    Cancel
+                </Button>
+                <Button 
+                    type="submit" 
+                    form="routine-form" // Link to the form ID
+                    disabled={isSaving || isLoadingExercises} 
+                    className="bg-primary"
+                >
+                    {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                    {isSaving ? "Saving..." : (routineToEdit ? "Save Changes" : "Create Routine")}
+                </Button>
+            </>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
