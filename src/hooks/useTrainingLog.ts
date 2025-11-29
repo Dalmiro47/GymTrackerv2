@@ -20,6 +20,15 @@ import { format, startOfMonth } from 'date-fns';
 import { useToast } from './use-toast';
 import { inferWarmupTemplate, roundToGymHalf } from '@/lib/utils';
 import { isBetterPR, formatPR, pickBestSet } from '@/lib/pr';
+import { 
+  collection, 
+  query, 
+  where, 
+  orderBy, 
+  limit, 
+  getDocs 
+} from 'firebase/firestore'; 
+import { db } from '@/lib/firebaseConfig';
 
 
 // A safe deep-clone function using JSON stringify/parse, suitable for serializable data.
@@ -775,11 +784,56 @@ export const useTrainingLog = (initialDate: Date) => {
     }
   };
 
-  const getExerciseHistory = useCallback(async (exerciseId: string) => {
-    // TASK 2: Implement Firebase query logic here
-    console.log(`[Placeholder] Attempting to fetch history for ${exerciseId}`);
-    return [];
-  }, [user?.id]);
+  /**
+   * Fetches the last 5 logs that contain the specified exercise, 
+   * excluding the current log being edited.
+   * @param exerciseId The ID of the exercise to look up history for.
+   * @returns An array of workout logs (WorkoutLog[]).
+   */
+  const getExerciseHistory = useCallback(async (exerciseId: string): Promise<WorkoutLog[]> => {
+    if (!user?.id || !currentLog?.id) return [];
+    
+    try {
+      // 1. Define the query:
+      // - Collection: 'workoutLogs' under the user
+      // - Filter: where 'exerciseIds' array contains the specific exerciseId
+      // - Order: by 'date' descending (most recent first)
+      // - Limit: to the last 5 logs
+      const q = query(
+        collection(db, 'users', user.id, 'workoutLogs'),
+        where('exerciseIds', 'array-contains', exerciseId),
+        orderBy('date', 'desc'),
+        limit(5)
+      );
+
+      const querySnapshot = await getDocs(q);
+      
+      const history: WorkoutLog[] = [];
+      const currentLogId = currentLog.id; // Get the ID of the log currently being viewed/edited
+
+      querySnapshot.forEach(doc => {
+        const log = { id: doc.id, ...doc.data() } as WorkoutLog;
+        
+        // 2. Filter out the current log being edited/viewed
+        if (log.id !== currentLogId) {
+          history.push(log);
+        }
+      });
+
+      console.log(`[History] Fetched ${history.length} historical logs for ${exerciseId}.`);
+      return history;
+
+    } catch (error) {
+      console.error('Error fetching exercise history:', error);
+      toast({ 
+        title: "History Error", 
+        description: `Could not retrieve history for the exercise.`, 
+        variant: "destructive" 
+      });
+      return [];
+    }
+
+  }, [user?.id, currentLog?.id, toast]); // currentLog.id is key to exclude current log
 
   const getOverloadAdvice = useCallback(async (exerciseId: string, history: any[], currentSets: LoggedSet[]) => {
     // TASK 4: Implement API call logic here
@@ -836,4 +890,5 @@ export const useTrainingLog = (initialDate: Date) => {
 
 
     
+
 
