@@ -81,11 +81,8 @@ function SortableExerciseItem({ exercise, index, onRemoveExercise, onUpdateSetSt
           </span>
         </div>
 
-        {/* COL 2: Name & Controls Grouped Left */}
-        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 flex-grow min-w-0">
-          
-          {/* Name & Badge */}
-          <div className="min-w-0">
+        {/* COL 2: Name & Badge (Flex Grow) */}
+        <div className="flex flex-col justify-center min-w-0 flex-grow mr-2">
              <div className="flex items-center gap-2">
                 <p className="text-sm font-semibold truncate text-foreground">{exercise.name}</p>
                 {exercise.isMissing && (
@@ -99,32 +96,35 @@ function SortableExerciseItem({ exercise, index, onRemoveExercise, onUpdateSetSt
                   {exercise.muscleGroup}
                 </Badge>
              </div>
-          </div>
+        </div>
 
-          {/* Set Picker - Now moved closer to the name on desktop */}
+        {/* COL 3: Controls Group (Pushed to Right via margin-left auto) */}
+        <div className="flex items-center gap-3 ml-auto shrink-0 pl-2">
+          
+          {/* Set Picker */}
           {!exercise.isMissing && (
-              <div className="w-[130px] shrink-0">
+              <div className="w-[130px]">
                  <SetStructurePicker
                     value={exercise.setStructure ?? 'normal'}
                     onChange={(value) => onUpdateSetStructure(exercise.id, value)}
-                    className="h-7 text-xs w-full border-dashed" 
+                    className="h-8 text-xs w-full" 
                   />
               </div>
            )}
-        </div>
 
-        {/* COL 3: Delete Button (Far Right) */}
-        <div className="shrink-0 pl-2 border-l ml-2">
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            onClick={() => onRemoveExercise(exercise.id)}
-            aria-label={`Remove ${exercise.name}`}
-            className="text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10 h-8 w-8"
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
+          {/* Delete Button (with separator line) */}
+          <div className="pl-3 border-l h-6 flex items-center">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={() => onRemoveExercise(exercise.id)}
+              aria-label={`Remove ${exercise.name}`}
+              className="text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10 h-8 w-8"
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
 
       </div>
