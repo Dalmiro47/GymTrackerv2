@@ -20,6 +20,15 @@ import { format, startOfMonth } from 'date-fns';
 import { useToast } from './use-toast';
 import { inferWarmupTemplate, roundToGymHalf } from '@/lib/utils';
 import { isBetterPR, formatPR, pickBestSet } from '@/lib/pr';
+import { 
+  collection, 
+  query, 
+  where, 
+  orderBy, 
+  limit, 
+  getDocs 
+} from 'firebase/firestore'; 
+import { db } from '@/lib/firebaseConfig';
 
 
 // A safe deep-clone function using JSON stringify/parse, suitable for serializable data.
@@ -76,6 +85,9 @@ export const useTrainingLog = (initialDate: Date) => {
   const [displayedMonth, setDisplayedMonth] = React.useState<Date>(
     startOfMonth(selectedDate ?? new Date())
   );
+  
+  const [isAdviceLoading, setIsAdviceLoading] = useState(false);
+  const [adviceMap, setAdviceMap] = useState<Record<string, string>>({});
 
 
   const formattedDateId = format(selectedDate, 'yyyy-MM-dd');
@@ -772,6 +784,128 @@ export const useTrainingLog = (initialDate: Date) => {
     }
   };
 
+  /**
+   * Fetches the last 5 logs that contain the specified exercise, 
+   * excluding the current log being edited.
+   * @param exerciseId The ID of the exercise to look up history for.
+   * @returns An array of workout logs (WorkoutLog[]).
+   */
+  const getExerciseHistory = useCallback(async (exerciseId: string): Promise<WorkoutLog[]> => {
+    if (!user?.id || !currentLog?.id) return [];
+    
+    try {
+      // 1. Define the query:
+      // - Collection: 'workoutLogs' under the user
+      // - Filter: where 'exerciseIds' array contains the specific exerciseId
+      // - Order: by 'date' descending (most recent first)
+      // - Limit: to the last 5 logs
+      const q = query(
+        collection(db, 'users', user.id, 'workoutLogs'),
+        where('exerciseIds', 'array-contains', exerciseId),
+        orderBy('date', 'desc'),
+        limit(5)
+      );
+
+      const querySnapshot = await getDocs(q);
+      
+      const history: WorkoutLog[] = [];
+      const currentLogId = currentLog.id; // Get the ID of the log currently being viewed/edited
+
+      querySnapshot.forEach(doc => {
+        const log = { id: doc.id, ...doc.data() } as WorkoutLog;
+        
+        // 2. Filter out the current log being edited/viewed
+        if (log.id !== currentLogId) {
+          history.push(log);
+        }
+      });
+
+      console.log(`[History] Fetched ${history.length} historical logs for ${exerciseId}.`);
+      return history;
+
+    } catch (error) {
+      console.error('Error fetching exercise history:', error);
+      toast({ 
+        title: "History Error", 
+        description: `Could not retrieve history for the exercise.`, 
+        variant: "destructive" 
+      });
+      return [];
+    }
+
+  }, [user?.id, currentLog?.id, toast]); // currentLog.id is key to exclude current log
+
+  const getOverloadAdvice = useCallback(async (
+    exerciseId: string, 
+    history: WorkoutLog[], // Now correctly typed from Task 2
+    currentSets: LoggedSet[]
+  ) => {
+    // 1. Find the exercise details needed for the AI prompt
+    const exerciseDetails = availableExercises.find(e => e.id === exerciseId);
+    
+    if (!exerciseDetails) {
+        setAdviceMap(prev => ({ ...prev, [exerciseId]: 'Error: Exercise details not found.' }));
+        toast({ title: "Error", description: "Cannot find exercise details for AI analysis.", variant: "destructive" });
+        return 'Error: Exercise details not found.';
+    }
+
+    // Set the loading state and initial 'Thinking...' message
+    setIsAdviceLoading(true);
+    setAdviceMap(prev => ({ 
+        ...prev, 
+        [exerciseId]: 'Thinking...'
+    }));
+
+    try {
+        const response = await fetch('/api/coach/overload', {
+            method: 'POST',
+            cache: 'no-store',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                exerciseId: exerciseId,
+                exerciseName: exerciseDetails.name,
+                targetRange: exerciseDetails.progressiveOverload || null,
+                currentSets: currentSets.filter(s => (s.reps ?? 0) > 0 || (s.weight ?? 0) > 0), // Filter out empty sets
+                history: history, // Send the logs fetched in Task 2
+            })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok || !data.ok) {
+            throw new Error(data.error || `HTTP Error: ${response.status}`);
+        }
+
+        // Success: Update the advice map with the AI's recommendation
+        // Combine advice and rationale for a single, useful message
+        const adviceMessage = `${data.advice} (${data.rationale})`; 
+        setAdviceMap(prev => ({ 
+            ...prev, 
+            [exerciseId]: adviceMessage
+        }));
+        
+        return data.advice;
+
+    } catch (error: any) {
+        console.error('AI Overload Advice API failed:', error);
+        toast({ 
+            title: "AI Coach Error", 
+            description: `Could not get advice. ${error.message}`, 
+            variant: "destructive" 
+        });
+        
+        // On error, revert to a failure message
+        setAdviceMap(prev => ({ 
+            ...prev, 
+            [exerciseId]: 'AI failed to get advice. Try again.'
+        }));
+        return 'AI failed to get advice.';
+        
+    } finally {
+        setIsAdviceLoading(false);
+    }
+  }, [availableExercises, toast]); // Dependencies for hook
+
   return {
     selectedDate,
     setSelectedDate,
@@ -802,6 +936,10 @@ export const useTrainingLog = (initialDate: Date) => {
     setIsDeload,
     displayedMonth,
     setDisplayedMonth,
+    getExerciseHistory,
+    getOverloadAdvice,
+    isAdviceLoading,
+    adviceMap,
   };
 };
 
@@ -813,3 +951,7 @@ export const useTrainingLog = (initialDate: Date) => {
 
 
     
+
+
+
+

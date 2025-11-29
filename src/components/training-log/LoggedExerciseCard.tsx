@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { PlusCircle, Trash2, Save, GripVertical, Loader2, Check, Settings2, ArrowLeftRight, Flame, TrendingUp, Dumbbell } from 'lucide-react';
+import { PlusCircle, Trash2, Save, GripVertical, Loader2, Check, Settings2, ArrowLeftRight, Flame, TrendingUp, Dumbbell, Sparkles } from 'lucide-react';
 import { SetInputRow } from './SetInputRow'; 
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -89,6 +89,21 @@ function setsShallowEqual(a: LoggedSet[], b: LoggedSet[]) {
   return true;
 }
 
+interface LoggedExerciseCardProps {
+  loggedExercise: LoggedExercise;
+  onUpdateSets: (sets: LoggedSet[]) => void;
+  onSaveProgress: () => Promise<void>;
+  onRemove: () => void;
+  onReplace: () => void;
+  isSavingParentLog: boolean;
+  onMarkAsInteracted: () => void;
+  onUpdateSetStructureOverride: (exerciseId: string, override: SetStructure | null) => void;
+  getExerciseHistory: (exerciseId: string) => Promise<any[]>;
+  getOverloadAdvice: (exerciseId: string, history: any[], sets: LoggedSet[]) => Promise<string>;
+  isAdviceLoading: boolean;
+  adviceMap: Record<string, string>;
+}
+
 export function LoggedExerciseCard({
   loggedExercise,
   onUpdateSets,
@@ -98,16 +113,11 @@ export function LoggedExerciseCard({
   isSavingParentLog,
   onMarkAsInteracted,
   onUpdateSetStructureOverride,
-}: {
-  loggedExercise: LoggedExercise;
-  onUpdateSets: (sets: LoggedSet[]) => void;
-  onSaveProgress: () => Promise<void>; 
-  onRemove: () => void;
-  onReplace: () => void;
-  isSavingParentLog: boolean; 
-  onMarkAsInteracted: () => void;
-  onUpdateSetStructureOverride: (exerciseId: string, override: SetStructure | null) => void;
-}) {
+  getExerciseHistory,
+  getOverloadAdvice,
+  isAdviceLoading,
+  adviceMap,
+}: LoggedExerciseCardProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [localSets, setLocalSets] = useState<LoggedSet[]>(loggedExercise.sets);
   const [isSavingThisExercise, setIsSavingThisExercise] = useState(false);
@@ -115,6 +125,9 @@ export function LoggedExerciseCard({
   const [weightDisplays, setWeightDisplays] = useState<string[]>(
     (loggedExercise.sets ?? []).map(s => s.weight == null ? '' : String(s.weight))
   );
+  
+  const [isThinking, setIsThinking] = useState(false);
+  const advice = adviceMap[loggedExercise.exerciseId];
 
   useEffect(() => {
     if (!isEditing) {
@@ -251,6 +264,22 @@ export function LoggedExerciseCard({
       setIsSavingThisExercise(false);
     }
   };
+  
+  const handleGetOverloadAdvice = async () => {
+      // Use the global loading state and local state as guardrails
+      if (isThinking || isAdviceLoading) return;
+      setIsThinking(true);
+      try {
+          // 1. Placeholder call to get history (will be fully functional in Task 2)
+          const history = await getExerciseHistory(loggedExercise.exerciseId);
+          // 2. Placeholder call to get advice (will be fully functional in Task 4)
+          await getOverloadAdvice(loggedExercise.exerciseId, history, loggedExercise.sets);
+      } catch (error) {
+          console.error('AI Overload Advice failed:', error);
+      } finally {
+          setIsThinking(false);
+      }
+  };
 
   return (
     <div ref={setNodeRef} style={style} data-dragging={isDragging || undefined}>
@@ -284,6 +313,16 @@ export function LoggedExerciseCard({
               </div>
             </div>
             <div className="flex items-center">
+              <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  onClick={handleGetOverloadAdvice}
+                  disabled={isThinking || isAdviceLoading}
+                  className="text-cyan-500 hover:bg-cyan-100/50 dark:text-cyan-400 dark:hover:bg-cyan-900/50 h-8 w-8"
+                  title="AI Progressive Overload Advice"
+              >
+                  {(isThinking || isAdviceLoading) ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+              </Button>
               {loggedExercise.warmupConfig && loggedExercise.warmupConfig.template !== 'NONE' && (
                   <Popover>
                       <PopoverTrigger asChild>
@@ -342,6 +381,14 @@ export function LoggedExerciseCard({
             setIsEditing(!!(active && contentRef.current?.contains(active)));
           }}
         >
+          {advice && (
+              <div className="mb-4 p-3 rounded-lg border border-yellow-500/50 bg-yellow-500/10 dark:bg-yellow-900/20">
+                  <p className="text-sm font-medium text-yellow-800 dark:text-yellow-200 flex items-start">
+                      <Sparkles className="h-4 w-4 mr-2 mt-0.5 flex-shrink-0" />
+                      {advice}
+                  </p>
+              </div>
+          )}
           {/* column headers */}
           <div className="grid grid-cols-[2rem_1fr_auto_1fr_auto_2.25rem] items-center gap-2 text-xs font-medium text-muted-foreground">
             <span className="w-full text-center">Set</span>
@@ -426,5 +473,7 @@ export function LoggedExerciseCard({
     </div>
   );
 }
+
+    
 
     

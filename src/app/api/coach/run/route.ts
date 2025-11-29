@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 import { SYSTEM_PROMPT, makeUserPrompt, COACH_RESPONSE_SCHEMA } from '@/lib/ai/coachPrompt';
 import { buildCoachFactsCompact } from '@/lib/analysis';
 import { normalizeAdviceUI } from '@/lib/coachNormalize';
+import { callGeminiOnce } from '@/lib/ai/gemini-utils';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -86,50 +87,6 @@ const generationConfig = {
     maxOutputTokens: 2048,
     responseMimeType: 'application/json',
 };
-
-// helper: one request to a specific model
-async function callGeminiOnce(model: string, systemText: string, userText: string, config?: any) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY}`;
-    
-    // SANITIZE: Separate internal logic (facts) from API config
-    // and resolve naming conflicts (max_output_tokens vs maxOutputTokens)
-    const { facts, max_output_tokens, ...restConfig } = config || {};
-
-    const finalGenConfig = {
-      ...generationConfig, // defaults (contains maxOutputTokens)
-      ...restConfig,       // overrides
-      response_schema: COACH_RESPONSE_SCHEMA,
-    };
-
-    // Ensure we stick to CamelCase for the API if an override was provided
-    if (max_output_tokens) {
-      finalGenConfig.maxOutputTokens = max_output_tokens;
-    }
-
-    const body = {
-        system_instruction: { parts: [{ text: systemText }] },
-        contents: [{ role: 'user', parts: [{ text: userText }] }],
-        generationConfig: finalGenConfig
-    };
-
-    const r = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-  
-    if (r.status === 404) {
-      // model not found for this API version → signal the caller to try next model
-      const err = new Error('MODEL_404');
-      (err as any).code = 404;
-      throw err;
-    }
-    if (!r.ok) {
-      const body = await r.text().catch(() => '');
-      throw new Error(`HTTP_${r.status}: ${body}`);
-    }
-    return r.json();
-}
   
 // try candidates in order until one works
 async function generateWithFallback(systemText: string, userText: string, config?: any) {
@@ -287,7 +244,7 @@ function looksLikeMaxTokens(apiJson:any) {
 }
 
 async function generateWithRetry(systemText: string, userText: string, config: { facts: any[], maxOutputTokens?: number }) {
-    const { json: firstJson, modelUsed } = await generateWithFallback(systemText, userText, config);
+    const { json: firstJson, modelUsed } = await generateWithFallback(systemText, userText, { ...config, response_schema: COACH_RESPONSE_SCHEMA });
   
     if (!looksLikeMaxTokens(firstJson)) {
       return { json: firstJson, modelUsed };
@@ -303,7 +260,7 @@ async function generateWithRetry(systemText: string, userText: string, config: {
         scope: { mode: 'global' },
       }) + '\n\n' + BRIEF_REPAIR_HINT;
   
-    const repairJson = await callGeminiOnce(modelUsed, systemText, briefUserText, config);
+    const repairJson = await callGeminiOnce(modelUsed, systemText, briefUserText, { ...config, response_schema: COACH_RESPONSE_SCHEMA });
     return { json: repairJson, modelUsed };
 }
 
@@ -321,9 +278,8 @@ export async function POST(req: Request) {
 
     const userPrompt = makeUserPrompt({ ...compact, scope, facts, brief: false });
     
-    // Fix: Use CamelCase 'maxOutputTokens' to match the file's convention
     const aiConfig = {
-        facts: facts, // This is now safely stripped in callGeminiOnce
+        facts: facts,
         maxOutputTokens: 2048, 
     };
     
