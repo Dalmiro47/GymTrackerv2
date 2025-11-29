@@ -151,10 +151,11 @@ export function AddEditRoutineDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      {/* UPDATED CLASS: sm:max-w-4xl (was max-w-2xl) 
-          This widens the modal on larger screens, allowing the exercise list grid to expand.
+      {/* FIX APPLIED: max-w-4xl (approx 896px)
+          This overrides the default max-w-lg constraint of the Dialog component, 
+          allowing the content to spread out on larger screens.
       */}
-      <DialogContent className="sm:max-w-4xl flex flex-col h-[90vh] sm:h-[85vh] p-0 gap-0 overflow-hidden">
+      <DialogContent className="max-w-[95vw] w-full sm:max-w-4xl flex flex-col h-[90vh] sm:h-[85vh] p-0 gap-0 overflow-hidden">
         
         {/* HEADER */}
         <DialogHeader className="p-6 pb-4 border-b shrink-0 bg-background z-10">
@@ -181,7 +182,6 @@ export function AddEditRoutineDialog({
           {/* VIEW 1: PICKER MODE */}
           {isPickerOpen ? (
             <div className="h-full flex flex-col gap-4">
-               {/* Reusing your existing component, but now it takes full width */}
                <AvailableExercisesSelector
                   allExercises={allUserExercises}
                   selectedExerciseIds={selectedExerciseIds}
