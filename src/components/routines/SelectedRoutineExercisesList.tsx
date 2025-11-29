@@ -66,8 +66,8 @@ function SortableExerciseItem({ exercise, index, onRemoveExercise, onUpdateSetSt
       >
         <div className="flex items-center gap-3 p-3">
           
-          {/* COL 1: Drag Handle & Index */}
-          <div className="flex items-center gap-3 shrink-0">
+          {/* COL 1: Drag Handle & Index (Always Left & Centered) */}
+          <div className="flex items-center gap-3 shrink-0 self-center">
             <button
               type="button"
               {...attributes}
@@ -83,55 +83,62 @@ function SortableExerciseItem({ exercise, index, onRemoveExercise, onUpdateSetSt
             </span>
           </div>
 
-          {/* COL 2: Name & Badge (Flex Grow) */}
-          <div className="flex flex-col justify-center min-w-0 flex-grow mr-4">
-               <div className="flex items-center gap-2">
-                  <p className="text-sm font-semibold truncate text-foreground">{exercise.name}</p>
-                  {exercise.isMissing && (
-                      <Badge variant="destructive" className="h-5 px-1 text-[10px] gap-1 shrink-0">
-                          <AlertTriangle className="h-3 w-3"/> Missing
-                      </Badge>
-                  )}
-               </div>
-               <div className="flex items-center mt-0.5">
-                  <Badge variant="secondary" className="text-[10px] h-4 px-1.5 font-normal text-muted-foreground bg-muted/50 border-transparent">
-                    {exercise.muscleGroup}
-                  </Badge>
-               </div>
-          </div>
-
-          {/* COL 3: Controls Group (Right Aligned) */}
-          <div className="flex items-center gap-4 ml-auto shrink-0">
+          {/* RESPONSIVE WRAPPER: 
+              - Mobile: Flex Column (Stack Name top, Controls bottom) 
+              - Desktop (sm): Flex Row (Side by side) 
+          */}
+          <div className="flex flex-col sm:flex-row sm:items-center flex-grow min-w-0 gap-3 sm:gap-4">
             
-            {/* Set Picker - Distinct Box */}
-            {!exercise.isMissing && (
-                <div className="relative w-[140px] border rounded-md bg-background shadow-sm overflow-hidden group/picker">
-                   <SetStructurePicker
-                      value={exercise.setStructure ?? 'normal'}
-                      onChange={(value) => onUpdateSetStructure(exercise.id, value)}
-                      // Added appearance-none to hide native arrow on mobile
-                      className="h-8 text-xs w-full border-none focus:ring-0 pr-6 relative z-10 bg-transparent appearance-none" 
-                    />
-                    <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none z-0 text-muted-foreground/50 group-hover/picker:text-foreground">
-                        <ChevronDown className="h-3.5 w-3.5" />
-                    </div>
+            {/* NAME SECTION */}
+            <div className="flex flex-col justify-center min-w-0 flex-grow">
+                <div className="flex items-center gap-2">
+                    <p className="text-sm font-semibold truncate text-foreground">{exercise.name}</p>
+                    {exercise.isMissing && (
+                        <Badge variant="destructive" className="h-5 px-1 text-[10px] gap-1 shrink-0">
+                            <AlertTriangle className="h-3 w-3"/> Missing
+                        </Badge>
+                    )}
                 </div>
-             )}
+                <div className="flex items-center mt-0.5">
+                    <Badge variant="secondary" className="text-[10px] h-4 px-1.5 font-normal text-muted-foreground bg-muted/50 border-transparent">
+                      {exercise.muscleGroup}
+                    </Badge>
+                </div>
+            </div>
 
-            {/* Separator Line */}
-            <div className="h-6 w-px bg-border" />
+            {/* CONTROLS SECTION (Right aligned) */}
+            <div className="flex items-center justify-end gap-4 shrink-0">
+                
+                {/* Set Picker */}
+                {!exercise.isMissing && (
+                    <div className="relative w-[130px] border rounded-md bg-background shadow-sm overflow-hidden group/picker">
+                      <SetStructurePicker
+                          value={exercise.setStructure ?? 'normal'}
+                          onChange={(value) => onUpdateSetStructure(exercise.id, value)}
+                          className="h-8 text-xs w-full border-none focus:ring-0 pr-6 relative z-10 bg-transparent appearance-none" 
+                        />
+                        <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none z-0 text-muted-foreground/50 group-hover/picker:text-foreground">
+                            <ChevronDown className="h-3.5 w-3.5" />
+                        </div>
+                    </div>
+                )}
 
-            {/* Delete Button - Distinct Element */}
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              onClick={() => onRemoveExercise(exercise.id)}
-              aria-label={`Remove ${exercise.name}`}
-              className="text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10 h-8 w-8 transition-colors rounded-full"
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
+                {/* Separator Line */}
+                <div className="h-6 w-px bg-border" />
+
+                {/* Delete Button */}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => onRemoveExercise(exercise.id)}
+                  aria-label={`Remove ${exercise.name}`}
+                  className="text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10 h-8 w-8 transition-colors rounded-full"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+            </div>
+
           </div>
 
         </div>
