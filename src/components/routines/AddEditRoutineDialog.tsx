@@ -151,11 +151,11 @@ export function AddEditRoutineDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      {/* FIX APPLIED: max-w-4xl (approx 896px)
-          This overrides the default max-w-lg constraint of the Dialog component, 
-          allowing the content to spread out on larger screens.
+      {/* FIX APPLIED: !max-w-4xl and !w-full
+          Using the ! modifier forces these styles to override any defaults from the underlying
+          DialogContent component definition.
       */}
-      <DialogContent className="max-w-[95vw] w-full sm:max-w-4xl flex flex-col h-[90vh] sm:h-[85vh] p-0 gap-0 overflow-hidden">
+      <DialogContent className="!max-w-4xl !w-[95vw] flex flex-col h-[90vh] sm:h-[85vh] p-0 gap-0 overflow-hidden">
         
         {/* HEADER */}
         <DialogHeader className="p-6 pb-4 border-b shrink-0 bg-background z-10">
