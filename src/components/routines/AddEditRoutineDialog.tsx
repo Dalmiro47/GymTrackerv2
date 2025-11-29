@@ -59,10 +59,10 @@ export function AddEditRoutineDialog({
     },
   });
 
-  // State to toggle between "Builder View" and "Picker View"
   const [isPickerOpen, setIsPickerOpen] = useState(false);
-
   const [selectedExerciseObjects, setSelectedExerciseObjects] = useState<RoutineExercise[]>([]);
+  // Track where new exercises should be inserted (null = end of list)
+  const [insertionIndex, setInsertionIndex] = useState<number | null>(null);
   
   const exerciseIdMap = useMemo(
     () => new Map(allUserExercises.map(ex => [ex.id, ex])),
@@ -75,7 +75,8 @@ export function AddEditRoutineDialog({
     if (!routineToEdit) {
       reset({ name: '', description: '' });
       setSelectedExerciseObjects([]);
-      setIsPickerOpen(false); // Always start in builder view
+      setIsPickerOpen(false);
+      setInsertionIndex(null);
       return;
     }
   
@@ -92,6 +93,7 @@ export function AddEditRoutineDialog({
     });
     setSelectedExerciseObjects(hydratedExercises);
     setIsPickerOpen(false);
+    setInsertionIndex(null);
   
   }, [routineToEdit, reset, isOpen, isLoadingExercises, exerciseIdMap]);
 
@@ -99,14 +101,32 @@ export function AddEditRoutineDialog({
   const handleExerciseSelectionChange = (exerciseId: string, isSelected: boolean) => {
     setSelectedExerciseObjects(prevSelected => {
       if (isSelected) {
+        // Prevent duplicates
+        if (prevSelected.find(e => e.id === exerciseId)) return prevSelected;
+
         const exerciseToAdd = allUserExercises.find(ex => ex.id === exerciseId);
         if (!exerciseToAdd) return prevSelected;
-        // Don't add duplicates
-        if (prevSelected.find(e => e.id === exerciseId)) return prevSelected;
         
         const routineExercise: RoutineExercise = { ...exerciseToAdd, setStructure: 'normal' };
-        return [...prevSelected, routineExercise];
+        
+        // If we have an insertion index, splice it in. Otherwise append.
+        if (insertionIndex !== null) {
+            const newList = [...prevSelected];
+            newList.splice(insertionIndex, 0, routineExercise);
+            // Increment index so subsequent selections add after this one (keeping order)
+            setInsertionIndex(insertionIndex + 1); 
+            return newList;
+        } else {
+            return [...prevSelected, routineExercise];
+        }
+
       } else {
+        // Removing
+        const indexRemoved = prevSelected.findIndex(e => e.id === exerciseId);
+        // Adjust insertion index if we removed something before it
+        if (insertionIndex !== null && indexRemoved !== -1 && indexRemoved < insertionIndex) {
+            setInsertionIndex(prev => (prev !== null ? Math.max(0, prev - 1) : null));
+        }
         return prevSelected.filter(e => e.id !== exerciseId);
       }
     });
@@ -140,24 +160,24 @@ export function AddEditRoutineDialog({
     await onSave(routineData, routineToEdit?.id);
   };
 
-  // Explicit handler to return to builder view
   const handleDoneAdding = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     setIsPickerOpen(false);
+    setInsertionIndex(null); // Reset insertion point
   };
+
+  const openPickerAtIndex = (index: number | null) => {
+      setInsertionIndex(index);
+      setIsPickerOpen(true);
+  }
 
   const selectedExerciseIds = selectedExerciseObjects.map(ex => ex.id);
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      {/* FIX APPLIED: !max-w-4xl and !w-full
-          Using the ! modifier forces these styles to override any defaults from the underlying
-          DialogContent component definition.
-      */}
       <DialogContent className="!max-w-4xl !w-[95vw] flex flex-col h-[90vh] sm:h-[85vh] p-0 gap-0 overflow-hidden">
         
-        {/* HEADER */}
         <DialogHeader className="p-6 pb-4 border-b shrink-0 bg-background z-10">
           <div className="flex items-center justify-between">
             <DialogTitle className="font-headline text-xl">
@@ -176,10 +196,7 @@ export function AddEditRoutineDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {/* CONTENT AREA - Scrollable */}
         <div className="flex-grow overflow-y-auto p-6 bg-muted/5">
-          
-          {/* VIEW 1: PICKER MODE */}
           {isPickerOpen ? (
             <div className="h-full flex flex-col gap-4">
                <AvailableExercisesSelector
@@ -190,8 +207,6 @@ export function AddEditRoutineDialog({
                 />
             </div>
           ) : (
-            
-          /* VIEW 2: BUILDER MODE */
             <form id="routine-form" onSubmit={handleSubmit(onSubmit)} className="space-y-6">
               <div className="grid grid-cols-1 gap-4 p-1">
                 <div className="space-y-2">
@@ -221,7 +236,6 @@ export function AddEditRoutineDialog({
                     <Label className="text-base font-semibold">Exercises ({selectedExerciseObjects.length})</Label>
                 </div>
                 
-                {/* Selected List - Now Full Width */}
                 <div className="min-h-[100px] rounded-md border bg-card">
                     {selectedExerciseObjects.length === 0 ? (
                         <div className="flex flex-col items-center justify-center h-32 text-muted-foreground">
@@ -229,7 +243,7 @@ export function AddEditRoutineDialog({
                             <Button 
                                 type="button" 
                                 variant="link" 
-                                onClick={(e) => { e.preventDefault(); setIsPickerOpen(true); }}
+                                onClick={(e) => { e.preventDefault(); openPickerAtIndex(null); }}
                             >
                                 Browse Library
                             </Button>
@@ -240,6 +254,7 @@ export function AddEditRoutineDialog({
                             onRemoveExercise={(exerciseId) => handleExerciseSelectionChange(exerciseId, false)}
                             onReorderExercises={handleReorderExercises}
                             onUpdateSetStructure={handleUpdateSetStructure}
+                            onInsertExercise={openPickerAtIndex} // Pass the handler
                         />
                     )}
                 </div>
@@ -248,16 +263,15 @@ export function AddEditRoutineDialog({
                     type="button" 
                     variant="outline" 
                     className="w-full border-dashed border-2 h-12 text-muted-foreground hover:text-primary hover:border-primary/50"
-                    onClick={(e) => { e.preventDefault(); setIsPickerOpen(true); }}
+                    onClick={(e) => { e.preventDefault(); openPickerAtIndex(null); }}
                 >
-                    <Plus className="mr-2 h-4 w-4" /> Add Exercises
+                    <Plus className="mr-2 h-4 w-4" /> Add Exercises at End
                 </Button>
               </div>
             </form>
           )}
         </div>
 
-        {/* FOOTER */}
         <DialogFooter className="p-4 border-t bg-background shrink-0 flex-row gap-2 sm:justify-between items-center">
           {isPickerOpen ? (
             <>
@@ -288,7 +302,7 @@ export function AddEditRoutineDialog({
                 </Button>
                 <Button 
                     type="submit" 
-                    form="routine-form" // Link to the form ID
+                    form="routine-form" 
                     disabled={isSaving || isLoadingExercises} 
                     className="bg-primary"
                 >
