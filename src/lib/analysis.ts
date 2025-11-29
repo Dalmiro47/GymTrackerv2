@@ -312,7 +312,7 @@ const MG = (s: string) => {
 export function buildCoachFactsCompact(profile: any, _routineSummary: any, trainingSummary: any) {
   const facts: CoachFactCompact[] = [];
 
-  // Last week by muscle group (sort asc → low first). Limit to 7.
+  // Last week by muscle group (sort asc → low first).
   const lastWeek = (trainingSummary?.weekly ?? []).filter(Boolean)
     .reduce((acc: Record<string, number>, r: any) => {
       if (!acc.__week) acc.__week = r.week; // take the first week in list
@@ -322,12 +322,13 @@ export function buildCoachFactsCompact(profile: any, _routineSummary: any, train
 
   const mgPairs = Object.entries(lastWeek).filter(([k])=>k!=='__week') as [string, number][];
   mgPairs.sort((a,b)=>a[1]-b[1]);
-  for (const [mg, w] of mgPairs.slice(0,7)) {
+  // Limit to 5 lowest volume groups
+  for (const [mg, w] of mgPairs.slice(0,5)) {
     const g = MG(mg);
     facts.push({ id: `v:${g}`, t: 'v', g, w });
   }
 
-  // Biggest imbalances vs max. Limit to 4 with diff ≥ 4 sets.
+  // Biggest imbalances vs max. Limit to 2 with diff ≥ 4 sets.
   if (mgPairs.length) {
     const [hiMg, hiVal] = [...mgPairs].sort((a,b)=>b[1]-a[1])[0];
     for (const [mg, sets] of mgPairs) {
@@ -335,12 +336,12 @@ export function buildCoachFactsCompact(profile: any, _routineSummary: any, train
       if (diff >= 4 && mg !== hiMg) {
         facts.push({ id: `i:${MG(hiMg)}:${MG(mg)}`, t: 'i', hi: MG(hiMg), lo: MG(mg), d: diff });
       }
-      if (facts.filter(f=>f.t==='i').length >= 4) break;
+      if (facts.filter(f=>f.t==='i').length >= 2) break;
     }
   }
 
-  // Stalls (if available). Limit to 2 and shorten slope precision.
-  for (const s of (trainingSummary?.stalls ?? []).slice(0,2)) {
+  // Stalls (if available). Limit to 1.
+  for (const s of (trainingSummary?.stalls ?? []).slice(0,1)) {
     facts.push({ id: `s:${(s.name||'').slice(0,10)}`, t: 's', n: s.name, w: Number(s.weeks||0), sl: Number((s.slope||0).toFixed(2)) });
   }
 
