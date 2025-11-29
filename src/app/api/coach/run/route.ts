@@ -91,14 +91,25 @@ const generationConfig = {
 async function callGeminiOnce(model: string, systemText: string, userText: string, config?: any) {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY}`;
     
+    // SANITIZE: Separate internal logic (facts) from API config
+    // and resolve naming conflicts (max_output_tokens vs maxOutputTokens)
+    const { facts, max_output_tokens, ...restConfig } = config || {};
+
+    const finalGenConfig = {
+      ...generationConfig, // defaults (contains maxOutputTokens)
+      ...restConfig,       // overrides
+      response_schema: COACH_RESPONSE_SCHEMA,
+    };
+
+    // Ensure we stick to CamelCase for the API if an override was provided
+    if (max_output_tokens) {
+      finalGenConfig.maxOutputTokens = max_output_tokens;
+    }
+
     const body = {
         system_instruction: { parts: [{ text: systemText }] },
         contents: [{ role: 'user', parts: [{ text: userText }] }],
-        generationConfig: {
-          ...generationConfig,
-          ...config,
-          response_schema: COACH_RESPONSE_SCHEMA,
-        }
+        generationConfig: finalGenConfig
     };
 
     const r = await fetch(url, {
@@ -275,7 +286,7 @@ function looksLikeMaxTokens(apiJson:any) {
   } catch { return false; }
 }
 
-async function generateWithRetry(systemText: string, userText: string, config: { facts: any[], max_output_tokens?: number }) {
+async function generateWithRetry(systemText: string, userText: string, config: { facts: any[], maxOutputTokens?: number }) {
     const { json: firstJson, modelUsed } = await generateWithFallback(systemText, userText, config);
   
     if (!looksLikeMaxTokens(firstJson)) {
@@ -310,10 +321,12 @@ export async function POST(req: Request) {
 
     const userPrompt = makeUserPrompt({ ...compact, scope, facts, brief: false });
     
+    // Fix: Use CamelCase 'maxOutputTokens' to match the file's convention
     const aiConfig = {
-        facts: facts,
-        max_output_tokens: 2048,
+        facts: facts, // This is now safely stripped in callGeminiOnce
+        maxOutputTokens: 2048, 
     };
+    
     const { json, modelUsed } = await generateWithRetry(SYSTEM_PROMPT, userPrompt, aiConfig);
     
     let p1 = extractJsonFromCandidates(json);
