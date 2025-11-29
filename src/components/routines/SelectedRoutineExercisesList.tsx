@@ -57,69 +57,78 @@ function SortableExerciseItem({ exercise, index, onRemoveExercise, onUpdateSetSt
       ref={setNodeRef}
       style={style}
       className={cn(
-        "group flex flex-col sm:flex-row sm:items-center gap-3 p-3 rounded-xl border bg-card shadow-sm transition-all touch-none",
-        isDragging && "shadow-md ring-2 ring-primary/20",
+        "group relative bg-card border rounded-lg shadow-sm transition-all touch-none overflow-hidden",
+        isDragging && "shadow-md ring-2 ring-primary/20 z-50",
         exercise.isMissing && "border-destructive/50 bg-destructive/5"
       )}
     >
-      {/* Left Section: Drag + Info */}
-      <div className="flex items-center flex-1 gap-3 overflow-hidden">
-        {/* Drag Handle */}
-        <button
-          type="button"
-          {...attributes}
-          {...listeners}
-          className="p-1.5 cursor-grab active:cursor-grabbing text-muted-foreground/50 hover:text-foreground hover:bg-muted rounded-md transition-colors"
-          aria-label={`Drag to reorder ${exercise.name}`}
-          disabled={exercise.isMissing}
-        >
-          <GripVertical className="h-5 w-5" />
-        </button>
+      {/* Responsive Grid Layout:
+        - Mobile: Flex column or tight grid
+        - Tablet/Desktop: 4-column grid [Drag/Index (auto) | Name (1fr) | Set Structure (auto) | Delete (auto)]
+      */}
+      <div className="flex flex-col sm:grid sm:grid-cols-[auto_1fr_auto_auto] sm:items-center gap-3 p-3">
+        
+        {/* COL 1: Drag Handle & Index */}
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            {...attributes}
+            {...listeners}
+            className="p-1.5 -ml-1.5 cursor-grab active:cursor-grabbing text-muted-foreground/40 hover:text-foreground hover:bg-muted rounded-md transition-colors"
+            aria-label={`Drag to reorder ${exercise.name}`}
+            disabled={exercise.isMissing}
+          >
+            <GripVertical className="h-5 w-5" />
+          </button>
+          <span className="text-xs font-mono font-medium text-muted-foreground/60 w-5 text-center">
+            {index + 1}
+          </span>
+        </div>
 
-        {/* Index Number */}
-        <span className="text-xs font-mono font-medium text-muted-foreground/70 w-5 text-center shrink-0">
-          {index + 1}
-        </span>
-
-        {/* Name & Metadata */}
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 mb-1">
+        {/* COL 2: Name & Metadata */}
+        <div className="flex flex-col justify-center min-w-0 mr-4">
+          <div className="flex items-center gap-2">
              <p className="text-sm font-semibold truncate text-foreground">{exercise.name}</p>
              {exercise.isMissing && (
-                <Badge variant="destructive" className="h-5 px-1 text-[10px] gap-1">
+                <Badge variant="destructive" className="h-5 px-1 text-[10px] gap-1 shrink-0">
                     <AlertTriangle className="h-3 w-3"/> Missing
                 </Badge>
              )}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center mt-1">
              <Badge variant="secondary" className="text-[10px] h-5 px-1.5 font-normal text-muted-foreground bg-muted/50 border-transparent">
                {exercise.muscleGroup}
              </Badge>
           </div>
         </div>
-      </div>
 
-      {/* Right Section: Controls */}
-      <div className="flex items-center gap-2 pl-10 sm:pl-0">
-         {!exercise.isMissing && (
-            <div className="w-[140px] sm:w-[160px]">
-               <SetStructurePicker
-                  value={exercise.setStructure ?? 'normal'}
-                  onChange={(value) => onUpdateSetStructure(exercise.id, value)}
-                  className="h-8 text-xs" // Assuming SetStructurePicker accepts className for sizing
-                />
-            </div>
-         )}
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          onClick={() => onRemoveExercise(exercise.id)}
-          aria-label={`Remove ${exercise.name}`}
-          className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 h-8 w-8 shrink-0"
-        >
-          <Trash2 className="h-4 w-4" />
-        </Button>
+        {/* COL 3: Set Structure Picker */}
+        <div className="flex items-center sm:justify-end">
+           {!exercise.isMissing && (
+              <div className="w-full sm:w-[160px]">
+                 <SetStructurePicker
+                    value={exercise.setStructure ?? 'normal'}
+                    onChange={(value) => onUpdateSetStructure(exercise.id, value)}
+                    className="h-8 text-xs w-full"
+                  />
+              </div>
+           )}
+        </div>
+
+        {/* COL 4: Remove Button */}
+        <div className="flex justify-end sm:justify-center">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={() => onRemoveExercise(exercise.id)}
+            aria-label={`Remove ${exercise.name}`}
+            className="text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10 h-8 w-8"
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
+
       </div>
     </li>
   );
@@ -166,8 +175,6 @@ export function SelectedRoutineExercisesList({
 
   return (
     <div className="h-full flex flex-col">
-      {/* Header hidden to keep it clean, relying on parent Label */}
-      
       <div className="flex-grow min-h-0 bg-muted/5 border rounded-lg overflow-hidden relative">
         {selectedExercises.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full min-h-[200px] text-center p-6">
