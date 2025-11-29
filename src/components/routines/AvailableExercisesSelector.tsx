@@ -1,17 +1,15 @@
 
 "use client";
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import type { Exercise } from '@/types';
-import type { MuscleGroup } from '@/lib/constants';
-import { MUSCLE_GROUPS_LIST } from '@/lib/constants';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Search, Filter, Loader2 } from 'lucide-react';
-import { assertMuscleGroup } from '@/lib/muscleGroup';
+import { Search, ChevronRight, Check, ArrowLeft, Dumbbell } from 'lucide-react';
+import { MUSCLE_GROUPS_LIST, type MuscleGroup } from '@/lib/constants';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 
 interface AvailableExercisesSelectorProps {
   allExercises: Exercise[];
@@ -27,115 +25,157 @@ export function AvailableExercisesSelector({
   isLoadingExercises,
 }: AvailableExercisesSelectorProps) {
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedMuscleGroup, setSelectedMuscleGroup] = useState<MuscleGroup | 'All'>('All');
-  
-  const canonicalExercises = useMemo(() => {
-      return allExercises.map(e => ({...e, muscleGroup: assertMuscleGroup(e.muscleGroup as any)}));
+  const [activeMuscleGroup, setActiveMuscleGroup] = useState<MuscleGroup | 'All' | null>(null);
+
+  // Group exercises by muscle for the counts on the grid view
+  const exerciseCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    allExercises.forEach(ex => {
+      const mg = ex.muscleGroup;
+      counts[mg] = (counts[mg] || 0) + 1;
+    });
+    return counts;
   }, [allExercises]);
 
-  const { availableMuscleGroups, muscleGroupCounts } = useMemo(() => {
-    const counts: Record<string, number> = {};
-    const seenGroups = new Set<MuscleGroup>();
-
-    canonicalExercises.forEach(ex => {
-      const group = ex.muscleGroup;
-      seenGroups.add(group);
-      counts[group] = (counts[group] || 0) + 1;
-    });
-    
-    const available = MUSCLE_GROUPS_LIST.filter(group => seenGroups.has(group));
-    
-    return { availableMuscleGroups: available, muscleGroupCounts: counts };
-  }, [canonicalExercises]);
-  
-  useEffect(() => {
-    if (selectedMuscleGroup !== 'All' && !availableMuscleGroups.includes(selectedMuscleGroup)) {
-      setSelectedMuscleGroup('All');
-    }
-  }, [availableMuscleGroups, selectedMuscleGroup]);
-
-
   const filteredExercises = useMemo(() => {
-    let tempExercises = [...canonicalExercises];
-    if (searchTerm.trim() !== '') {
-      tempExercises = tempExercises.filter(ex =>
-        ex.name.toLowerCase().includes(searchTerm.toLowerCase().trim())
-      );
+    let temp = [...allExercises];
+    
+    // If searching globally (no muscle group selected), just filter by name
+    if (activeMuscleGroup === null && searchTerm.trim() !== '') {
+       return temp.filter(ex => ex.name.toLowerCase().includes(searchTerm.toLowerCase().trim()));
     }
-    if (selectedMuscleGroup !== 'All') {
-      tempExercises = tempExercises.filter(ex => ex.muscleGroup === selectedMuscleGroup);
-    }
-    return tempExercises;
-  }, [canonicalExercises, searchTerm, selectedMuscleGroup]);
 
-  if (isLoadingExercises) {
+    // Otherwise, filter by muscle group FIRST
+    if (activeMuscleGroup && activeMuscleGroup !== 'All') {
+      temp = temp.filter(ex => ex.muscleGroup === activeMuscleGroup);
+    }
+
+    // THEN filter by search term within that group
+    if (searchTerm.trim() !== '') {
+      const q = searchTerm.toLowerCase().trim();
+      temp = temp.filter(ex => ex.name.toLowerCase().includes(q));
+    }
+    return temp;
+  }, [allExercises, searchTerm, activeMuscleGroup]);
+
+  // VIEW 1: Muscle Group Grid
+  if (activeMuscleGroup === null && searchTerm === '') {
     return (
-      <div className="flex flex-col space-y-3 p-4 border rounded-md min-h-[300px] justify-center items-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        <p className="text-muted-foreground">Loading exercises...</p>
+      <div className="flex flex-col h-full gap-4">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Search all exercises..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+        
+        <ScrollArea className="flex-grow">
+          <div className="grid grid-cols-2 gap-3 pb-4">
+            <button
+                onClick={() => setActiveMuscleGroup('All')}
+                className="flex flex-col items-center justify-center p-4 rounded-xl border bg-card hover:bg-accent/50 hover:border-primary/30 transition-all text-center gap-2"
+            >
+                <div className="p-2 rounded-full bg-primary/10 text-primary">
+                    <Dumbbell className="h-6 w-6" />
+                </div>
+                <div>
+                    <span className="font-semibold block">All Exercises</span>
+                    <span className="text-xs text-muted-foreground">{allExercises.length} items</span>
+                </div>
+            </button>
+
+            {MUSCLE_GROUPS_LIST.map(mg => {
+              const count = exerciseCounts[mg] || 0;
+              if (count === 0) return null; // Hide empty groups
+              return (
+                <button
+                  key={mg}
+                  onClick={() => setActiveMuscleGroup(mg)}
+                  className="flex flex-col items-start p-4 rounded-xl border bg-card hover:bg-accent/50 hover:border-primary/30 transition-all text-left"
+                >
+                  <span className="font-semibold text-base">{mg}</span>
+                  <span className="text-xs text-muted-foreground">{count} exercises</span>
+                </button>
+              );
+            })}
+          </div>
+        </ScrollArea>
       </div>
     );
   }
 
+  // VIEW 2: Exercise List (Filtered)
   return (
-    <div className="space-y-4 p-1 h-full flex flex-col">
-      <h3 className="text-lg font-medium flex-shrink-0">Available Exercises</h3>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 flex-shrink-0">
-        <div className="relative">
-          <Filter className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Select
-            value={selectedMuscleGroup}
-            onValueChange={(value) => setSelectedMuscleGroup(value as MuscleGroup | 'All')}
-          >
-            <SelectTrigger className="w-full pl-9" aria-label="Filter by muscle group">
-              <SelectValue placeholder="Filter by muscle group" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="All">All Muscle Groups</SelectItem>
-              {availableMuscleGroups.map(group => (
-                <SelectItem key={group} value={group}>
-                  {group} ({muscleGroupCounts[group] || 0})
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="relative">
+    <div className="flex flex-col h-full gap-3">
+      <div className="flex items-center gap-2">
+        <Button 
+            variant="ghost" 
+            size="sm" 
+            className="h-9 px-2 -ml-2 text-muted-foreground"
+            onClick={() => {
+                setActiveMuscleGroup(null);
+                setSearchTerm('');
+            }}
+        >
+            <ArrowLeft className="h-4 w-4 mr-1" />
+            Categories
+        </Button>
+        <div className="relative flex-grow">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            type="search"
-            placeholder="Search exercise by name..."
+            placeholder={`Search ${activeMuscleGroup === 'All' ? '' : activeMuscleGroup} exercises...`}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9"
-            aria-label="Search exercises"
+            className="pl-9 h-9"
+            autoFocus
           />
         </div>
       </div>
 
-      <div className="flex-grow min-h-0">
-        <ScrollArea className="h-[calc(100vh-28rem)] sm:h-[300px] w-full rounded-md border p-4">
-          {filteredExercises.length > 0 ? (
-            <div className="space-y-3">
-              {filteredExercises.map(exercise => (
-                <div key={exercise.id} className="flex items-center space-x-2">
-                  <Checkbox
-                    id={`ex-${exercise.id}`}
-                    checked={selectedExerciseIds.includes(exercise.id)}
-                    onCheckedChange={(checked) => onSelectionChange(exercise.id, !!checked)}
-                  />
-                  <Label htmlFor={`ex-${exercise.id}`} className="flex-1 cursor-pointer">
-                    {exercise.name} <span className="text-xs text-muted-foreground">({exercise.muscleGroup})</span>
-                  </Label>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground text-center py-4">
-              No exercises match your criteria.
-            </p>
-          )}
-        </ScrollArea>
+      <div className="flex-grow border rounded-md bg-background overflow-hidden relative">
+         <ScrollArea className="h-full w-full p-2">
+            {filteredExercises.length > 0 ? (
+              <div className="grid grid-cols-1 gap-2">
+                {filteredExercises.map(exercise => {
+                  const isSelected = selectedExerciseIds.includes(exercise.id);
+                  return (
+                    <div
+                      key={exercise.id}
+                      className={cn(
+                        "flex items-center justify-between p-3 rounded-lg border transition-all cursor-pointer",
+                        isSelected 
+                            ? "bg-primary/5 border-primary shadow-sm" 
+                            : "hover:bg-muted/50 border-transparent bg-muted/10"
+                      )}
+                      onClick={() => onSelectionChange(exercise.id, !isSelected)}
+                    >
+                      <div>
+                        <p className={cn("font-medium text-sm", isSelected && "text-primary")}>
+                            {exercise.name}
+                        </p>
+                        <p className="text-xs text-muted-foreground">{exercise.muscleGroup}</p>
+                      </div>
+                      
+                      {isSelected ? (
+                          <div className="h-6 w-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center shrink-0 animate-in zoom-in-50 duration-200">
+                              <Check className="h-3.5 w-3.5" />
+                          </div>
+                      ) : (
+                          <div className="h-6 w-6 rounded-full border border-muted-foreground/30 shrink-0" />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center h-32 text-muted-foreground text-sm">
+                <p>No exercises found.</p>
+              </div>
+            )}
+         </ScrollArea>
       </div>
     </div>
   );

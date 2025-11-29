@@ -1,10 +1,9 @@
-
 "use client";
 
 import type { RoutineExercise, SetStructure } from '@/types';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Trash2, ListChecks, GripVertical, AlertTriangle } from 'lucide-react';
+import { Trash2, GripVertical, AlertTriangle, Dumbbell, ChevronDown, Plus, PlusCircle } from 'lucide-react';
 import React from 'react';
 import {
   DndContext,
@@ -25,18 +24,19 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { Card } from '../ui/card';
 import { SetStructurePicker } from '../SetStructurePicker';
 import { cn } from '@/lib/utils';
 import { Badge } from '../ui/badge';
 
 interface SortableExerciseItemProps {
   exercise: RoutineExercise;
+  index: number;
   onRemoveExercise: (exerciseId: string) => void;
   onUpdateSetStructure: (exerciseId: string, structure: SetStructure) => void;
+  onInsertExercise: (index: number) => void;
 }
 
-function SortableExerciseItem({ exercise, onRemoveExercise, onUpdateSetStructure }: SortableExerciseItemProps) {
+function SortableExerciseItem({ exercise, index, onRemoveExercise, onUpdateSetStructure, onInsertExercise }: SortableExerciseItemProps) {
   const {
     attributes,
     listeners,
@@ -54,58 +54,103 @@ function SortableExerciseItem({ exercise, onRemoveExercise, onUpdateSetStructure
   };
 
   return (
-    <li
-      ref={setNodeRef}
-      style={style}
-      className={cn(
-        "p-2.5 rounded-md border bg-card shadow-sm touch-none",
-        exercise.isMissing && "border-destructive/50 bg-destructive/5"
+    <React.Fragment>
+      <li
+        ref={setNodeRef}
+        style={style}
+        className={cn(
+          "group relative bg-card border rounded-lg shadow-sm transition-all touch-none overflow-hidden hover:border-primary/30",
+          isDragging && "shadow-md ring-2 ring-primary/20 z-50",
+          exercise.isMissing && "border-destructive/50 bg-destructive/5"
         )}
-    >
-      <div className="flex items-center justify-between">
-        <div className="flex items-center flex-1">
-          <button
-            type="button"
-            {...attributes}
-            {...listeners}
-            className="p-1 cursor-grab active:cursor-grabbing mr-2 text-muted-foreground hover:text-foreground"
-            aria-label={`Drag to reorder ${exercise.name}`}
-            disabled={exercise.isMissing}
-          >
-            <GripVertical className="h-5 w-5" />
-          </button>
-          <div>
-            <p className="text-sm font-medium">{exercise.name}</p>
-            <p className="text-xs text-muted-foreground">{exercise.muscleGroup}</p>
+      >
+        <div className="flex items-center gap-3 p-3">
+          
+          {/* COL 1: Drag Handle & Index */}
+          <div className="flex items-center gap-3 shrink-0">
+            <button
+              type="button"
+              {...attributes}
+              {...listeners}
+              className="p-1.5 -ml-1.5 cursor-grab active:cursor-grabbing text-muted-foreground/40 hover:text-foreground hover:bg-muted rounded-md transition-colors"
+              aria-label={`Drag to reorder ${exercise.name}`}
+              disabled={exercise.isMissing}
+            >
+              <GripVertical className="h-5 w-5" />
+            </button>
+            <span className="text-xs font-mono font-medium text-muted-foreground/60 w-5 text-center">
+              {index + 1}
+            </span>
           </div>
+
+          {/* COL 2: Name & Badge (Flex Grow) */}
+          <div className="flex flex-col justify-center min-w-0 flex-grow mr-4">
+               <div className="flex items-center gap-2">
+                  <p className="text-sm font-semibold truncate text-foreground">{exercise.name}</p>
+                  {exercise.isMissing && (
+                      <Badge variant="destructive" className="h-5 px-1 text-[10px] gap-1 shrink-0">
+                          <AlertTriangle className="h-3 w-3"/> Missing
+                      </Badge>
+                  )}
+               </div>
+               <div className="flex items-center mt-0.5">
+                  <Badge variant="secondary" className="text-[10px] h-4 px-1.5 font-normal text-muted-foreground bg-muted/50 border-transparent">
+                    {exercise.muscleGroup}
+                  </Badge>
+               </div>
+          </div>
+
+          {/* COL 3: Controls Group (Right Aligned) */}
+          <div className="flex items-center gap-4 ml-auto shrink-0">
+            
+            {/* Set Picker - Distinct Box */}
+            {!exercise.isMissing && (
+                <div className="relative w-[140px] border rounded-md bg-background shadow-sm overflow-hidden group/picker">
+                   <SetStructurePicker
+                      value={exercise.setStructure ?? 'normal'}
+                      onChange={(value) => onUpdateSetStructure(exercise.id, value)}
+                      // Added appearance-none to hide native arrow on mobile
+                      className="h-8 text-xs w-full border-none focus:ring-0 pr-6 relative z-10 bg-transparent appearance-none" 
+                    />
+                    <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none z-0 text-muted-foreground/50 group-hover/picker:text-foreground">
+                        <ChevronDown className="h-3.5 w-3.5" />
+                    </div>
+                </div>
+             )}
+
+            {/* Separator Line */}
+            <div className="h-6 w-px bg-border" />
+
+            {/* Delete Button - Distinct Element */}
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={() => onRemoveExercise(exercise.id)}
+              aria-label={`Remove ${exercise.name}`}
+              className="text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10 h-8 w-8 transition-colors rounded-full"
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
+
         </div>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          onClick={() => onRemoveExercise(exercise.id)}
-          aria-label={`Remove ${exercise.name}`}
-          className="text-destructive hover:text-destructive/90"
-        >
-          <Trash2 className="h-4 w-4" />
-        </Button>
+      </li>
+      
+      {/* VISIBLE INSERTION BUTTON */}
+      <div className="flex items-center justify-center py-2">
+          <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => onInsertExercise(index + 1)}
+              className="h-7 text-xs text-muted-foreground/50 hover:text-primary hover:bg-primary/5 gap-1 rounded-full border border-transparent hover:border-primary/20 px-3 transition-all"
+          >
+              <PlusCircle className="h-3.5 w-3.5" />
+              <span>Insert Here</span>
+          </Button>
       </div>
-       {!exercise.isMissing ? (
-        <div className="pl-8 pt-2">
-           <SetStructurePicker
-              value={exercise.setStructure ?? 'normal'}
-              onChange={(value) => onUpdateSetStructure(exercise.id, value)}
-            />
-        </div>
-       ) : (
-        <div className="pl-8 pt-2">
-            <Badge variant="destructive" className="items-center gap-1">
-                <AlertTriangle className="h-3 w-3"/>
-                Missing Exercise
-            </Badge>
-        </div>
-       )}
-    </li>
+    </React.Fragment>
   );
 }
 
@@ -115,6 +160,7 @@ interface SelectedRoutineExercisesListProps {
   onRemoveExercise: (exerciseId: string) => void;
   onReorderExercises: (reorderedExercises: RoutineExercise[]) => void;
   onUpdateSetStructure: (exerciseId: string, structure: SetStructure) => void;
+  onInsertExercise: (index: number) => void;
 }
 
 export function SelectedRoutineExercisesList({
@@ -122,6 +168,7 @@ export function SelectedRoutineExercisesList({
   onRemoveExercise,
   onReorderExercises,
   onUpdateSetStructure,
+  onInsertExercise,
 }: SelectedRoutineExercisesListProps) {
   const isMobile = useIsMobile();
   const sensors = useSensors(
@@ -149,19 +196,16 @@ export function SelectedRoutineExercisesList({
   }
 
   return (
-    <div className="space-y-3 h-full flex flex-col">
-      <h3 className="text-lg font-medium flex items-center flex-shrink-0">
-        Selected Exercises for Routine ({selectedExercises.length})
-        <ListChecks className="ml-2 h-5 w-5 text-primary" />
-      </h3>
-
-      <div className="flex-grow min-h-0">
+    <div className="h-full flex flex-col">
+      <div className="flex-grow min-h-0 bg-muted/5 border rounded-lg overflow-hidden relative">
         {selectedExercises.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full min-h-[300px] text-center border rounded-lg bg-muted/30">
-            <ListChecks className="w-16 h-16 text-muted-foreground mb-4 opacity-50" />
-            <p className="text-muted-foreground font-semibold">No exercises selected.</p>
-            <p className="text-sm text-muted-foreground">
-              Select exercises from the list to add them here.
+          <div className="flex flex-col items-center justify-center h-full min-h-[200px] text-center p-6">
+            <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mb-3">
+                <Dumbbell className="h-6 w-6 text-muted-foreground/50" />
+            </div>
+            <p className="text-sm font-medium text-foreground">No exercises yet</p>
+            <p className="text-xs text-muted-foreground mt-1 max-w-[200px]">
+              Tap "Add Exercises" below to build your routine.
             </p>
           </div>
         ) : (
@@ -171,25 +215,39 @@ export function SelectedRoutineExercisesList({
             onDragEnd={handleDragEnd}
             modifiers={[restrictToVerticalAxis, restrictToParentElement]}
           >
-            <Card className="h-full w-full bg-muted/30 p-0 border">
-                <ScrollArea className="h-full w-full rounded-md p-4">
+            <ScrollArea className="h-full w-full">
                 <SortableContext
                     items={selectedExercises.map(ex => ex.id)}
                     strategy={verticalListSortingStrategy}
                 >
-                    <ul className="space-y-2">
-                    {selectedExercises.map((exercise) => (
+                    <ul className="p-3">
+                    {/* Explicit "Start" Insertion Point */}
+                    <div className="flex items-center justify-center pb-2">
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => onInsertExercise(0)}
+                            className="h-7 text-xs text-muted-foreground/50 hover:text-primary hover:bg-primary/5 gap-1 rounded-full border border-transparent hover:border-primary/20 px-3 transition-all"
+                        >
+                            <PlusCircle className="h-3.5 w-3.5" />
+                            <span>Insert at Start</span>
+                        </Button>
+                    </div>
+
+                    {selectedExercises.map((exercise, index) => (
                         <SortableExerciseItem
                           key={exercise.id}
+                          index={index}
                           exercise={exercise}
                           onRemoveExercise={onRemoveExercise}
                           onUpdateSetStructure={onUpdateSetStructure}
+                          onInsertExercise={onInsertExercise}
                         />
                     ))}
                     </ul>
                 </SortableContext>
-                </ScrollArea>
-            </Card>
+            </ScrollArea>
           </DndContext>
         )}
       </div>
