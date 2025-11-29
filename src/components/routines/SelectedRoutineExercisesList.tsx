@@ -101,33 +101,31 @@ function SortableExerciseItem({ exercise, index, onRemoveExercise, onUpdateSetSt
         {/* COL 3: Controls Group (Right Aligned) */}
         <div className="flex items-center gap-4 ml-auto shrink-0">
           
-          {/* Set Picker - Distinct Container */}
+          {/* Set Picker - Distinct Box */}
           {!exercise.isMissing && (
-              <div className="w-[140px]">
-                 {/* NOTE: SetStructurePicker should render a SelectTrigger. 
-                    We style it to look independent.
-                 */}
+              <div className="w-[140px] border rounded-md bg-background shadow-sm overflow-hidden">
                  <SetStructurePicker
                     value={exercise.setStructure ?? 'normal'}
                     onChange={(value) => onUpdateSetStructure(exercise.id, value)}
-                    className="h-8 text-xs w-full bg-background border shadow-sm" 
+                    className="h-8 text-xs w-full border-none focus:ring-0" 
                   />
               </div>
            )}
 
-          {/* Delete Button - Distinct Container */}
-          <div className="flex items-center justify-center">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              onClick={() => onRemoveExercise(exercise.id)}
-              aria-label={`Remove ${exercise.name}`}
-              className="text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10 h-8 w-8 transition-colors"
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          </div>
+          {/* Separator Line */}
+          <div className="h-6 w-px bg-border" />
+
+          {/* Delete Button - Distinct Element */}
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={() => onRemoveExercise(exercise.id)}
+            aria-label={`Remove ${exercise.name}`}
+            className="text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10 h-8 w-8 transition-colors rounded-full"
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
         </div>
 
       </div>
