@@ -151,8 +151,10 @@ export function AddEditRoutineDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      {/* Increased height for mobile friendliness */}
-      <DialogContent className="max-w-2xl flex flex-col h-[90vh] sm:h-[85vh] p-0 gap-0 overflow-hidden">
+      {/* UPDATED CLASS: sm:max-w-4xl (was max-w-2xl) 
+          This widens the modal on larger screens, allowing the exercise list grid to expand.
+      */}
+      <DialogContent className="sm:max-w-4xl flex flex-col h-[90vh] sm:h-[85vh] p-0 gap-0 overflow-hidden">
         
         {/* HEADER */}
         <DialogHeader className="p-6 pb-4 border-b shrink-0 bg-background z-10">
