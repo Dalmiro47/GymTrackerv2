@@ -82,7 +82,7 @@ function SortableExerciseItem({ exercise, index, onRemoveExercise, onUpdateSetSt
         </div>
 
         {/* COL 2: Name & Badge (Flex Grow) */}
-        <div className="flex flex-col justify-center min-w-0 flex-grow mr-2">
+        <div className="flex flex-col justify-center min-w-0 flex-grow mr-4">
              <div className="flex items-center gap-2">
                 <p className="text-sm font-semibold truncate text-foreground">{exercise.name}</p>
                 {exercise.isMissing && (
@@ -98,29 +98,32 @@ function SortableExerciseItem({ exercise, index, onRemoveExercise, onUpdateSetSt
              </div>
         </div>
 
-        {/* COL 3: Controls Group (Pushed to Right via margin-left auto) */}
-        <div className="flex items-center gap-3 ml-auto shrink-0 pl-2">
+        {/* COL 3: Controls Group (Right Aligned) */}
+        <div className="flex items-center gap-4 ml-auto shrink-0">
           
-          {/* Set Picker */}
+          {/* Set Picker - Distinct Container */}
           {!exercise.isMissing && (
-              <div className="w-[130px]">
+              <div className="w-[140px]">
+                 {/* NOTE: SetStructurePicker should render a SelectTrigger. 
+                    We style it to look independent.
+                 */}
                  <SetStructurePicker
                     value={exercise.setStructure ?? 'normal'}
                     onChange={(value) => onUpdateSetStructure(exercise.id, value)}
-                    className="h-8 text-xs w-full" 
+                    className="h-8 text-xs w-full bg-background border shadow-sm" 
                   />
               </div>
            )}
 
-          {/* Delete Button (with separator line) */}
-          <div className="pl-3 border-l h-6 flex items-center">
+          {/* Delete Button - Distinct Container */}
+          <div className="flex items-center justify-center">
             <Button
               type="button"
               variant="ghost"
               size="icon"
               onClick={() => onRemoveExercise(exercise.id)}
               aria-label={`Remove ${exercise.name}`}
-              className="text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10 h-8 w-8"
+              className="text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10 h-8 w-8 transition-colors"
             >
               <Trash2 className="h-4 w-4" />
             </Button>
