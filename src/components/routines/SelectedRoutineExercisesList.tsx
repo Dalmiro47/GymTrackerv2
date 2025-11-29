@@ -109,7 +109,8 @@ function SortableExerciseItem({ exercise, index, onRemoveExercise, onUpdateSetSt
                    <SetStructurePicker
                       value={exercise.setStructure ?? 'normal'}
                       onChange={(value) => onUpdateSetStructure(exercise.id, value)}
-                      className="h-8 text-xs w-full border-none focus:ring-0 pr-6 relative z-10 bg-transparent" 
+                      // Added appearance-none to hide native arrow on mobile
+                      className="h-8 text-xs w-full border-none focus:ring-0 pr-6 relative z-10 bg-transparent appearance-none" 
                     />
                     <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none z-0 text-muted-foreground/50 group-hover/picker:text-foreground">
                         <ChevronDown className="h-3.5 w-3.5" />
