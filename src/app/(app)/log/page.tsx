@@ -121,6 +121,10 @@ function TrainingLogPageContent() {
     setIsDeload,
     displayedMonth,
     setDisplayedMonth,
+    getExerciseHistory,
+    getOverloadAdvice,
+    isAdviceLoading,
+    adviceMap,
   } = useTrainingLog(initialDate);
 
   const [isAddExerciseDialogOpen, setIsAddExerciseDialogOpen] = useState(false);
@@ -471,6 +475,10 @@ function TrainingLogPageContent() {
                               isSavingParentLog={isSavingLog || isDeletingLog}
                               onMarkAsInteracted={() => markExerciseAsInteracted(loggedEx.id)}
                               onUpdateSetStructureOverride={updateExerciseSetStructureOverride}
+                              getExerciseHistory={getExerciseHistory}
+                              getOverloadAdvice={getOverloadAdvice}
+                              isAdviceLoading={isAdviceLoading}
+                              adviceMap={adviceMap}
                             />
                         </div>
                         {index < currentLog.exercises.length - 1 && (

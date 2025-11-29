@@ -76,6 +76,9 @@ export const useTrainingLog = (initialDate: Date) => {
   const [displayedMonth, setDisplayedMonth] = React.useState<Date>(
     startOfMonth(selectedDate ?? new Date())
   );
+  
+  const [isAdviceLoading, setIsAdviceLoading] = useState(false);
+  const [adviceMap, setAdviceMap] = useState<Record<string, string>>({});
 
 
   const formattedDateId = format(selectedDate, 'yyyy-MM-dd');
@@ -772,6 +775,22 @@ export const useTrainingLog = (initialDate: Date) => {
     }
   };
 
+  const getExerciseHistory = useCallback(async (exerciseId: string) => {
+    // TASK 2: Implement Firebase query logic here
+    console.log(`[Placeholder] Attempting to fetch history for ${exerciseId}`);
+    return [];
+  }, [user?.id]);
+
+  const getOverloadAdvice = useCallback(async (exerciseId: string, history: any[], currentSets: LoggedSet[]) => {
+    // TASK 4: Implement API call logic here
+    console.log(`[Placeholder] Calling AI for advice for ${exerciseId}`);
+    setAdviceMap(prev => ({
+        ...prev,
+        [exerciseId]: 'Thinking...' // Temporary message
+    }));
+    return 'Placeholder Advice';
+  }, [user?.id, currentLog?.exercises, availableExercises, availableRoutines, isDeload]);
+
   return {
     selectedDate,
     setSelectedDate,
@@ -802,6 +821,10 @@ export const useTrainingLog = (initialDate: Date) => {
     setIsDeload,
     displayedMonth,
     setDisplayedMonth,
+    getExerciseHistory,
+    getOverloadAdvice,
+    isAdviceLoading,
+    adviceMap,
   };
 };
 
@@ -813,3 +836,4 @@ export const useTrainingLog = (initialDate: Date) => {
 
 
     
+
