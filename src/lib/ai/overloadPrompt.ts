@@ -1,20 +1,19 @@
-import { Type } from '@google/generative-ai';
 
 // --- RESPONSE SCHEMA ---
 // We define a simple, strict schema for the AI to follow.
 export const OVERLOAD_ADVICE_SCHEMA = {
-    type: Type.OBJECT,
+    type: 'OBJECT',
     properties: {
         advice: { 
-            type: Type.STRING,
+            type: 'STRING',
             description: "A concise, actionable recommendation for progressive overload (e.g., 'Increase weight to 85kg' or 'Add one set'). Must be under 160 characters." 
         },
         rationale: { 
-            type: Type.STRING,
+            type: 'STRING',
             description: "A brief, supporting reason based on the history (e.g., 'Last session achieved 10 reps at 80kg, exceeding RPE target'). Must be under 160 characters."
         },
         action: {
-            type: Type.STRING,
+            type: 'STRING',
             enum: ['Weight', 'Reps', 'Sets', 'Tempo', 'Rest', 'None'],
             description: 'The primary progressive overload variable recommended.'
         }
