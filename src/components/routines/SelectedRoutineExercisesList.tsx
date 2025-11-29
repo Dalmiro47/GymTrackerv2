@@ -3,7 +3,7 @@
 import type { RoutineExercise, SetStructure } from '@/types';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Trash2, GripVertical, AlertTriangle, Dumbbell, ChevronDown, Plus } from 'lucide-react';
+import { Trash2, GripVertical, AlertTriangle, Dumbbell, ChevronDown, Plus, PlusCircle } from 'lucide-react';
 import React from 'react';
 import {
   DndContext,
@@ -55,8 +55,6 @@ function SortableExerciseItem({ exercise, index, onRemoveExercise, onUpdateSetSt
 
   return (
     <React.Fragment>
-      {/* Insertion Zone (Above the item) */}
-      {/* We only render this for items after the first one, or we can just rely on the 'between' visual */}
       <li
         ref={setNodeRef}
         style={style}
@@ -67,6 +65,7 @@ function SortableExerciseItem({ exercise, index, onRemoveExercise, onUpdateSetSt
         )}
       >
         <div className="flex items-center gap-3 p-3">
+          
           {/* COL 1: Drag Handle & Index */}
           <div className="flex items-center gap-3 shrink-0">
             <button
@@ -84,28 +83,30 @@ function SortableExerciseItem({ exercise, index, onRemoveExercise, onUpdateSetSt
             </span>
           </div>
 
-          {/* COL 2: Name & Badge */}
+          {/* COL 2: Name & Badge (Flex Grow) */}
           <div className="flex flex-col justify-center min-w-0 flex-grow mr-4">
-              <div className="flex items-center gap-2">
+               <div className="flex items-center gap-2">
                   <p className="text-sm font-semibold truncate text-foreground">{exercise.name}</p>
                   {exercise.isMissing && (
                       <Badge variant="destructive" className="h-5 px-1 text-[10px] gap-1 shrink-0">
                           <AlertTriangle className="h-3 w-3"/> Missing
                       </Badge>
                   )}
-              </div>
-              <div className="flex items-center mt-0.5">
+               </div>
+               <div className="flex items-center mt-0.5">
                   <Badge variant="secondary" className="text-[10px] h-4 px-1.5 font-normal text-muted-foreground bg-muted/50 border-transparent">
                     {exercise.muscleGroup}
                   </Badge>
-              </div>
+               </div>
           </div>
 
-          {/* COL 3: Controls Group */}
+          {/* COL 3: Controls Group (Right Aligned) */}
           <div className="flex items-center gap-4 ml-auto shrink-0">
+            
+            {/* Set Picker - Distinct Box */}
             {!exercise.isMissing && (
                 <div className="relative w-[140px] border rounded-md bg-background shadow-sm overflow-hidden group/picker">
-                  <SetStructurePicker
+                   <SetStructurePicker
                       value={exercise.setStructure ?? 'normal'}
                       onChange={(value) => onUpdateSetStructure(exercise.id, value)}
                       className="h-8 text-xs w-full border-none focus:ring-0 pr-6 relative z-10 bg-transparent" 
@@ -114,8 +115,12 @@ function SortableExerciseItem({ exercise, index, onRemoveExercise, onUpdateSetSt
                         <ChevronDown className="h-3.5 w-3.5" />
                     </div>
                 </div>
-            )}
+             )}
+
+            {/* Separator Line */}
             <div className="h-6 w-px bg-border" />
+
+            {/* Delete Button - Distinct Element */}
             <Button
               type="button"
               variant="ghost"
@@ -127,22 +132,21 @@ function SortableExerciseItem({ exercise, index, onRemoveExercise, onUpdateSetSt
               <Trash2 className="h-4 w-4" />
             </Button>
           </div>
+
         </div>
       </li>
       
-      {/* Insertion Button (Between Items) */}
-      {/* Not draggable, purely for interaction */}
-      <div className="group/insert relative h-2 -my-1 flex items-center justify-center cursor-pointer z-0 hover:z-10">
-          <div className="absolute inset-x-4 top-1/2 h-px bg-border group-hover/insert:bg-primary/50 transition-colors" />
+      {/* VISIBLE INSERTION BUTTON */}
+      <div className="flex items-center justify-center py-2">
           <Button
               type="button"
-              variant="outline"
-              size="icon"
+              variant="ghost"
+              size="sm"
               onClick={() => onInsertExercise(index + 1)}
-              className="h-6 w-6 rounded-full border shadow-sm bg-background opacity-0 group-hover/insert:opacity-100 transition-all scale-75 group-hover/insert:scale-100 z-10 hover:bg-primary hover:text-primary-foreground"
-              title="Insert exercise here"
+              className="h-7 text-xs text-muted-foreground/50 hover:text-primary hover:bg-primary/5 gap-1 rounded-full border border-transparent hover:border-primary/20 px-3 transition-all"
           >
-              <Plus className="h-3 w-3" />
+              <PlusCircle className="h-3.5 w-3.5" />
+              <span>Insert Here</span>
           </Button>
       </div>
     </React.Fragment>
@@ -217,17 +221,16 @@ export function SelectedRoutineExercisesList({
                 >
                     <ul className="p-3">
                     {/* Explicit "Start" Insertion Point */}
-                    <div className="group/insert relative h-2 -my-1 mb-2 flex items-center justify-center cursor-pointer z-0 hover:z-10">
-                        <div className="absolute inset-x-4 top-1/2 h-px bg-transparent group-hover/insert:bg-primary/50 transition-colors" />
+                    <div className="flex items-center justify-center pb-2">
                         <Button
                             type="button"
-                            variant="outline"
-                            size="icon"
+                            variant="ghost"
+                            size="sm"
                             onClick={() => onInsertExercise(0)}
-                            className="h-6 w-6 rounded-full border shadow-sm bg-background opacity-0 group-hover/insert:opacity-100 transition-all scale-75 group-hover/insert:scale-100 z-10 hover:bg-primary hover:text-primary-foreground"
-                            title="Insert exercise at start"
+                            className="h-7 text-xs text-muted-foreground/50 hover:text-primary hover:bg-primary/5 gap-1 rounded-full border border-transparent hover:border-primary/20 px-3 transition-all"
                         >
-                            <Plus className="h-3 w-3" />
+                            <PlusCircle className="h-3.5 w-3.5" />
+                            <span>Insert at Start</span>
                         </Button>
                     </div>
 
