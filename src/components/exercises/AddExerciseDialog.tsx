@@ -4,8 +4,7 @@ import { useEffect } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import type { Exercise, WarmupTemplate } from '@/types';
-import type { MuscleGroup } from '@/lib/constants';
+import type { Exercise } from '@/types';
 import { MUSCLE_GROUPS_LIST, WARMUP_TEMPLATES } from '@/lib/constants';
 import { Button } from '@/components/ui/button';
 import {
@@ -21,9 +20,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { Trash2, PlusCircle, Info, Dumbbell, Settings2, TrendingUp, Flame } from 'lucide-react';
+import { Info, Dumbbell, Settings2, TrendingUp, Flame } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useFormField, Form, FormItem, FormLabel, FormControl, FormMessage, FormField } from '@/components/ui/form';
 import { assertMuscleGroup } from '@/lib/muscleGroup';
@@ -51,6 +48,7 @@ const exerciseFormSchema = z.object({
   progressiveOverload: z.string().optional(), 
   warmup: z.object({
     template: z.enum(WARMUP_TEMPLATES),
+    // isWeightedBodyweight removed from UI, keeping optional in schema for backward compatibility if needed
     isWeightedBodyweight: z.boolean().optional(),
     roundingIncrementKg: z.number().optional(),
     overrideSteps: z.array(warmupStepSchema).optional(),
@@ -137,7 +135,7 @@ export function AddExerciseDialog({
                     
                     {/* LEFT COLUMN: Basic Info */}
                     <div className="space-y-4">
-                        <div className="flex items-center gap-2 text-primary font-semibold border-b pb-2 mb-2">
+                        <div className="flex items-center gap-2 text-primary font-semibold border-b pb-2 mb-2 h-8">
                             <Dumbbell className="h-4 w-4" /> Basic Info
                         </div>
 
@@ -146,7 +144,7 @@ export function AddExerciseDialog({
                         name="name"
                         render={({ field }) => (
                             <FormItem>
-                            <FormLabel>Exercise Name</FormLabel>
+                            <FormLabel className="flex items-center h-5">Exercise Name</FormLabel>
                             <FormControl>
                                 <Input {...field} placeholder="e.g. Bench Press" />
                             </FormControl>
@@ -160,7 +158,7 @@ export function AddExerciseDialog({
                         name="muscleGroup"
                         render={({ field }) => (
                             <FormItem>
-                            <FormLabel>Muscle Group</FormLabel>
+                            <FormLabel className="flex items-center h-5">Muscle Group</FormLabel>
                             <Select onValueChange={field.onChange} value={field.value}>
                                 <FormControl>
                                 <SelectTrigger>
@@ -185,7 +183,7 @@ export function AddExerciseDialog({
                         name="targetNotes"
                         render={({ field }) => (
                             <FormItem>
-                                <FormLabel>Notes / Target Area (Optional)</FormLabel>
+                                <FormLabel className="flex items-center h-5">Notes / Target Area (Optional)</FormLabel>
                                 <FormControl>
                                     <Textarea {...field} placeholder="e.g. Focus on upper chest..." className="h-24 resize-none" />
                                 </FormControl>
@@ -197,7 +195,7 @@ export function AddExerciseDialog({
 
                     {/* RIGHT COLUMN: Advanced Details */}
                     <div className="space-y-4">
-                        <div className="flex items-center gap-2 text-primary font-semibold border-b pb-2 mb-2">
+                        <div className="flex items-center gap-2 text-primary font-semibold border-b pb-2 mb-2 h-8">
                             <Settings2 className="h-4 w-4" /> Training Details
                         </div>
 
@@ -206,7 +204,7 @@ export function AddExerciseDialog({
                         name="exerciseSetup"
                         render={({ field }) => (
                             <FormItem>
-                                <FormLabel>Exercise Setup (Optional)</FormLabel>
+                                <FormLabel className="flex items-center h-5">Exercise Setup (Optional)</FormLabel>
                                 <FormControl>
                                     <Input {...field} placeholder="e.g. Seat height 4, Pin 3" />
                                 </FormControl>
@@ -220,7 +218,7 @@ export function AddExerciseDialog({
                         name="progressiveOverload"
                         render={({ field }) => (
                             <FormItem>
-                            <FormLabel className="flex items-center gap-2">
+                            <FormLabel className="flex items-center gap-2 h-5">
                                 Progressive Overload (Optional)
                                 <TrendingUp className="h-3 w-3 text-muted-foreground" />
                             </FormLabel>
@@ -232,60 +230,43 @@ export function AddExerciseDialog({
                         )}
                         />
                         
-                        {/* Warmup Section - Integrated Card */}
-                        <div className="pt-2">
-                            <div className="border rounded-md p-3 bg-muted/20 space-y-3">
-                                <div className="flex items-center justify-between">
-                                    <Label className="flex items-center gap-2 text-sm font-semibold">
+                        {/* Warmup Section */}
+                        <FormField
+                            control={control}
+                            name="warmup.template"
+                            render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel className="flex items-center gap-2 h-5">
                                         <Flame className="h-3.5 w-3.5 text-orange-500" /> 
                                         Warm-up Config
-                                    </Label>
-                                    <Popover>
-                                        <PopoverTrigger asChild>
-                                            <Button type="button" variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground">
-                                                <Info className="h-3.5 w-3.5" />
-                                            </Button>
-                                        </PopoverTrigger>
-                                        <PopoverContent className="max-w-xs p-3 text-xs" side="top">
-                                            <p className="font-semibold mb-1">Warm-up Templates</p>
-                                            <p className="text-muted-foreground">Automatically calculates warm-up sets based on your working weight.</p>
-                                        </PopoverContent>
-                                    </Popover>
-                                </div>
-
-                                <Controller
-                                    name="warmup.template"
-                                    control={control}
-                                    render={({ field }) => (
+                                        <Popover>
+                                            <PopoverTrigger asChild>
+                                                <Button type="button" variant="ghost" size="icon" className="h-4 w-4 text-muted-foreground hover:bg-transparent p-0 ml-1">
+                                                    <Info className="h-3.5 w-3.5" />
+                                                </Button>
+                                            </PopoverTrigger>
+                                            <PopoverContent className="max-w-xs p-3 text-xs" side="top">
+                                                <p className="font-semibold mb-1">Warm-up Templates</p>
+                                                <p className="text-muted-foreground">Automatically calculates warm-up sets based on your working weight.</p>
+                                            </PopoverContent>
+                                        </Popover>
+                                    </FormLabel>
                                     <Select onValueChange={field.onChange} value={field.value}>
-                                        <SelectTrigger id="warmup.template" className="h-8 text-sm">
-                                            <SelectValue placeholder="Select a template" />
-                                        </SelectTrigger>
+                                        <FormControl>
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Select a template" />
+                                            </SelectTrigger>
+                                        </FormControl>
                                         <SelectContent>
-                                        {WARMUP_TEMPLATES.map((template) => (
-                                            <SelectItem key={template} value={template}>{template.replace(/_/g, ' ')}</SelectItem>
-                                        ))}
+                                            {WARMUP_TEMPLATES.map((template) => (
+                                                <SelectItem key={template} value={template}>{template.replace(/_/g, ' ')}</SelectItem>
+                                            ))}
                                         </SelectContent>
                                     </Select>
-                                    )}
-                                />
-
-                                <div className="flex items-center space-x-2">
-                                    <Controller
-                                        name="warmup.isWeightedBodyweight"
-                                        control={control}
-                                        render={({ field }) => (
-                                            <Checkbox
-                                            id="warmup.isWeightedBodyweight"
-                                            checked={!!field.value}
-                                            onCheckedChange={(v) => field.onChange(!!v)}
-                                            />
-                                        )}
-                                        />
-                                    <Label htmlFor="warmup.isWeightedBodyweight" className="text-xs font-normal cursor-pointer">Weighted bodyweight (e.g. Dips)</Label>
-                                </div>
-                            </div>
-                        </div>
+                                    <FormMessage />
+                                </FormItem>
+                            )}
+                        />
                     </div>
                 </div>
 
