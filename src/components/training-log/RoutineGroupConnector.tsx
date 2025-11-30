@@ -1,4 +1,6 @@
 "use client";
+
+import React from 'react';
 import type { SetStructure } from '@/types/setStructure';
 import { SET_STRUCTURE_COLORS, SET_STRUCTURE_LABEL } from '@/types/setStructure';
 import { Link } from 'lucide-react';
@@ -12,10 +14,10 @@ export function RoutineGroupConnector({ structure }: RoutineGroupConnectorProps)
   
   return (
     <div className="relative flex items-center justify-center py-2 -my-3 z-10">
-      {/* The Vertical Line */}
+      {/* The Vertical Line - Thicker and more opaque */}
       <div 
-        className="absolute inset-y-0 w-[2px] rounded-full"
-        style={{ backgroundColor: theme.border, opacity: 0.5 }}
+        className="absolute inset-y-0 w-1 rounded-full"
+        style={{ backgroundColor: theme.border, opacity: 0.6 }}
       />
 
       {/* The Badge */}
