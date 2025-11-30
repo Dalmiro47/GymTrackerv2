@@ -4,8 +4,7 @@ import { useEffect } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import type { Exercise, WarmupTemplate } from '@/types';
-import type { MuscleGroup } from '@/lib/constants';
+import type { Exercise } from '@/types';
 import { MUSCLE_GROUPS_LIST, WARMUP_TEMPLATES } from '@/lib/constants';
 import { Button } from '@/components/ui/button';
 import {
@@ -21,9 +20,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { Trash2, PlusCircle, Info, Dumbbell, Settings2, TrendingUp, Flame } from 'lucide-react';
+import { Info, Dumbbell, Settings2, TrendingUp, Flame } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useFormField, Form, FormItem, FormLabel, FormControl, FormMessage, FormField } from '@/components/ui/form';
 import { assertMuscleGroup } from '@/lib/muscleGroup';
@@ -51,6 +48,7 @@ const exerciseFormSchema = z.object({
   progressiveOverload: z.string().optional(), 
   warmup: z.object({
     template: z.enum(WARMUP_TEMPLATES),
+    // isWeightedBodyweight removed from UI, keeping optional in schema for backward compatibility if needed
     isWeightedBodyweight: z.boolean().optional(),
     roundingIncrementKg: z.number().optional(),
     overrideSteps: z.array(warmupStepSchema).optional(),
@@ -269,21 +267,7 @@ export function AddExerciseDialog({
                                     </Select>
                                     )}
                                 />
-
-                                <div className="flex items-center space-x-2">
-                                    <Controller
-                                        name="warmup.isWeightedBodyweight"
-                                        control={control}
-                                        render={({ field }) => (
-                                            <Checkbox
-                                            id="warmup.isWeightedBodyweight"
-                                            checked={!!field.value}
-                                            onCheckedChange={(v) => field.onChange(!!v)}
-                                            />
-                                        )}
-                                        />
-                                    <Label htmlFor="warmup.isWeightedBodyweight" className="text-xs font-normal cursor-pointer">Weighted bodyweight (e.g. Dips)</Label>
-                                </div>
+                                {/* Checkbox for Weighted Bodyweight removed: Logic is now inferred from working weight */}
                             </div>
                         </div>
                     </div>

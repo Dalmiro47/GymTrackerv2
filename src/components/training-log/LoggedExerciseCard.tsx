@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -26,20 +25,22 @@ const WarmupPanel: React.FC<{ loggedExercise: LoggedExercise }> = ({ loggedExerc
     }, [loggedExercise.sets]);
 
     const warmupSteps: WarmupStep[] = useMemo(() => {
-        if (!loggedExercise.warmupConfig || workingWeight <= 0) return [];
+        if (!loggedExercise.warmupConfig || (workingWeight <= 0 && loggedExercise.warmupConfig.template !== 'BODYWEIGHT')) return [];
+        // For Bodyweight, we want to show steps even if workingWeight is 0 (handled in utils)
         
         const input: WarmupInput = {
             template: loggedExercise.warmupConfig.template,
             workingWeight: workingWeight,
-            isWeightedBodyweight: loggedExercise.warmupConfig.isWeightedBodyweight,
+            // isWeightedBodyweight removed - logic is now inferred automatically
             overrideSteps: loggedExercise.warmupConfig.overrideSteps,
         };
         return computeWarmup(input);
     }, [loggedExercise.warmupConfig, workingWeight]);
 
-    if (workingWeight <= 0) {
-        return <div className="p-4 text-sm text-muted-foreground">Enter a working weight to calculate warm-ups.</div>;
+    if (workingWeight <= 0 && loggedExercise.warmupConfig?.template !== 'BODYWEIGHT') {
+         return <div className="p-4 text-sm text-muted-foreground">Enter a working weight to calculate warm-ups.</div>;
     }
+    
     if (warmupSteps.length === 0) {
         return <div className="p-4 text-sm text-muted-foreground">No warm-up sets needed for this exercise.</div>
     }
@@ -61,7 +62,7 @@ const WarmupPanel: React.FC<{ loggedExercise: LoggedExercise }> = ({ loggedExerc
                         <TableRow key={index}>
                             <TableCell>{step.label}</TableCell>
                             <TableCell>
-                                {`${step.weightTotal}kg`}
+                                {step.weightTotal > 0 ? `${step.weightTotal}kg` : '-'}
                             </TableCell>
                             <TableCell>{step.reps}</TableCell>
                             <TableCell>{step.rest}</TableCell>
@@ -473,7 +474,3 @@ export function LoggedExerciseCard({
     </div>
   );
 }
-
-    
-
-    
