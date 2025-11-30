@@ -197,5 +197,11 @@ export function computeWarmup(input: WarmupInput): WarmupStep[] {
     }
   });
 
+  // CRITICAL FIX: If we are doing unweighted bodyweight, allow the 0kg "Light/assisted" step.
+  // Standard logic filters out steps where stepWeight >= workingWeight (0 >= 0).
+  if (template === 'BODYWEIGHT' && workingWeight === 0) {
+    return results;
+  }
+
   return results.filter(r => r.weightTotal < workingWeight);
 }
