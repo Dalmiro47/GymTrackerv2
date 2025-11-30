@@ -27,6 +27,18 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { SetStructurePicker } from '../SetStructurePicker';
 import { cn } from '@/lib/utils';
 import { Badge } from '../ui/badge';
+import { RoutineGroupConnector } from '@/components/training-log/RoutineGroupConnector';
+import { SET_STRUCTURE_COLORS } from '@/types/setStructure'; // Import colors
+
+// Helper for group sizes
+const getGroupSize = (type: string) => {
+    switch (type?.toLowerCase()) {
+      case 'superset': return 2;
+      case 'triset': return 3;
+      case 'giant set': return 99;
+      default: return 1;
+    }
+  };
 
 interface SortableExerciseItemProps {
   exercise: RoutineExercise;
@@ -34,9 +46,17 @@ interface SortableExerciseItemProps {
   onRemoveExercise: (exerciseId: string) => void;
   onUpdateSetStructure: (exerciseId: string, structure: SetStructure) => void;
   onInsertExercise: (index: number) => void;
+  isLinkedToNext: boolean; 
 }
 
-function SortableExerciseItem({ exercise, index, onRemoveExercise, onUpdateSetStructure, onInsertExercise }: SortableExerciseItemProps) {
+function SortableExerciseItem({ 
+    exercise, 
+    index, 
+    onRemoveExercise, 
+    onUpdateSetStructure, 
+    onInsertExercise,
+    isLinkedToNext 
+}: SortableExerciseItemProps) {
   const {
     attributes,
     listeners,
@@ -53,20 +73,33 @@ function SortableExerciseItem({ exercise, index, onRemoveExercise, onUpdateSetSt
     zIndex: isDragging ? 10 : 'auto',
   };
 
+  // Determine border color based on set structure
+  const structure = exercise.setStructure || 'normal';
+  const theme = SET_STRUCTURE_COLORS[structure] || SET_STRUCTURE_COLORS.normal;
+  const isSpecialStructure = structure !== 'normal';
+
   return (
     <React.Fragment>
       <li
         ref={setNodeRef}
-        style={style}
+        style={{
+            ...style,
+            // Use CSS variable or direct style for dynamic border color
+            borderColor: isSpecialStructure ? theme.border : undefined
+        }}
         className={cn(
-          "group relative bg-card border rounded-lg shadow-sm transition-all touch-none overflow-hidden hover:border-primary/30",
+          "group relative bg-card border rounded-lg shadow-sm transition-all touch-none overflow-hidden",
+          // Default hover style if normal, otherwise the style prop handles the color
+          !isSpecialStructure ? "hover:border-primary/30" : "hover:border-[theme.border]",
+          // Add border width if special structure to make it pop
+          isSpecialStructure && "border-2", 
           isDragging && "shadow-md ring-2 ring-primary/20 z-50",
           exercise.isMissing && "border-destructive/50 bg-destructive/5"
         )}
       >
         <div className="flex items-center gap-3 p-3">
           
-          {/* COL 1: Drag Handle & Index (Always Left & Centered) */}
+          {/* COL 1: Drag Handle & Index */}
           <div className="flex items-center gap-3 shrink-0 self-center">
             <button
               type="button"
@@ -83,10 +116,7 @@ function SortableExerciseItem({ exercise, index, onRemoveExercise, onUpdateSetSt
             </span>
           </div>
 
-          {/* RESPONSIVE WRAPPER: 
-              - Mobile: Flex Column (Stack Name top, Controls bottom) 
-              - Desktop (sm): Flex Row (Side by side) 
-          */}
+          {/* RESPONSIVE WRAPPER */}
           <div className="flex flex-col sm:flex-row sm:items-center flex-grow min-w-0 gap-3 sm:gap-4">
             
             {/* NAME SECTION */}
@@ -106,7 +136,7 @@ function SortableExerciseItem({ exercise, index, onRemoveExercise, onUpdateSetSt
                 </div>
             </div>
 
-            {/* CONTROLS SECTION (Right aligned) */}
+            {/* CONTROLS SECTION */}
             <div className="flex items-center justify-end gap-4 shrink-0">
                 
                 {/* Set Picker */}
@@ -144,19 +174,25 @@ function SortableExerciseItem({ exercise, index, onRemoveExercise, onUpdateSetSt
         </div>
       </li>
       
-      {/* VISIBLE INSERTION BUTTON */}
-      <div className="flex items-center justify-center py-2">
-          <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => onInsertExercise(index + 1)}
-              className="h-7 text-xs text-muted-foreground/50 hover:text-primary hover:bg-primary/5 gap-1 rounded-full border border-transparent hover:border-primary/20 px-3 transition-all"
-          >
-              <PlusCircle className="h-3.5 w-3.5" />
-              <span>Insert Here</span>
-          </Button>
-      </div>
+      {/* Connector OR Insertion Button */}
+      {isLinkedToNext ? (
+          <div className="py-1">
+             <RoutineGroupConnector structure={exercise.setStructure || 'normal'} />
+          </div>
+      ) : (
+          <div className="flex items-center justify-center py-2">
+              <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => onInsertExercise(index + 1)}
+                  className="h-7 text-xs text-muted-foreground/50 hover:text-primary hover:bg-primary/5 gap-1 rounded-full border border-transparent hover:border-primary/20 px-3 transition-all"
+              >
+                  <PlusCircle className="h-3.5 w-3.5" />
+                  <span>Insert Here</span>
+              </Button>
+          </div>
+      )}
     </React.Fragment>
   );
 }
@@ -242,16 +278,42 @@ export function SelectedRoutineExercisesList({
                         </Button>
                     </div>
 
-                    {selectedExercises.map((exercise, index) => (
-                        <SortableExerciseItem
-                          key={exercise.id}
-                          index={index}
-                          exercise={exercise}
-                          onRemoveExercise={onRemoveExercise}
-                          onUpdateSetStructure={onUpdateSetStructure}
-                          onInsertExercise={onInsertExercise}
-                        />
-                    ))}
+                    {selectedExercises.map((exercise, index) => {
+                        // --- SMART GROUPING LOGIC ---
+                        const currentStructure = exercise.setStructure || 'normal';
+                        const nextExercise = selectedExercises[index + 1];
+                        const nextStructure = nextExercise ? (nextExercise.setStructure || 'normal') : 'normal';
+
+                        let shouldLink = false;
+                        if (nextExercise && currentStructure !== 'normal' && currentStructure === nextStructure) {
+                            let streak = 1;
+                            for (let i = index - 1; i >= 0; i--) {
+                                const prev = selectedExercises[i];
+                                if ((prev.setStructure || 'normal') === currentStructure) {
+                                    streak++;
+                                } else {
+                                    break;
+                                }
+                            }
+                            const maxSize = getGroupSize(currentStructure);
+                            if (streak % maxSize !== 0) {
+                                shouldLink = true;
+                            }
+                        }
+                        // -----------------------------------------------------
+
+                        return (
+                            <SortableExerciseItem
+                              key={exercise.id}
+                              index={index}
+                              exercise={exercise}
+                              onRemoveExercise={onRemoveExercise}
+                              onUpdateSetStructure={onUpdateSetStructure}
+                              onInsertExercise={onInsertExercise}
+                              isLinkedToNext={shouldLink}
+                            />
+                        );
+                    })}
                     </ul>
                 </SortableContext>
             </ScrollArea>
