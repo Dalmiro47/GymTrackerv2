@@ -27,7 +27,7 @@ import { ExerciseCard } from './ExerciseCard';
 import { AddExerciseDialog } from './AddExerciseDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { PlusCircle, Search, Loader2, AlertTriangle, History, ArrowLeft, Dumbbell } from 'lucide-react';
+import { PlusCircle, Search, Loader2, AlertTriangle, History, ArrowLeft, Dumbbell, Check } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -49,8 +49,7 @@ import {
   DialogHeader as RestoreDialogHeader,
   DialogTitle as RestoreDialogTitle,
 } from '@/components/ui/dialog';
-import { Checkbox } from '../ui/checkbox';
-import { Label } from '../ui/label';
+import { cn } from '@/lib/utils'; // Make sure cn is imported
 
 type HiddenDefault = { id: string; name: string; muscleGroup: string };
 
@@ -159,19 +158,16 @@ export function ExerciseClientPage() {
   }, [canonicalExercises]);
 
   const displayedExercises = useMemo(() => {
-    // If on "Categories" view (activeMuscleGroup is null), and searching globally
     if (activeMuscleGroup === null && searchTerm.trim() !== '') {
        return canonicalExercises.filter(ex => ex.name.toLowerCase().includes(searchTerm.toLowerCase().trim()));
     }
 
     let temp = [...canonicalExercises];
 
-    // Filter by Muscle Group
     if (activeMuscleGroup && activeMuscleGroup !== 'All') {
       temp = temp.filter(ex => ex.muscleGroup === activeMuscleGroup);
     }
 
-    // Filter by Search
     if (searchTerm.trim() !== '') {
       const q = searchTerm.toLowerCase().trim();
       temp = temp.filter(ex => ex.name.toLowerCase().includes(q));
@@ -264,7 +260,7 @@ export function ExerciseClientPage() {
     } catch (e) {
       toast({ title: "Error checking routines", description: "Could not verify if exercise is in use.", variant: "destructive" });
     } finally {
-      setIsBusyDeleting(false); // To enable dialog buttons
+      setIsBusyDeleting(false); 
     }
   };
 
@@ -314,6 +310,14 @@ export function ExerciseClientPage() {
   const handleOpenRestoreDialog = () => {
     setSelectedToRestore(hiddenDefaults.map(h => h.id));
     setIsRestoreDialogOpen(true);
+  };
+
+  const handleToggleRestoreSelection = (id: string) => {
+    setSelectedToRestore(prev => 
+      prev.includes(id) 
+        ? prev.filter(x => x !== id) 
+        : [...prev, id]
+    );
   };
 
   const handleConfirmRestore = async () => {
@@ -389,47 +393,62 @@ export function ExerciseClientPage() {
         isSaving={isDialogSaving}
       />
       
-      {/* Restore Dialog */}
+      {/* Restore Dialog - Updated UI */}
       <Dialog open={isRestoreDialogOpen} onOpenChange={setIsRestoreDialogOpen}>
-        <RestoreDialogContent>
+        <RestoreDialogContent className="sm:max-w-md">
           <RestoreDialogHeader>
             <RestoreDialogTitle>Restore Hidden Default Exercises</RestoreDialogTitle>
             <RestoreDialogDescription>Select the default exercises you want to add back to your library.</RestoreDialogDescription>
           </RestoreDialogHeader>
-          <div className="py-4">
+          
+          <div className="py-2">
             {hiddenDefaults.length > 0 ? (
-                <ScrollArea className="max-h-64 w-full rounded-md border p-4">
+                <ScrollArea className="max-h-[300px] w-full p-1 pr-3">
                     <div className="space-y-2">
-                    {hiddenDefaults.map(ex => (
-                        <div key={ex.id} className="flex items-center space-x-2">
-                            <Checkbox 
-                                id={`restore-${ex.id}`}
-                                checked={selectedToRestore.includes(ex.id)}
-                                onCheckedChange={(checked) => {
-                                    setSelectedToRestore(prev => 
-                                        checked ? [...prev, ex.id] : prev.filter(id => id !== ex.id)
-                                    )
-                                }}
-                            />
-                            <Label htmlFor={`restore-${ex.id}`} className="flex-grow cursor-pointer">
-                                {ex.name}
-                                <span className="ml-2 text-xs text-muted-foreground">({ex.muscleGroup})</span>
-                            </Label>
-                        </div>
-                    ))}
+                    {hiddenDefaults.map(ex => {
+                        const isSelected = selectedToRestore.includes(ex.id);
+                        return (
+                            <div 
+                                key={ex.id} 
+                                className={cn(
+                                    "flex items-center justify-between p-3 rounded-lg border transition-all cursor-pointer",
+                                    isSelected 
+                                        ? "bg-primary/5 border-primary shadow-sm" 
+                                        : "hover:bg-muted/50 border-transparent bg-muted/10"
+                                )}
+                                onClick={() => handleToggleRestoreSelection(ex.id)}
+                            >
+                                <div>
+                                    <p className={cn("font-medium text-sm", isSelected && "text-primary")}>
+                                        {ex.name}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground">{ex.muscleGroup}</p>
+                                </div>
+                                
+                                {isSelected ? (
+                                    <div className="h-6 w-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center shrink-0 animate-in zoom-in-50 duration-200">
+                                        <Check className="h-3.5 w-3.5" />
+                                    </div>
+                                ) : (
+                                    <div className="h-6 w-6 rounded-full border border-muted-foreground/30 shrink-0" />
+                                )}
+                            </div>
+                        );
+                    })}
                     </div>
                 </ScrollArea>
             ) : (
-                <p className="text-sm text-muted-foreground">No hidden default exercises to restore.</p>
+                <p className="text-sm text-muted-foreground text-center py-4">No hidden default exercises to restore.</p>
             )}
           </div>
-          <RestoreDialogFooter>
+
+          <RestoreDialogFooter className="gap-2 sm:gap-0">
             <DialogClose asChild>
                 <Button variant="ghost" disabled={isRestoring}>Cancel</Button>
             </DialogClose>
             <Button onClick={handleConfirmRestore} disabled={isRestoring || selectedToRestore.length === 0}>
                 {isRestoring ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : null}
-                Restore Selected
+                Restore Selected ({selectedToRestore.length})
             </Button>
           </RestoreDialogFooter>
         </RestoreDialogContent>
@@ -437,8 +456,7 @@ export function ExerciseClientPage() {
 
       {/* Main Content Area */}
       <div className="space-y-6">
-        
-        {/* VIEW 1: Categories Grid (When no muscle group is selected) */}
+        {/* VIEW 1: Categories Grid */}
         {activeMuscleGroup === null && (
             <div className="space-y-4">
                 <div className="relative">
@@ -453,7 +471,6 @@ export function ExerciseClientPage() {
                 </div>
 
                 {searchTerm ? (
-                    /* Search Results View */
                     displayedExercises.length > 0 ? (
                         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                             {displayedExercises.map(exercise => (
@@ -469,7 +486,6 @@ export function ExerciseClientPage() {
                         <div className="text-center py-12 text-muted-foreground">No exercises found.</div>
                     )
                 ) : (
-                    /* Muscle Groups Grid */
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
                         <button
                             onClick={() => setActiveMuscleGroup('All')}
@@ -503,7 +519,7 @@ export function ExerciseClientPage() {
             </div>
         )}
 
-        {/* VIEW 2: Exercise List (When a muscle group is selected) */}
+        {/* VIEW 2: Exercise List */}
         {activeMuscleGroup !== null && (
             <div className="space-y-6">
                 <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
@@ -606,5 +622,3 @@ export function ExerciseClientPage() {
     </>
   );
 }
-
-    
