@@ -135,7 +135,7 @@ export function AddExerciseDialog({
                     
                     {/* LEFT COLUMN: Basic Info */}
                     <div className="space-y-4">
-                        <div className="flex items-center gap-2 text-primary font-semibold border-b pb-2 mb-2">
+                        <div className="flex items-center gap-2 text-primary font-semibold border-b pb-2 mb-2 h-8">
                             <Dumbbell className="h-4 w-4" /> Basic Info
                         </div>
 
@@ -144,7 +144,7 @@ export function AddExerciseDialog({
                         name="name"
                         render={({ field }) => (
                             <FormItem>
-                            <FormLabel>Exercise Name</FormLabel>
+                            <FormLabel className="flex items-center h-5">Exercise Name</FormLabel>
                             <FormControl>
                                 <Input {...field} placeholder="e.g. Bench Press" />
                             </FormControl>
@@ -158,7 +158,7 @@ export function AddExerciseDialog({
                         name="muscleGroup"
                         render={({ field }) => (
                             <FormItem>
-                            <FormLabel>Muscle Group</FormLabel>
+                            <FormLabel className="flex items-center h-5">Muscle Group</FormLabel>
                             <Select onValueChange={field.onChange} value={field.value}>
                                 <FormControl>
                                 <SelectTrigger>
@@ -183,7 +183,7 @@ export function AddExerciseDialog({
                         name="targetNotes"
                         render={({ field }) => (
                             <FormItem>
-                                <FormLabel>Notes / Target Area (Optional)</FormLabel>
+                                <FormLabel className="flex items-center h-5">Notes / Target Area (Optional)</FormLabel>
                                 <FormControl>
                                     <Textarea {...field} placeholder="e.g. Focus on upper chest..." className="h-24 resize-none" />
                                 </FormControl>
@@ -195,7 +195,7 @@ export function AddExerciseDialog({
 
                     {/* RIGHT COLUMN: Advanced Details */}
                     <div className="space-y-4">
-                        <div className="flex items-center gap-2 text-primary font-semibold border-b pb-2 mb-2">
+                        <div className="flex items-center gap-2 text-primary font-semibold border-b pb-2 mb-2 h-8">
                             <Settings2 className="h-4 w-4" /> Training Details
                         </div>
 
@@ -204,7 +204,7 @@ export function AddExerciseDialog({
                         name="exerciseSetup"
                         render={({ field }) => (
                             <FormItem>
-                                <FormLabel>Exercise Setup (Optional)</FormLabel>
+                                <FormLabel className="flex items-center h-5">Exercise Setup (Optional)</FormLabel>
                                 <FormControl>
                                     <Input {...field} placeholder="e.g. Seat height 4, Pin 3" />
                                 </FormControl>
@@ -218,7 +218,7 @@ export function AddExerciseDialog({
                         name="progressiveOverload"
                         render={({ field }) => (
                             <FormItem>
-                            <FormLabel className="flex items-center gap-2">
+                            <FormLabel className="flex items-center gap-2 h-5">
                                 Progressive Overload (Optional)
                                 <TrendingUp className="h-3 w-3 text-muted-foreground" />
                             </FormLabel>
@@ -230,20 +230,18 @@ export function AddExerciseDialog({
                         )}
                         />
                         
-                        {/* Warmup Section - Standard Form Field */}
+                        {/* Warmup Section */}
                         <FormField
                             control={control}
                             name="warmup.template"
                             render={({ field }) => (
                                 <FormItem>
-                                    <FormLabel className="flex items-center gap-2">
-                                        <div className="flex items-center gap-2">
-                                            <Flame className="h-3.5 w-3.5 text-orange-500" /> 
-                                            Warm-up Config
-                                        </div>
+                                    <FormLabel className="flex items-center gap-2 h-5">
+                                        <Flame className="h-3.5 w-3.5 text-orange-500" /> 
+                                        Warm-up Config
                                         <Popover>
                                             <PopoverTrigger asChild>
-                                                <Button type="button" variant="ghost" size="icon" className="h-4 w-4 text-muted-foreground hover:bg-transparent p-0">
+                                                <Button type="button" variant="ghost" size="icon" className="h-4 w-4 text-muted-foreground hover:bg-transparent p-0 ml-1">
                                                     <Info className="h-3.5 w-3.5" />
                                                 </Button>
                                             </PopoverTrigger>
