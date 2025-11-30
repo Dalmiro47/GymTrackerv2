@@ -1,5 +1,3 @@
-
-
 "use client";
 
 import React, { useState, useMemo, useEffect, Suspense } from 'react';
@@ -62,13 +60,22 @@ import { Switch } from '@/components/ui/switch';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { SET_STRUCTURE_COLORS } from '@/types/setStructure';
 import { cn } from '@/lib/utils';
-import CoachInline from './CoachInline';
+import { RoutineGroupConnector } from '@/components/training-log/RoutineGroupConnector'; // NEW IMPORT
 
 // Get the effective structure for an exercise (override, then routine default, then normal)
 function effectiveOf(ex: { setStructure?: SetStructure; setStructureOverride?: SetStructure | null } | undefined): SetStructure {
   if (!ex) return 'normal';
   return ex.setStructureOverride ?? ex.setStructure ?? 'normal';
 }
+
+// NEW HELPER: Logic for max group size
+const getGroupSize = (type: string) => {
+    const t = type.toLowerCase();
+    if (t === 'superset') return 2;
+    if (t === 'triset') return 3;
+    if (t === 'giant set') return 99;
+    return 1; 
+};
 
 
 function TrainingLogPageContent() {
@@ -236,13 +243,6 @@ function TrainingLogPageContent() {
     const weightPercent = Math.round((1 - intensityMultiplier) * 100);
     return `Sets reduced by ~${setsPercent}%, weight by ~${weightPercent}%. This log will be excluded from future progression calculations.`;
   }, [currentLog?.deloadParams]);
-
-  const routineDay = React.useMemo(() => {
-    const id = currentLog?.routineId && currentLog.routineId !== 'none' ? currentLog.routineId : null;
-    if (!id) return null;
-    const dayName = availableRoutines.find(r => r.id === id)?.name || id;
-    return { dayId: id, dayName };
-  }, [currentLog?.routineId, availableRoutines]);
   
   return (
     <div className="space-y-6">
@@ -440,32 +440,34 @@ function TrainingLogPageContent() {
                   <div>
                     {currentLog.exercises.map((loggedEx, index) => {
                         const currentStructure = effectiveOf(loggedEx);
-                        const nextStructure = effectiveOf(currentLog.exercises[index + 1]);
+                        const nextExercise = currentLog.exercises[index + 1];
+                        const nextStructure = nextExercise ? effectiveOf(nextExercise) : 'normal';
 
-                        // determine group size (0 = no group)
-                        const groupSize =
-                          currentStructure === 'superset' ? 2 :
-                          currentStructure === 'triset'   ? 3 : 0;
-
-                        let posInRun = 0; // 0 for first in run, 1 for second, ...
-                        if (groupSize > 0) {
-                          for (let j = index - 1; j >= 0; j--) {
-                            if (effectiveOf(currentLog.exercises[j]) === currentStructure) posInRun++;
-                            else break;
-                          }
-                        }
-
-                        // Draw connector ONLY if next is same structure AND we're not at the end of a group chunk
-                        const groupContinues =
-                          groupSize > 0 &&
-                          nextStructure === currentStructure &&
-                          (posInRun % groupSize) !== (groupSize - 1);
+                        // LOGIC: Only link if next is same structure AND we are not at the end of a group size cap
+                        let shouldLink = false;
                         
-                        const connectorColor = SET_STRUCTURE_COLORS[currentStructure]?.border;
+                        if (nextExercise && currentStructure !== 'normal' && currentStructure === nextStructure) {
+                            // Calculate streak (how many items before this one were the same type?)
+                            let streak = 1; 
+                            for (let i = index - 1; i >= 0; i--) {
+                                const prev = currentLog.exercises[i];
+                                if (effectiveOf(prev) === currentStructure) {
+                                    streak++;
+                                } else {
+                                    break;
+                                }
+                            }
+
+                            const maxSize = getGroupSize(currentStructure);
+                            // Link if we haven't hit the max size for this group chunk
+                            if (streak % maxSize !== 0) {
+                                shouldLink = true;
+                            }
+                        }
 
                       return (
                       <React.Fragment key={loggedEx.id}>
-                        <div className={cn(!groupContinues && "mb-4")}>
+                        <div className={cn(!shouldLink && "mb-4")}>
                             <LoggedExerciseCard
                               loggedExercise={loggedEx}
                               onUpdateSets={(sets) => updateExerciseInLog({ ...loggedEx, sets })}
@@ -482,49 +484,27 @@ function TrainingLogPageContent() {
                             />
                         </div>
                         {index < currentLog.exercises.length - 1 && (
-                          <div
-                            className={cn(
-                              "relative -mx-4 my-2 sm:mx-0",
-                              groupContinues && "pointer-events-none"
-                            )}
-                          >
-                           <div
-                              className={cn(
-                                'relative z-10 flex items-center space-x-2 pointer-events-auto'
-                              )}
-                            >
-                              <Separator
-                                className="flex-1 h-[2px]"
-                                style={groupContinues ? { backgroundColor: connectorColor } : undefined}
-                              />
-                              <Button
-                                onClick={() => handleOpenAddDialog(index + 1)}
-                                variant="outline"
-                                size="sm"
-                                className='border-dashed hover:border-solid hover:bg-muted/50 text-muted-foreground hover:text-foreground'
-                              >
-                                <PlusCircle className="mr-2 h-4 w-4" /> Add Exercise Here
-                              </Button>
-                              <Separator
-                                className="flex-1 h-[2px]"
-                                style={groupContinues ? { backgroundColor: connectorColor } : undefined}
-                              />
+                          shouldLink ? (
+                            <RoutineGroupConnector structure={currentStructure} />
+                          ) : (
+                            // Standard Divider
+                            <div className="relative -mx-4 my-2 sm:mx-0 group">
+                                <div className="relative z-10 flex items-center justify-center">
+                                    <Button
+                                        onClick={() => handleOpenAddDialog(index + 1)}
+                                        variant="outline"
+                                        size="sm"
+                                        className='border-dashed hover:border-solid hover:bg-muted/50 text-muted-foreground hover:text-foreground h-7 text-xs rounded-full bg-background'
+                                    >
+                                        <PlusCircle className="mr-1.5 h-3.5 w-3.5" /> 
+                                        Add Exercise Here
+                                    </Button>
+                                </div>
+                                <div className="absolute inset-0 flex items-center" aria-hidden="true">
+                                    <div className="w-full border-t border-muted" />
+                                </div>
                             </div>
-                            {groupContinues && (
-                              <>
-                                <span
-                                  aria-hidden
-                                  className="pointer-events-none absolute left-[1px] top-1/2 -translate-y-1/2 bottom-0 w-[2px] rounded-full"
-                                  style={{ backgroundColor: connectorColor }}
-                                />
-                                <span
-                                  aria-hidden
-                                  className="pointer-events-none absolute right-[1px] top-1/2 -translate-y-1/2 bottom-0 w-[2px] rounded-full"
-                                  style={{ backgroundColor: connectorColor }}
-                                />
-                              </>
-                            )}
-                          </div>
+                          )
                         )}
                       </React.Fragment>
                       )
@@ -532,6 +512,7 @@ function TrainingLogPageContent() {
                   </div>
                 </SortableContext>
               </DndContext>
+              
               {/* Final Add Button */}
               <div className="flex items-center space-x-2 my-2 pt-4">
                   <Separator className="flex-1" />
@@ -692,5 +673,3 @@ export default function TrainingLogPage() {
     </Suspense>
   );
 }
-
-    
