@@ -27,7 +27,8 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { SetStructurePicker } from '../SetStructurePicker';
 import { cn } from '@/lib/utils';
 import { Badge } from '../ui/badge';
-import { RoutineGroupConnector } from '@/components/training-log/RoutineGroupConnector'; // Reusing the component
+import { RoutineGroupConnector } from '@/components/training-log/RoutineGroupConnector';
+import { SET_STRUCTURE_COLORS } from '@/types/setStructure'; // Import colors
 
 // Helper for group sizes
 const getGroupSize = (type: string) => {
@@ -45,7 +46,7 @@ interface SortableExerciseItemProps {
   onRemoveExercise: (exerciseId: string) => void;
   onUpdateSetStructure: (exerciseId: string, structure: SetStructure) => void;
   onInsertExercise: (index: number) => void;
-  isLinkedToNext: boolean; // New prop
+  isLinkedToNext: boolean; 
 }
 
 function SortableExerciseItem({ 
@@ -72,20 +73,33 @@ function SortableExerciseItem({
     zIndex: isDragging ? 10 : 'auto',
   };
 
+  // Determine border color based on set structure
+  const structure = exercise.setStructure || 'normal';
+  const theme = SET_STRUCTURE_COLORS[structure] || SET_STRUCTURE_COLORS.normal;
+  const isSpecialStructure = structure !== 'normal';
+
   return (
     <React.Fragment>
       <li
         ref={setNodeRef}
-        style={style}
+        style={{
+            ...style,
+            // Use CSS variable or direct style for dynamic border color
+            borderColor: isSpecialStructure ? theme.border : undefined
+        }}
         className={cn(
-          "group relative bg-card border rounded-lg shadow-sm transition-all touch-none overflow-hidden hover:border-primary/30",
+          "group relative bg-card border rounded-lg shadow-sm transition-all touch-none overflow-hidden",
+          // Default hover style if normal, otherwise the style prop handles the color
+          !isSpecialStructure ? "hover:border-primary/30" : "hover:border-[theme.border]",
+          // Add border width if special structure to make it pop
+          isSpecialStructure && "border-2", 
           isDragging && "shadow-md ring-2 ring-primary/20 z-50",
           exercise.isMissing && "border-destructive/50 bg-destructive/5"
         )}
       >
         <div className="flex items-center gap-3 p-3">
           
-          {/* COL 1: Drag Handle & Index (Always Left & Centered) */}
+          {/* COL 1: Drag Handle & Index */}
           <div className="flex items-center gap-3 shrink-0 self-center">
             <button
               type="button"
@@ -265,7 +279,7 @@ export function SelectedRoutineExercisesList({
                     </div>
 
                     {selectedExercises.map((exercise, index) => {
-                        // --- SMART GROUPING LOGIC (Copied from Training Log) ---
+                        // --- SMART GROUPING LOGIC ---
                         const currentStructure = exercise.setStructure || 'normal';
                         const nextExercise = selectedExercises[index + 1];
                         const nextStructure = nextExercise ? (nextExercise.setStructure || 'normal') : 'normal';
