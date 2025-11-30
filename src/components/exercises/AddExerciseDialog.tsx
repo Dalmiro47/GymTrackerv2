@@ -230,46 +230,45 @@ export function AddExerciseDialog({
                         )}
                         />
                         
-                        {/* Warmup Section - Integrated Card */}
-                        <div className="pt-2">
-                            <div className="border rounded-md p-3 bg-muted/20 space-y-3">
-                                <div className="flex items-center justify-between">
-                                    <Label className="flex items-center gap-2 text-sm font-semibold">
-                                        <Flame className="h-3.5 w-3.5 text-orange-500" /> 
-                                        Warm-up Config
-                                    </Label>
-                                    <Popover>
-                                        <PopoverTrigger asChild>
-                                            <Button type="button" variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground">
-                                                <Info className="h-3.5 w-3.5" />
-                                            </Button>
-                                        </PopoverTrigger>
-                                        <PopoverContent className="max-w-xs p-3 text-xs" side="top">
-                                            <p className="font-semibold mb-1">Warm-up Templates</p>
-                                            <p className="text-muted-foreground">Automatically calculates warm-up sets based on your working weight.</p>
-                                        </PopoverContent>
-                                    </Popover>
-                                </div>
-
-                                <Controller
-                                    name="warmup.template"
-                                    control={control}
-                                    render={({ field }) => (
+                        {/* Warmup Section - Standard Form Field */}
+                        <FormField
+                            control={control}
+                            name="warmup.template"
+                            render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel className="flex items-center gap-2">
+                                        <div className="flex items-center gap-2">
+                                            <Flame className="h-3.5 w-3.5 text-orange-500" /> 
+                                            Warm-up Config
+                                        </div>
+                                        <Popover>
+                                            <PopoverTrigger asChild>
+                                                <Button type="button" variant="ghost" size="icon" className="h-4 w-4 text-muted-foreground hover:bg-transparent p-0">
+                                                    <Info className="h-3.5 w-3.5" />
+                                                </Button>
+                                            </PopoverTrigger>
+                                            <PopoverContent className="max-w-xs p-3 text-xs" side="top">
+                                                <p className="font-semibold mb-1">Warm-up Templates</p>
+                                                <p className="text-muted-foreground">Automatically calculates warm-up sets based on your working weight.</p>
+                                            </PopoverContent>
+                                        </Popover>
+                                    </FormLabel>
                                     <Select onValueChange={field.onChange} value={field.value}>
-                                        <SelectTrigger id="warmup.template" className="h-8 text-sm">
-                                            <SelectValue placeholder="Select a template" />
-                                        </SelectTrigger>
+                                        <FormControl>
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Select a template" />
+                                            </SelectTrigger>
+                                        </FormControl>
                                         <SelectContent>
-                                        {WARMUP_TEMPLATES.map((template) => (
-                                            <SelectItem key={template} value={template}>{template.replace(/_/g, ' ')}</SelectItem>
-                                        ))}
+                                            {WARMUP_TEMPLATES.map((template) => (
+                                                <SelectItem key={template} value={template}>{template.replace(/_/g, ' ')}</SelectItem>
+                                            ))}
                                         </SelectContent>
                                     </Select>
-                                    )}
-                                />
-                                {/* Checkbox for Weighted Bodyweight removed: Logic is now inferred from working weight */}
-                            </div>
-                        </div>
+                                    <FormMessage />
+                                </FormItem>
+                            )}
+                        />
                     </div>
                 </div>
 
