@@ -1,11 +1,10 @@
-
 "use client";
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import type { Exercise } from '@/types';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Search, ChevronRight, Check, ArrowLeft, Dumbbell } from 'lucide-react';
+import { Search, ChevronRight, Check, ArrowLeft, Dumbbell, Plus } from 'lucide-react';
 import { MUSCLE_GROUPS_LIST, type MuscleGroup } from '@/lib/constants';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -16,6 +15,8 @@ interface AvailableExercisesSelectorProps {
   selectedExerciseIds: string[];
   onSelectionChange: (exerciseId: string, isSelected: boolean) => void;
   isLoadingExercises: boolean;
+  mode?: 'multi' | 'single'; // NEW: Determines interaction style
+  initialMuscleGroup?: MuscleGroup | null; // NEW: Allows starting inside a category
 }
 
 export function AvailableExercisesSelector({
@@ -23,9 +24,17 @@ export function AvailableExercisesSelector({
   selectedExerciseIds,
   onSelectionChange,
   isLoadingExercises,
+  mode = 'multi',
+  initialMuscleGroup = null,
 }: AvailableExercisesSelectorProps) {
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeMuscleGroup, setActiveMuscleGroup] = useState<MuscleGroup | 'All' | null>(null);
+  const [activeMuscleGroup, setActiveMuscleGroup] = useState<MuscleGroup | 'All' | null>(initialMuscleGroup);
+
+  // Reset to initial group if the dialog re-opens with a different prop
+  useEffect(() => {
+    setActiveMuscleGroup(initialMuscleGroup);
+    setSearchTerm('');
+  }, [initialMuscleGroup]);
 
   // Group exercises by muscle for the counts on the grid view
   const exerciseCounts = useMemo(() => {
@@ -59,6 +68,7 @@ export function AvailableExercisesSelector({
   }, [allExercises, searchTerm, activeMuscleGroup]);
 
   // VIEW 1: Muscle Group Grid
+  // Only show if no muscle group is active AND we aren't searching globally
   if (activeMuscleGroup === null && searchTerm === '') {
     return (
       <div className="flex flex-col h-full gap-4">
@@ -72,7 +82,8 @@ export function AvailableExercisesSelector({
           />
         </div>
         
-        <ScrollArea className="flex-grow">
+        <ScrollArea className="flex-grow -mx-6 px-6"> 
+           {/* Added negative margin to scroll area to allow full width scrolling while keeping padding */}
           <div className="grid grid-cols-2 gap-3 pb-4">
             <button
                 onClick={() => setActiveMuscleGroup('All')}
@@ -141,30 +152,48 @@ export function AvailableExercisesSelector({
               <div className="grid grid-cols-1 gap-2">
                 {filteredExercises.map(exercise => {
                   const isSelected = selectedExerciseIds.includes(exercise.id);
+                  
                   return (
                     <div
                       key={exercise.id}
                       className={cn(
                         "flex items-center justify-between p-3 rounded-lg border transition-all cursor-pointer",
-                        isSelected 
+                        // In multi mode, highlight selected. In single mode, just hover effect.
+                        mode === 'multi' && isSelected 
                             ? "bg-primary/5 border-primary shadow-sm" 
                             : "hover:bg-muted/50 border-transparent bg-muted/10"
                       )}
-                      onClick={() => onSelectionChange(exercise.id, !isSelected)}
+                      onClick={() => {
+                          if (mode === 'single') {
+                              // Single select mode: Click implies action immediately
+                              onSelectionChange(exercise.id, true);
+                          } else {
+                              // Multi select mode: Toggle selection
+                              onSelectionChange(exercise.id, !isSelected);
+                          }
+                      }}
                     >
                       <div>
-                        <p className={cn("font-medium text-sm", isSelected && "text-primary")}>
+                        <p className={cn("font-medium text-sm", mode === 'multi' && isSelected && "text-primary")}>
                             {exercise.name}
                         </p>
                         <p className="text-xs text-muted-foreground">{exercise.muscleGroup}</p>
                       </div>
                       
-                      {isSelected ? (
-                          <div className="h-6 w-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center shrink-0 animate-in zoom-in-50 duration-200">
-                              <Check className="h-3.5 w-3.5" />
-                          </div>
+                      {mode === 'multi' ? (
+                          // Checkbox UI for Routines
+                          isSelected ? (
+                              <div className="h-6 w-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center shrink-0 animate-in zoom-in-50 duration-200">
+                                  <Check className="h-3.5 w-3.5" />
+                              </div>
+                          ) : (
+                              <div className="h-6 w-6 rounded-full border border-muted-foreground/30 shrink-0" />
+                          )
                       ) : (
-                          <div className="h-6 w-6 rounded-full border border-muted-foreground/30 shrink-0" />
+                          // Plus icon for Training Log (Single Add)
+                          <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground">
+                              <Plus className="h-5 w-5" />
+                          </Button>
                       )}
                     </div>
                   );
