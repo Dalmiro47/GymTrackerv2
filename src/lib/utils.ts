@@ -1,4 +1,6 @@
 
+"use client";
+
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
 import type { WarmupTemplate, WarmupStepSpec } from '@/types';
@@ -95,7 +97,8 @@ export const inferWarmupTemplate = (exerciseName: string): { template: WarmupTem
   }
   // Then bodyweight
   if (name.includes('pull-up') || name.includes('chin-up') || name.includes('dip') || name.includes('push-up') || name.includes('leg raise')) {
-    return { template: 'BODYWEIGHT', isLowerBodyBarbell: false, isWeightedBodyweight: true };
+    // Note: We always return false for isWeightedBodyweight now, as it's determined dynamically by the logged weight.
+    return { template: 'BODYWEIGHT', isLowerBodyBarbell: false, isWeightedBodyweight: false };
   }
   // Then barbell
   if (name.includes('barbell') || name.includes('squat') || name.includes('deadlift') || name.includes('rdl') || name.includes('ohp') || name.includes('bench')) {
@@ -116,7 +119,7 @@ export interface WarmupInput {
   template: WarmupTemplate;
   workingWeight: number;
   isLowerBodyBarbell?: boolean;
-  isWeightedBodyweight?: boolean;
+  isWeightedBodyweight?: boolean; // @deprecated - Logic is now inferred from workingWeight
   overrideSteps?: WarmupStepSpec[];
 }
 
@@ -129,7 +132,7 @@ export interface WarmupStep {
 }
 
 export function computeWarmup(input: WarmupInput): WarmupStep[] {
-  const { template, workingWeight, isLowerBodyBarbell, isWeightedBodyweight, overrideSteps } = input;
+  const { template, workingWeight, isLowerBodyBarbell, overrideSteps } = input;
 
   if (template === 'NONE') return [];
 
@@ -152,12 +155,20 @@ export function computeWarmup(input: WarmupInput): WarmupStep[] {
 
   stepsSpec.forEach(spec => {
     if (spec.type === 'LABEL') {
-      // Bodyweight case
-      if (template === 'BODYWEIGHT' && !isWeightedBodyweight) {
-        results.push({ label: 'Light/assisted', weightTotal: 0, reps: '10-12', rest: '45s', note: spec.note });
-      } else {
-        results.push({ label: spec.label || 'Bodyweight', weightTotal: 0, reps: spec.reps, rest: spec.rest, note: spec.note });
+      // Logic for BODYWEIGHT label
+      if (template === 'BODYWEIGHT') {
+         if (workingWeight === 0) {
+            // Rule 1: No weight logged -> Simple variation (Light/assisted)
+            results.push({ label: 'Light/assisted', weightTotal: 0, reps: '10-12', rest: '45s', note: spec.note });
+         } else {
+             // Rule 2: Weight is logged -> Standard "Bodyweight" set before adding load
+             results.push({ label: spec.label || 'Bodyweight', weightTotal: 0, reps: spec.reps, rest: spec.rest, note: spec.note });
+         }
+         return;
       }
+      
+      // Default for other templates
+      results.push({ label: spec.label || 'Bodyweight', weightTotal: 0, reps: spec.reps, rest: spec.rest, note: spec.note });
       return;
     }
 
@@ -167,8 +178,9 @@ export function computeWarmup(input: WarmupInput): WarmupStep[] {
       let note = spec.note;
       
       if (template === 'BODYWEIGHT' && spec.appliesTo === 'ADDED') {
-        if (workingWeight <= 0) return; // Skip if no added weight
-        baseWeight = workingWeight; // Assume workingWeight IS the added weight
+        // Rule 2 continued: If weight logged, apply percentage to added weight
+        if (workingWeight <= 0) return; // Skip added weight sets if no weight is logged
+        baseWeight = workingWeight; // The logged weight IS the added weight
         note = `(of ${workingWeight}kg added)`;
       }
       
