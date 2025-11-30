@@ -27,14 +27,7 @@ import { ExerciseCard } from './ExerciseCard';
 import { AddExerciseDialog } from './AddExerciseDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { PlusCircle, Search, Filter, Loader2, AlertTriangle, History } from 'lucide-react';
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
+import { PlusCircle, Search, Loader2, AlertTriangle, History, ArrowLeft, Dumbbell, Check } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -44,7 +37,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useToast } from '@/hooks/use-toast';
 import { ScrollArea } from '../ui/scroll-area';
@@ -57,31 +49,9 @@ import {
   DialogHeader as RestoreDialogHeader,
   DialogTitle as RestoreDialogTitle,
 } from '@/components/ui/dialog';
-import { Checkbox } from '../ui/checkbox';
-import { Label } from '../ui/label';
+import { cn } from '@/lib/utils'; // Make sure cn is imported
 
 type HiddenDefault = { id: string; name: string; muscleGroup: string };
-
-const groupExercisesByMuscle = (exercises: Exercise[], muscleOrder: readonly MuscleGroup[]): { muscleGroup: MuscleGroup; exercises: Exercise[] }[] => {
-  const grouped = new Map<MuscleGroup, Exercise[]>();
-  muscleOrder.forEach(groupName => {
-    grouped.set(groupName, []);
-  });
-
-  exercises.forEach(exercise => {
-    const list = grouped.get(exercise.muscleGroup) || [];
-    list.push(exercise);
-    grouped.set(exercise.muscleGroup, list);
-  });
-
-  return muscleOrder
-    .map(muscleGroup => ({
-      muscleGroup,
-      exercises: grouped.get(muscleGroup) || [],
-    }))
-    .filter(group => group.exercises.length > 0);
-};
-
 
 export function ExerciseClientPage() {
   const authContext = useAuth();
@@ -90,8 +60,8 @@ export function ExerciseClientPage() {
   const router = useRouter(); 
 
   const [exercises, setExercises] = useState<Exercise[]>([]);
+  const [activeMuscleGroup, setActiveMuscleGroup] = useState<MuscleGroup | 'All' | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedMuscleGroup, setSelectedMuscleGroup] = useState<MuscleGroup | 'All'>('All');
 
   const [exerciseToEdit, setExerciseToEdit] = useState<Exercise | null>(null);
   const [exerciseToDeleteId, setExerciseToDeleteId] = useState<string | null>(null);
@@ -102,7 +72,6 @@ export function ExerciseClientPage() {
   const [isDialogSaving, setIsDialogSaving] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
-  // State for restore functionality
   const [hiddenDefaults, setHiddenDefaults] = useState<HiddenDefault[]>([]);
   const [isRestoreDialogOpen, setIsRestoreDialogOpen] = useState(false);
   const [selectedToRestore, setSelectedToRestore] = useState<string[]>([]);
@@ -179,50 +148,34 @@ export function ExerciseClientPage() {
       return exercises.map(e => ({...e, muscleGroup: assertMuscleGroup(e.muscleGroup as any)}));
   }, [exercises]);
 
-  const { availableMuscleGroups, muscleGroupCounts } = useMemo(() => {
+  const exerciseCounts = useMemo(() => {
     const counts: Record<string, number> = {};
-    const seenGroups = new Set<MuscleGroup>();
-
     canonicalExercises.forEach(ex => {
       const group = ex.muscleGroup;
-      seenGroups.add(group);
       counts[group] = (counts[group] || 0) + 1;
     });
-    
-    const available = MUSCLE_GROUPS_LIST.filter(group => seenGroups.has(group));
-    
-    return { availableMuscleGroups: available, muscleGroupCounts: counts };
+    return counts;
   }, [canonicalExercises]);
 
-
-  useEffect(() => {
-    if (selectedMuscleGroup !== 'All' && !availableMuscleGroups.includes(selectedMuscleGroup)) {
-      setSelectedMuscleGroup('All');
-    }
-  }, [availableMuscleGroups, selectedMuscleGroup]);
-
-
-  const isFilteringOrSearching = useMemo(() => {
-    return searchTerm.trim() !== '' || selectedMuscleGroup !== 'All';
-  }, [searchTerm, selectedMuscleGroup]);
-
   const displayedExercises = useMemo(() => {
-    if (!isFilteringOrSearching) return [];
+    if (activeMuscleGroup === null && searchTerm.trim() !== '') {
+       return canonicalExercises.filter(ex => ex.name.toLowerCase().includes(searchTerm.toLowerCase().trim()));
+    }
 
-    let tempExercises = [...canonicalExercises];
+    let temp = [...canonicalExercises];
+
+    if (activeMuscleGroup && activeMuscleGroup !== 'All') {
+      temp = temp.filter(ex => ex.muscleGroup === activeMuscleGroup);
+    }
+
     if (searchTerm.trim() !== '') {
-      tempExercises = tempExercises.filter(ex => ex.name.toLowerCase().includes(searchTerm.toLowerCase().trim()));
+      const q = searchTerm.toLowerCase().trim();
+      temp = temp.filter(ex => ex.name.toLowerCase().includes(q));
     }
-    if (selectedMuscleGroup !== 'All') {
-      tempExercises = tempExercises.filter(ex => ex.muscleGroup === selectedMuscleGroup);
-    }
-    return tempExercises;
-  }, [canonicalExercises, searchTerm, selectedMuscleGroup, isFilteringOrSearching]);
+    
+    return temp;
+  }, [canonicalExercises, searchTerm, activeMuscleGroup]);
 
-  const exercisesGroupedByMuscle = useMemo(() => {
-    if (isFilteringOrSearching) return [];
-    return groupExercisesByMuscle(canonicalExercises, MUSCLE_GROUPS_LIST);
-  }, [canonicalExercises, isFilteringOrSearching]);
 
   const handleOpenAddDialog = () => {
     setExerciseToEdit(null);
@@ -307,7 +260,7 @@ export function ExerciseClientPage() {
     } catch (e) {
       toast({ title: "Error checking routines", description: "Could not verify if exercise is in use.", variant: "destructive" });
     } finally {
-      setIsBusyDeleting(false); // To enable dialog buttons
+      setIsBusyDeleting(false); 
     }
   };
 
@@ -359,6 +312,14 @@ export function ExerciseClientPage() {
     setIsRestoreDialogOpen(true);
   };
 
+  const handleToggleRestoreSelection = (id: string) => {
+    setSelectedToRestore(prev => 
+      prev.includes(id) 
+        ? prev.filter(x => x !== id) 
+        : [...prev, id]
+    );
+  };
+
   const handleConfirmRestore = async () => {
     if (!user?.id || selectedToRestore.length === 0) return;
     setIsRestoring(true);
@@ -404,7 +365,7 @@ export function ExerciseClientPage() {
       <PageHeader title="Exercise Library" description="Browse, add, and manage your exercises.">
          <div className="flex items-center gap-2">
             {hiddenDefaults.length > 0 && (
-                <Button variant="outline" onClick={handleOpenRestoreDialog}>
+                <Button variant="outline" onClick={handleOpenRestoreDialog} className="hidden sm:flex">
                   <History className="mr-2 h-4 w-4" />
                   Restore Defaults
                   <span className="ml-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-secondary text-secondary-foreground text-xs font-bold">
@@ -419,7 +380,7 @@ export function ExerciseClientPage() {
               disabled={isLoading} 
             >
               <PlusCircle className="mr-2 h-4 w-4" />
-              Add New Exercise
+              Add Exercise
             </Button>
          </div>
       </PageHeader>
@@ -432,136 +393,185 @@ export function ExerciseClientPage() {
         isSaving={isDialogSaving}
       />
       
+      {/* Restore Dialog - Updated UI */}
       <Dialog open={isRestoreDialogOpen} onOpenChange={setIsRestoreDialogOpen}>
-        <RestoreDialogContent>
+        <RestoreDialogContent className="sm:max-w-md">
           <RestoreDialogHeader>
             <RestoreDialogTitle>Restore Hidden Default Exercises</RestoreDialogTitle>
             <RestoreDialogDescription>Select the default exercises you want to add back to your library.</RestoreDialogDescription>
           </RestoreDialogHeader>
-          <div className="py-4">
+          
+          <div className="py-2">
             {hiddenDefaults.length > 0 ? (
-                <ScrollArea className="max-h-64 w-full rounded-md border p-4">
+                <ScrollArea className="max-h-[300px] w-full p-1 pr-3">
                     <div className="space-y-2">
-                    {hiddenDefaults.map(ex => (
-                        <div key={ex.id} className="flex items-center space-x-2">
-                            <Checkbox 
-                                id={`restore-${ex.id}`}
-                                checked={selectedToRestore.includes(ex.id)}
-                                onCheckedChange={(checked) => {
-                                    setSelectedToRestore(prev => 
-                                        checked ? [...prev, ex.id] : prev.filter(id => id !== ex.id)
-                                    )
-                                }}
-                            />
-                            <Label htmlFor={`restore-${ex.id}`} className="flex-grow cursor-pointer">
-                                {ex.name}
-                                <span className="ml-2 text-xs text-muted-foreground">({ex.muscleGroup})</span>
-                            </Label>
-                        </div>
-                    ))}
+                    {hiddenDefaults.map(ex => {
+                        const isSelected = selectedToRestore.includes(ex.id);
+                        return (
+                            <div 
+                                key={ex.id} 
+                                className={cn(
+                                    "flex items-center justify-between p-3 rounded-lg border transition-all cursor-pointer",
+                                    isSelected 
+                                        ? "bg-primary/5 border-primary shadow-sm" 
+                                        : "hover:bg-muted/50 border-transparent bg-muted/10"
+                                )}
+                                onClick={() => handleToggleRestoreSelection(ex.id)}
+                            >
+                                <div>
+                                    <p className={cn("font-medium text-sm", isSelected && "text-primary")}>
+                                        {ex.name}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground">{ex.muscleGroup}</p>
+                                </div>
+                                
+                                {isSelected ? (
+                                    <div className="h-6 w-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center shrink-0 animate-in zoom-in-50 duration-200">
+                                        <Check className="h-3.5 w-3.5" />
+                                    </div>
+                                ) : (
+                                    <div className="h-6 w-6 rounded-full border border-muted-foreground/30 shrink-0" />
+                                )}
+                            </div>
+                        );
+                    })}
                     </div>
                 </ScrollArea>
             ) : (
-                <p className="text-sm text-muted-foreground">No hidden default exercises to restore.</p>
+                <p className="text-sm text-muted-foreground text-center py-4">No hidden default exercises to restore.</p>
             )}
           </div>
-          <RestoreDialogFooter>
+
+          <RestoreDialogFooter className="gap-2 sm:gap-0">
             <DialogClose asChild>
                 <Button variant="ghost" disabled={isRestoring}>Cancel</Button>
             </DialogClose>
             <Button onClick={handleConfirmRestore} disabled={isRestoring || selectedToRestore.length === 0}>
                 {isRestoring ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : null}
-                Restore Selected
+                Restore Selected ({selectedToRestore.length})
             </Button>
           </RestoreDialogFooter>
         </RestoreDialogContent>
       </Dialog>
 
-
-      <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-3">
-        <div className="relative md:col-span-2">
-          <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            type="search"
-            placeholder="Search exercises by name..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full rounded-lg bg-card py-2 pl-10 pr-4 shadow-sm focus:ring-primary"
-            aria-label="Search exercises"
-            disabled={isLoading && !exercises.length}
-          />
-        </div>
-        <div className="relative">
-          <Filter className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
-           <Select
-              value={selectedMuscleGroup}
-              onValueChange={(value) => setSelectedMuscleGroup(value as MuscleGroup | 'All')}
-              disabled={isLoading && !exercises.length}
-            >
-            <SelectTrigger className="w-full rounded-lg bg-card py-2 pl-10 pr-4 shadow-sm focus:ring-primary" aria-label="Filter by muscle group">
-              <SelectValue placeholder="Filter by muscle group" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="All">All Muscle Groups</SelectItem>
-              {availableMuscleGroups.map(group => (
-                <SelectItem key={group} value={group}>
-                  {group} ({muscleGroupCounts[group] || 0})
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      {!isLoading && isFilteringOrSearching ? (
-        displayedExercises.length > 0 ? (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {displayedExercises.map(exercise => (
-              <ExerciseCard
-                key={exercise.id}
-                exercise={exercise}
-                onEdit={() => handleOpenEditDialog(exercise)}
-                onDelete={() => openDeleteConfirmation(exercise.id)}
-              />
-            ))}
-          </div>
-        ) : (
-          <div className="text-center py-12">
-            <p className="text-xl text-muted-foreground font-semibold mb-2">No exercises found for your current filter/search.</p>
-            <p className="text-muted-foreground">Try adjusting your search or filters, or add a new exercise!</p>
-          </div>
-        )
-      ) : !isLoading && exercisesGroupedByMuscle.length > 0 ? (
-        <Accordion type="multiple" className="w-full space-y-2">
-          {exercisesGroupedByMuscle.map(group => (
-            <AccordionItem value={group.muscleGroup} key={group.muscleGroup} className="border bg-card shadow-sm rounded-lg">
-              <AccordionTrigger className="px-6 py-4 hover:no-underline">
-                 <span className="text-xl font-headline font-semibold text-primary">
-                  {group.muscleGroup} ({group.exercises.length})
-                </span>
-              </AccordionTrigger>
-              <AccordionContent className="px-6 pb-6 pt-0">
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                  {group.exercises.map(exercise => (
-                    <ExerciseCard
-                      key={exercise.id}
-                      exercise={exercise}
-                      onEdit={() => handleOpenEditDialog(exercise)}
-                      onDelete={() => openDeleteConfirmation(exercise.id)}
+      {/* Main Content Area */}
+      <div className="space-y-6">
+        {/* VIEW 1: Categories Grid */}
+        {activeMuscleGroup === null && (
+            <div className="space-y-4">
+                <div className="relative">
+                    <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                        type="search"
+                        placeholder="Search all exercises..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="w-full pl-10"
                     />
-                  ))}
                 </div>
-              </AccordionContent>
-            </AccordionItem>
-          ))}
-        </Accordion>
-      ) : (!isLoading && exercises.length === 0 && user) ? ( 
-          <div className="text-center py-12">
-            <p className="text-xl text-muted-foreground font-semibold mb-2">Your exercise library is empty.</p>
-            <p className="text-muted-foreground">Click "Add New Exercise" to get started!</p>
-          </div>
-        )
-      : null }
+
+                {searchTerm ? (
+                    displayedExercises.length > 0 ? (
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                            {displayedExercises.map(exercise => (
+                            <ExerciseCard
+                                key={exercise.id}
+                                exercise={exercise}
+                                onEdit={() => handleOpenEditDialog(exercise)}
+                                onDelete={() => openDeleteConfirmation(exercise.id)}
+                            />
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="text-center py-12 text-muted-foreground">No exercises found.</div>
+                    )
+                ) : (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                        <button
+                            onClick={() => setActiveMuscleGroup('All')}
+                            className="flex flex-col items-center justify-center p-6 rounded-xl border bg-card hover:bg-accent/50 hover:border-primary/30 transition-all text-center gap-3 shadow-sm hover:shadow-md"
+                        >
+                            <div className="p-3 rounded-full bg-primary/10 text-primary">
+                                <Dumbbell className="h-8 w-8" />
+                            </div>
+                            <div>
+                                <span className="font-bold text-lg block">All Exercises</span>
+                                <span className="text-sm text-muted-foreground">{canonicalExercises.length} items</span>
+                            </div>
+                        </button>
+
+                        {MUSCLE_GROUPS_LIST.map(mg => {
+                            const count = exerciseCounts[mg] || 0;
+                            if (count === 0) return null;
+                            return (
+                                <button
+                                    key={mg}
+                                    onClick={() => setActiveMuscleGroup(mg)}
+                                    className="flex flex-col items-start p-6 rounded-xl border bg-card hover:bg-accent/50 hover:border-primary/30 transition-all text-left gap-1 shadow-sm hover:shadow-md"
+                                >
+                                    <span className="font-bold text-lg">{mg}</span>
+                                    <span className="text-sm text-muted-foreground">{count} exercises</span>
+                                </button>
+                            );
+                        })}
+                    </div>
+                )}
+            </div>
+        )}
+
+        {/* VIEW 2: Exercise List */}
+        {activeMuscleGroup !== null && (
+            <div className="space-y-6">
+                <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+                    <div className="flex items-center gap-2">
+                        <Button 
+                            variant="ghost" 
+                            onClick={() => {
+                                setActiveMuscleGroup(null);
+                                setSearchTerm('');
+                            }}
+                            className="pl-0 hover:pl-2 transition-all"
+                        >
+                            <ArrowLeft className="mr-2 h-4 w-4" />
+                            Categories
+                        </Button>
+                        <h2 className="text-2xl font-bold tracking-tight">
+                            {activeMuscleGroup === 'All' ? 'All Exercises' : activeMuscleGroup}
+                        </h2>
+                    </div>
+                    <div className="relative w-full sm:w-72">
+                        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                            placeholder={`Search ${activeMuscleGroup === 'All' ? '' : activeMuscleGroup}...`}
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="pl-9"
+                            autoFocus
+                        />
+                    </div>
+                </div>
+
+                {displayedExercises.length > 0 ? (
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        {displayedExercises.map(exercise => (
+                        <ExerciseCard
+                            key={exercise.id}
+                            exercise={exercise}
+                            onEdit={() => handleOpenEditDialog(exercise)}
+                            onDelete={() => openDeleteConfirmation(exercise.id)}
+                        />
+                        ))}
+                    </div>
+                ) : (
+                    <div className="text-center py-12">
+                        <p className="text-xl text-muted-foreground font-semibold mb-2">No exercises found.</p>
+                        <Button variant="link" onClick={() => setSearchTerm('')}>Clear search</Button>
+                    </div>
+                )}
+            </div>
+        )}
+
+      </div>
 
       <AlertDialog open={!!exerciseToDeleteId} onOpenChange={(open) => !open && closeDeleteDialog()}>
         <AlertDialogContent>
