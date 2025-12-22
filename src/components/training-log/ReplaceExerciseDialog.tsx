@@ -42,17 +42,16 @@ export function ReplaceExerciseDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-       {/* Reusing same size classes as AddDialog for consistency */}
-      <DialogContent className="!max-w-2xl !w-[95vw] flex flex-col h-[80vh] p-0 gap-0 overflow-hidden">
+      <DialogContent 
+        className="!max-w-2xl !w-[95vw] flex flex-col h-[80vh] p-0 gap-0 overflow-hidden"
+        onOpenAutoFocus={(e) => e.preventDefault()} // Prevents mobile keyboard on open
+      >
         <DialogHeader className="p-6 pb-2 shrink-0">
           <DialogTitle className="font-headline">Replace Exercise</DialogTitle>
           <DialogDescription>Select a different exercise from your library.</DialogDescription>
         </DialogHeader>
 
         <div className="flex-grow overflow-hidden p-6 pt-2">
-            {/* We use a key here to force re-render when dialog opens or muscle group changes.
-              This ensures the selector resets to the correct initial view every time.
-            */}
             <AvailableExercisesSelector 
                 key={`${isOpen}-${initialMuscleGroup}`}
                 allExercises={availableExercises}
