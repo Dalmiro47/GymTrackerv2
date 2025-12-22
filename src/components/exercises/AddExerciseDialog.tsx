@@ -122,7 +122,7 @@ export function AddExerciseDialog({
       {triggerButton && <DialogTrigger asChild>{triggerButton}</DialogTrigger>}
       <DialogContent 
         className="sm:max-w-3xl max-h-[90vh] flex flex-col p-0 gap-0"
-        onOpenAutoFocus={(e) => e.preventDefault()} // Prevents mobile keyboard on open
+        onOpenAutoFocus={(e) => e.preventDefault()} // STOP MOBILE KEYBOARD
       >
         
         <DialogHeader className="p-6 pb-4 border-b">

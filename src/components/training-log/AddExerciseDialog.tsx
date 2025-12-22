@@ -41,7 +41,7 @@ export function AddExerciseDialog({
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogContent 
         className="!max-w-2xl !w-[95vw] flex flex-col h-[80vh] p-0 gap-0 overflow-hidden"
-        onOpenAutoFocus={(e) => e.preventDefault()} // Prevents mobile keyboard on open
+        onOpenAutoFocus={(e) => e.preventDefault()} // STOP MOBILE KEYBOARD
       >
         <DialogHeader className="p-6 pb-2 shrink-0">
           <DialogTitle className="font-headline">Add Exercise</DialogTitle>
