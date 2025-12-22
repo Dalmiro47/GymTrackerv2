@@ -170,7 +170,10 @@ export function AddEditRoutineDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogContent className="!max-w-4xl !w-[95vw] flex flex-col h-[90vh] sm:h-[85vh] p-0 gap-0 overflow-hidden">
+      <DialogContent 
+        className="!max-w-4xl !w-[95vw] flex flex-col h-[90vh] sm:h-[85vh] p-0 gap-0 overflow-hidden"
+        onOpenAutoFocus={(e) => e.preventDefault()} // STOP MOBILE KEYBOARD
+      >
         
         <DialogHeader className="p-6 pb-4 border-b shrink-0 bg-background z-10">
           <div className="flex items-center justify-between">
@@ -252,8 +255,6 @@ export function AddEditRoutineDialog({
                         />
                     )}
                 </div>
-                
-                {/* Redundant button removed here */}
                 
               </div>
             </form>

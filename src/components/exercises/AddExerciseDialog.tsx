@@ -120,7 +120,10 @@ export function AddExerciseDialog({
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       {triggerButton && <DialogTrigger asChild>{triggerButton}</DialogTrigger>}
-      <DialogContent className="sm:max-w-3xl max-h-[90vh] flex flex-col p-0 gap-0">
+      <DialogContent 
+        className="sm:max-w-3xl max-h-[90vh] flex flex-col p-0 gap-0"
+        onOpenAutoFocus={(e) => e.preventDefault()} // STOP MOBILE KEYBOARD
+      >
         
         <DialogHeader className="p-6 pb-4 border-b">
           <DialogTitle className="font-headline text-xl">{exerciseToEdit ? 'Edit Exercise' : 'Add New Exercise'}</DialogTitle>
