@@ -15,8 +15,8 @@ interface AvailableExercisesSelectorProps {
   selectedExerciseIds: string[];
   onSelectionChange: (exerciseId: string, isSelected: boolean) => void;
   isLoadingExercises: boolean;
-  mode?: 'multi' | 'single'; // NEW: Determines interaction style
-  initialMuscleGroup?: MuscleGroup | null; // NEW: Allows starting inside a category
+  mode?: 'multi' | 'single'; 
+  initialMuscleGroup?: MuscleGroup | null; 
 }
 
 export function AvailableExercisesSelector({
@@ -30,13 +30,11 @@ export function AvailableExercisesSelector({
   const [searchTerm, setSearchTerm] = useState('');
   const [activeMuscleGroup, setActiveMuscleGroup] = useState<MuscleGroup | 'All' | null>(initialMuscleGroup);
 
-  // Reset to initial group if the dialog re-opens with a different prop
   useEffect(() => {
     setActiveMuscleGroup(initialMuscleGroup);
     setSearchTerm('');
   }, [initialMuscleGroup]);
 
-  // Group exercises by muscle for the counts on the grid view
   const exerciseCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     allExercises.forEach(ex => {
@@ -49,17 +47,14 @@ export function AvailableExercisesSelector({
   const filteredExercises = useMemo(() => {
     let temp = [...allExercises];
     
-    // If searching globally (no muscle group selected), just filter by name
     if (activeMuscleGroup === null && searchTerm.trim() !== '') {
        return temp.filter(ex => ex.name.toLowerCase().includes(searchTerm.toLowerCase().trim()));
     }
 
-    // Otherwise, filter by muscle group FIRST
     if (activeMuscleGroup && activeMuscleGroup !== 'All') {
       temp = temp.filter(ex => ex.muscleGroup === activeMuscleGroup);
     }
 
-    // THEN filter by search term within that group
     if (searchTerm.trim() !== '') {
       const q = searchTerm.toLowerCase().trim();
       temp = temp.filter(ex => ex.name.toLowerCase().includes(q));
@@ -68,7 +63,6 @@ export function AvailableExercisesSelector({
   }, [allExercises, searchTerm, activeMuscleGroup]);
 
   // VIEW 1: Muscle Group Grid
-  // Only show if no muscle group is active AND we aren't searching globally
   if (activeMuscleGroup === null && searchTerm === '') {
     return (
       <div className="flex flex-col h-full gap-4">
@@ -83,7 +77,6 @@ export function AvailableExercisesSelector({
         </div>
         
         <ScrollArea className="flex-grow -mx-6 px-6"> 
-           {/* Added negative margin to scroll area to allow full width scrolling while keeping padding */}
           <div className="grid grid-cols-2 gap-3 pb-4">
             <button
                 onClick={() => setActiveMuscleGroup('All')}
@@ -100,7 +93,7 @@ export function AvailableExercisesSelector({
 
             {MUSCLE_GROUPS_LIST.map(mg => {
               const count = exerciseCounts[mg] || 0;
-              if (count === 0) return null; // Hide empty groups
+              if (count === 0) return null; 
               return (
                 <button
                   key={mg}
@@ -141,7 +134,6 @@ export function AvailableExercisesSelector({
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="pl-9 h-9"
-            autoFocus
           />
         </div>
       </div>
@@ -158,17 +150,14 @@ export function AvailableExercisesSelector({
                       key={exercise.id}
                       className={cn(
                         "flex items-center justify-between p-3 rounded-lg border transition-all cursor-pointer",
-                        // In multi mode, highlight selected. In single mode, just hover effect.
                         mode === 'multi' && isSelected 
                             ? "bg-primary/5 border-primary shadow-sm" 
                             : "hover:bg-muted/50 border-transparent bg-muted/10"
                       )}
                       onClick={() => {
                           if (mode === 'single') {
-                              // Single select mode: Click implies action immediately
                               onSelectionChange(exercise.id, true);
                           } else {
-                              // Multi select mode: Toggle selection
                               onSelectionChange(exercise.id, !isSelected);
                           }
                       }}
@@ -181,7 +170,6 @@ export function AvailableExercisesSelector({
                       </div>
                       
                       {mode === 'multi' ? (
-                          // Checkbox UI for Routines
                           isSelected ? (
                               <div className="h-6 w-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center shrink-0 animate-in zoom-in-50 duration-200">
                                   <Check className="h-3.5 w-3.5" />
@@ -190,7 +178,6 @@ export function AvailableExercisesSelector({
                               <div className="h-6 w-6 rounded-full border border-muted-foreground/30 shrink-0" />
                           )
                       ) : (
-                          // Plus icon for Training Log (Single Add)
                           <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground">
                               <Plus className="h-5 w-5" />
                           </Button>
