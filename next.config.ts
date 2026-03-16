@@ -9,6 +9,9 @@ const nextConfig: NextConfig = {
   },
   experimental: {},
   allowedDevOrigins: ['*.cloudworkstations.dev'],
+  redirects: async () => [
+    { source: '/coach', destination: '/log', permanent: true },
+  ],
 };
 
 // Export an async config so we can conditionally import in prod only.

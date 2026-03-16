@@ -1,5 +1,5 @@
 import type { NavItem } from '@/types';
-import { LayoutDashboard, Dumbbell, ListChecks, ClipboardEdit, Sparkles, User } from 'lucide-react';
+import { LayoutDashboard, Dumbbell, ListChecks, ClipboardEdit, User } from 'lucide-react';
 
 export const siteConfig = {
   name: "DDS Gym Tracker",
@@ -24,12 +24,6 @@ export const navItems: NavItem[] = [
     href: '/log',
     icon: ClipboardEdit,
     label: 'Training Log',
-  },
-  {
-    title: 'AI Coach',
-    href: '/coach',
-    icon: Sparkles,
-    label: 'AI Coach',
   },
   {
     title: 'Exercises',
