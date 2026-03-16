@@ -1,12 +1,12 @@
 
 "use client";
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import type { Routine, RoutineData, Exercise } from '@/types';
+import type { Routine, RoutineData, Exercise, WorkoutLog } from '@/types';
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
-import { PlusCircle, Loader2, ListChecks, GripVertical, Save } from 'lucide-react';
+import { PlusCircle, Loader2, ListChecks, GripVertical, Save, Sparkles } from 'lucide-react';
 import {
   Card,
   CardContent,
@@ -53,6 +53,11 @@ import {
   sortableKeyboardCoordinates,
 } from '@dnd-kit/sortable';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { CoachChatSheet } from '@/components/coach/CoachChatSheet';
+import { buildRoutineReviewContext, type RoutineReviewContext } from '@/lib/ai/context-builders';
+import { collection, query, where, orderBy, getDocs, doc, getDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebaseConfig';
+import { subDays, format } from 'date-fns';
 
 
 export default function RoutinesPage() {
@@ -190,6 +195,27 @@ export default function RoutinesPage() {
     })
   );
 
+  // Lazy context loader for AI Coach chat
+  const loadCoachContext = useCallback(async (): Promise<RoutineReviewContext> => {
+    if (!user?.id) throw new Error('User not authenticated');
+
+    // Fetch last 90 days of workout logs
+    const since = format(subDays(new Date(), 90), 'yyyy-MM-dd');
+    const logsRef = collection(db, 'users', user.id, 'workoutLogs');
+    const logsQuery = query(logsRef, where('date', '>=', since), orderBy('date', 'desc'));
+    const logsSnap = await getDocs(logsQuery);
+    const logs = logsSnap.docs.map((d) => ({ id: d.id, ...d.data() } as WorkoutLog));
+
+    // Fetch profile
+    const profileSnap = await getDoc(doc(db, 'users', user.id, 'profile', 'profile'));
+    const profile = profileSnap.exists() ? profileSnap.data() : {};
+
+    return buildRoutineReviewContext(routines, logs, {
+      goal: profile.goal,
+      daysPerWeekTarget: profile.daysPerWeekTarget,
+    });
+  }, [user?.id, routines]);
+
   async function handleDragEndRoutines(event: DragEndEvent) {
     const { active, over } = event;
     if (over && active.id !== over.id && user?.id) {
@@ -245,8 +271,13 @@ export default function RoutinesPage() {
                     Saving order...
                 </div>
             )}
-            <Button 
-                variant="default" 
+            <CoachChatSheet mode="routine-review" loadContext={loadCoachContext} trigger={
+              <Button variant="outline" size="sm" className="gap-2">
+                <Sparkles className="h-4 w-4" /> AI Coach
+              </Button>
+            } />
+            <Button
+                variant="default"
                 className="bg-accent hover:bg-accent/90 text-accent-foreground"
                 onClick={handleOpenAddDialog}
                 disabled={isLoading || isOrderSaving || isLoadingExercises}
