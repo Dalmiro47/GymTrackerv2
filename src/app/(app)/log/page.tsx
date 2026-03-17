@@ -11,7 +11,6 @@ import {
   Trash2,
   AlertTriangle,
   Info,
-  Sparkles,
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -272,11 +271,6 @@ function TrainingLogPageContent() {
         
         {/* Desktop actions (hidden on mobile) */}
         <div className="hidden md:flex gap-2">
-          <CoachChatSheet mode="log-day" context={logDayContext} trigger={
-            <Button variant="outline" size="sm" className="gap-2">
-              <Sparkles className="h-4 w-4" /> AI Coach
-            </Button>
-          } />
           <AlertDialog open={isDeleteConfirmOpen} onOpenChange={setIsDeleteConfirmOpen}>
             <AlertDialogTrigger asChild>
               <Button
@@ -640,7 +634,7 @@ function TrainingLogPageContent() {
 
       {/* Mobile sticky action bar */}
       <div className="md:hidden fixed bottom-0 inset-x-0 z-40 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="container px-4 py-3 grid grid-cols-3 gap-2 pb-[env(safe-area-inset-bottom)]">
+        <div className="container px-4 py-3 grid grid-cols-2 gap-2 pb-[env(safe-area-inset-bottom)]">
           <AlertDialog>
             <AlertDialogTrigger asChild>
               <Button
@@ -680,14 +674,10 @@ function TrainingLogPageContent() {
             {isSavingLog ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Save className="h-5 w-5" />}
             Save
           </Button>
-          <CoachChatSheet mode="log-day" context={logDayContext} trigger={
-            <Button variant="outline" className="h-12 text-base gap-2">
-              <Sparkles className="h-5 w-5" />
-              Coach
-            </Button>
-          } />
         </div>
       </div>
+      {/* Floating AI Coach */}
+      <CoachChatSheet mode="log-day" context={logDayContext} />
     </div>
   );
 }
