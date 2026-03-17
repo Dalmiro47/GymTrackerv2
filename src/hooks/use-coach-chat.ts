@@ -10,11 +10,41 @@ export type ChatMessage = {
 
 type ChatMode = 'log-day' | 'routine-review';
 
+const SESSION_KEY = (mode: ChatMode) => `coach-chat-${mode}`;
+
+function loadFromSession(mode: ChatMode): ChatMessage[] {
+  try {
+    const raw = sessionStorage.getItem(SESSION_KEY(mode));
+    return raw ? (JSON.parse(raw) as ChatMessage[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveToSession(mode: ChatMode, messages: ChatMessage[]) {
+  try {
+    sessionStorage.setItem(SESSION_KEY(mode), JSON.stringify(messages));
+  } catch {
+    // sessionStorage full or unavailable — fail silently
+  }
+}
+
 export function useCoachChat(mode: ChatMode) {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>(() => loadFromSession(mode));
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+
+  const persistMessages = useCallback(
+    (updater: ChatMessage[] | ((prev: ChatMessage[]) => ChatMessage[])) => {
+      setMessages((prev) => {
+        const next = typeof updater === 'function' ? updater(prev) : updater;
+        saveToSession(mode, next);
+        return next;
+      });
+    },
+    [mode],
+  );
 
   const sendMessage = useCallback(
     async (userText: string, context: LogDayContext | RoutineReviewContext) => {
@@ -23,7 +53,7 @@ export function useCoachChat(mode: ChatMode) {
       setError(null);
       const userMsg: ChatMessage = { role: 'user', content: userText.trim() };
       const updatedMessages = [...messages, userMsg];
-      setMessages(updatedMessages);
+      persistMessages(updatedMessages);
       setIsStreaming(true);
 
       // Abort controller for cancellation
@@ -52,7 +82,7 @@ export function useCoachChat(mode: ChatMode) {
         let buffer = '';
 
         // Add empty assistant message that we'll fill progressively
-        setMessages((prev) => [...prev, { role: 'assistant', content: '' }]);
+        persistMessages((prev) => [...prev, { role: 'assistant', content: '' }]);
 
         while (true) {
           const { done, value } = await reader.read();
@@ -74,7 +104,7 @@ export function useCoachChat(mode: ChatMode) {
               const delta = json.choices?.[0]?.delta?.content;
               if (delta) {
                 assistantContent += delta;
-                setMessages((prev) => {
+                persistMessages((prev) => {
                   const updated = [...prev];
                   updated[updated.length - 1] = {
                     role: 'assistant',
@@ -91,7 +121,7 @@ export function useCoachChat(mode: ChatMode) {
 
         // If no content was received, show a fallback
         if (!assistantContent) {
-          setMessages((prev) => {
+          persistMessages((prev) => {
             const updated = [...prev];
             updated[updated.length - 1] = {
               role: 'assistant',
@@ -106,7 +136,7 @@ export function useCoachChat(mode: ChatMode) {
         const msg = err instanceof Error ? err.message : 'Error desconocido.';
         setError(msg);
         // Remove the empty assistant message if it was added
-        setMessages((prev) => {
+        persistMessages((prev) => {
           if (prev.length > 0 && prev[prev.length - 1].role === 'assistant' && !prev[prev.length - 1].content) {
             return prev.slice(0, -1);
           }
@@ -117,15 +147,15 @@ export function useCoachChat(mode: ChatMode) {
         abortRef.current = null;
       }
     },
-    [messages, isStreaming, mode],
+    [messages, isStreaming, mode, persistMessages],
   );
 
   const clearChat = useCallback(() => {
     if (abortRef.current) abortRef.current.abort();
-    setMessages([]);
+    persistMessages([]);
     setError(null);
     setIsStreaming(false);
-  }, []);
+  }, [persistMessages]);
 
   const stopStreaming = useCallback(() => {
     if (abortRef.current) abortRef.current.abort();

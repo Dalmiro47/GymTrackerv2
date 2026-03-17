@@ -61,7 +61,8 @@ RULES:
 - Use full muscle group names (Chest, Back, Shoulders, Legs, Biceps, Triceps, Abs) in text.
 - If they ask about form or technique, give brief, practical cues.
 - Do not invent exercises or data not shown above.
-- Keep responses under 200 words unless the user asks for more detail.`;
+- Keep responses under 200 words unless the user asks for more detail.
+- Use motivational gym emojis naturally (💪 🏋️ 🔥 ✅ 📈) to keep the tone energetic.`;
 }
 
 // ─── Routine-Review Mode ────────────────────────────────────────────
@@ -141,7 +142,8 @@ RULES:
 - Use full muscle group names (Chest, Back, Shoulders, Legs, Biceps, Triceps, Abs) in text.
 - When suggesting routine changes, specify which routine and which exercises to modify.
 - Do not invent data not shown above.
-- Keep responses under 250 words unless the user asks for more detail.`;
+- Keep responses under 250 words unless the user asks for more detail.
+- Use motivational gym emojis naturally (💪 🏋️ 🔥 ✅ 📈) to keep the tone energetic.`;
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────

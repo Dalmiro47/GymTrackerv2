@@ -6,7 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import type { Routine, RoutineData, Exercise, WorkoutLog } from '@/types';
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
-import { PlusCircle, Loader2, ListChecks, GripVertical, Save, Sparkles } from 'lucide-react';
+import { PlusCircle, Loader2, ListChecks, GripVertical, Save } from 'lucide-react';
 import {
   Card,
   CardContent,
@@ -271,11 +271,6 @@ export default function RoutinesPage() {
                     Saving order...
                 </div>
             )}
-            <CoachChatSheet mode="routine-review" loadContext={loadCoachContext} trigger={
-              <Button variant="outline" size="sm" className="gap-2">
-                <Sparkles className="h-4 w-4" /> AI Coach
-              </Button>
-            } />
             <Button
                 variant="default"
                 className="bg-accent hover:bg-accent/90 text-accent-foreground"
@@ -355,6 +350,9 @@ export default function RoutinesPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Floating AI Coach */}
+      <CoachChatSheet mode="routine-review" loadContext={loadCoachContext} />
     </div>
   );
 }

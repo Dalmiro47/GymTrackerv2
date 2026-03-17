@@ -120,4 +120,4 @@ Keep this file between 200–300 lines max. Every line must earn its keep.
 - Secret keys and service role keys must live in environment variables only — never in source code or chat
 
 ### Scale Expectation
-- This is a household app (1–5 users). Do not over-engineer for scale. Optimize for simplicity and readability over performance
+- This is a gym app (1–5 users). Do not over-engineer for scale. Optimize for simplicity and readability over performance
