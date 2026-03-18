@@ -29,7 +29,7 @@ export interface LLMProvider {
 // ─── Groq Implementation ────────────────────────────────────────────
 
 const GROQ_BASE_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const DEFAULT_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct';
+const DEFAULT_MODEL = 'qwen/qwen3-32b';
 
 export class GroqProvider implements LLMProvider {
   private apiKey: string;

@@ -108,10 +108,10 @@ export function CoachChatSheet({ mode, context, loadContext }: CoachChatSheetPro
 
   return (
     <>
-      {/* Floating trigger button — bottom-20 on mobile to clear the log page action bar */}
+      {/* Floating trigger button — bottom-28 on mobile to clear the log page action bar + safe area */}
       <button
         onClick={() => setOpen((v) => !v)}
-        className="fixed bottom-20 right-4 md:bottom-6 md:right-6 z-50 flex items-center gap-2 bg-foreground text-background px-4 py-2.5 rounded-full shadow-lg hover:opacity-90 transition-opacity font-medium text-sm"
+        className="fixed bottom-28 right-4 md:bottom-6 md:right-6 z-50 flex items-center gap-2 bg-foreground text-background px-4 py-2.5 rounded-full shadow-lg hover:opacity-90 transition-opacity font-medium text-sm"
       >
         <Sparkles className="h-4 w-4" />
         AI Coach
@@ -120,8 +120,8 @@ export function CoachChatSheet({ mode, context, loadContext }: CoachChatSheetPro
       {/* Floating chat window */}
       {open && (
         <div
-          className="fixed bottom-36 right-4 md:bottom-20 md:right-6 z-50 flex flex-col rounded-2xl border bg-background shadow-2xl"
-          style={{ width: 'min(360px, calc(100vw - 2rem))', height: 'min(520px, calc(100dvh - 10rem))' }}
+          className="fixed bottom-44 right-4 md:bottom-20 md:right-6 z-50 flex flex-col rounded-2xl border bg-background shadow-2xl"
+          style={{ width: 'min(360px, calc(100vw - 2rem))', height: 'min(520px, calc(100dvh - 12rem))' }}
         >
           {/* Header */}
           <div className="flex items-center justify-between border-b px-4 py-3">
@@ -220,6 +220,17 @@ export function CoachChatSheet({ mode, context, loadContext }: CoachChatSheetPro
   );
 }
 
+// ─── Thinking block stripper ─────────────────────────────────────────
+
+function stripThinkingBlocks(text: string): string {
+  // Remove complete <think>...</think> blocks
+  let result = text.replace(/<think>[\s\S]*?<\/think>\n?/g, '');
+  // Remove incomplete opening block (still streaming)
+  const openIdx = result.indexOf('<think>');
+  if (openIdx !== -1) result = result.slice(0, openIdx);
+  return result.trimStart();
+}
+
 // ─── Message Bubble ──────────────────────────────────────────────────
 
 function MessageBubble({
@@ -247,7 +258,7 @@ function MessageBubble({
           <span className="whitespace-pre-wrap">{message.content}</span>
         ) : (
           <div className="prose-sm space-y-1">
-            {renderMarkdown(message.content)}
+            {renderMarkdown(stripThinkingBlocks(message.content))}
             {isLast && isStreaming && message.content && (
               <span className="inline-block w-1 h-4 bg-foreground/60 animate-pulse ml-0.5 align-text-bottom" />
             )}

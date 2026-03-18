@@ -10,27 +10,43 @@ export type ChatMessage = {
 
 type ChatMode = 'log-day' | 'routine-review';
 
-const SESSION_KEY = (mode: ChatMode) => `coach-chat-${mode}`;
+const today = () => new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+const STORAGE_KEY = (mode: ChatMode) => `coach-chat-${mode}-${today()}`;
 
-function loadFromSession(mode: ChatMode): ChatMessage[] {
+/** Strip <think>...</think> blocks from qwen3-style reasoning models. */
+function stripThinking(text: string): string {
+  // Remove complete blocks
+  let result = text.replace(/<think>[\s\S]*?<\/think>\n?/g, '');
+  // Remove incomplete opening block (still streaming)
+  const openIdx = result.indexOf('<think>');
+  if (openIdx !== -1) result = result.slice(0, openIdx);
+  return result.trimStart();
+}
+
+function loadFromStorage(mode: ChatMode): ChatMessage[] {
   try {
-    const raw = sessionStorage.getItem(SESSION_KEY(mode));
+    const raw = localStorage.getItem(STORAGE_KEY(mode));
     return raw ? (JSON.parse(raw) as ChatMessage[]) : [];
   } catch {
     return [];
   }
 }
 
-function saveToSession(mode: ChatMode, messages: ChatMessage[]) {
+function saveToStorage(mode: ChatMode, messages: ChatMessage[]) {
   try {
-    sessionStorage.setItem(SESSION_KEY(mode), JSON.stringify(messages));
+    localStorage.setItem(STORAGE_KEY(mode), JSON.stringify(messages));
+    // Prune keys from previous days to avoid localStorage bloat
+    const currentKey = STORAGE_KEY(mode);
+    Object.keys(localStorage)
+      .filter((k) => k.startsWith(`coach-chat-${mode}-`) && k !== currentKey)
+      .forEach((k) => localStorage.removeItem(k));
   } catch {
-    // sessionStorage full or unavailable — fail silently
+    // localStorage full or unavailable — fail silently
   }
 }
 
 export function useCoachChat(mode: ChatMode) {
-  const [messages, setMessages] = useState<ChatMessage[]>(() => loadFromSession(mode));
+  const [messages, setMessages] = useState<ChatMessage[]>(() => loadFromStorage(mode));
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -39,7 +55,7 @@ export function useCoachChat(mode: ChatMode) {
     (updater: ChatMessage[] | ((prev: ChatMessage[]) => ChatMessage[])) => {
       setMessages((prev) => {
         const next = typeof updater === 'function' ? updater(prev) : updater;
-        saveToSession(mode, next);
+        saveToStorage(mode, next);
         return next;
       });
     },
@@ -104,11 +120,12 @@ export function useCoachChat(mode: ChatMode) {
               const delta = json.choices?.[0]?.delta?.content;
               if (delta) {
                 assistantContent += delta;
+                const displayContent = stripThinking(assistantContent);
                 persistMessages((prev) => {
                   const updated = [...prev];
                   updated[updated.length - 1] = {
                     role: 'assistant',
-                    content: assistantContent,
+                    content: displayContent,
                   };
                   return updated;
                 });
@@ -119,8 +136,18 @@ export function useCoachChat(mode: ChatMode) {
           }
         }
 
+        // Ensure final stored message is fully stripped
+        const finalContent = stripThinking(assistantContent);
+        if (finalContent !== assistantContent) {
+          persistMessages((prev) => {
+            const updated = [...prev];
+            updated[updated.length - 1] = { role: 'assistant', content: finalContent };
+            return updated;
+          });
+        }
+
         // If no content was received, show a fallback
-        if (!assistantContent) {
+        if (!finalContent) {
           persistMessages((prev) => {
             const updated = [...prev];
             updated[updated.length - 1] = {
