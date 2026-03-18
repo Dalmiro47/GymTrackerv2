@@ -43,7 +43,7 @@ export function CoachChatSheet({ mode, context, loadContext }: CoachChatSheetPro
   const [isLoadingContext, setIsLoadingContext] = useState(false);
   const [input, setInput] = useState('');
   const { messages, isStreaming, error, sendMessage, clearChat, stopStreaming } = useCoachChat(mode);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const config = MODE_CONFIG[mode];
 
@@ -63,12 +63,10 @@ export function CoachChatSheet({ mode, context, loadContext }: CoachChatSheetPro
     }
   }, [open, resolvedContext, loadContext]);
 
-  // Auto-scroll on new messages
+  // Auto-scroll to bottom on new messages or when panel opens
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [messages]);
+    bottomRef.current?.scrollIntoView({ behavior: 'instant' });
+  }, [messages, open]);
 
   // Lock body scroll when chat is open
   useEffect(() => {
@@ -117,118 +115,118 @@ export function CoachChatSheet({ mode, context, loadContext }: CoachChatSheetPro
         AI Coach
       </button>
 
-      {/* Floating chat window */}
       {open && (
-        <div
-          className="fixed bottom-44 right-4 md:bottom-20 md:right-6 z-50 flex flex-col rounded-2xl border bg-background shadow-2xl"
-          style={{ width: 'min(360px, calc(100vw - 2rem))', height: 'min(520px, calc(100dvh - 12rem))' }}
-        >
-          {/* Header */}
-          <div className="flex items-center justify-between border-b px-4 py-3">
-            <div className="flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-primary" />
-              <div>
-                <p className="text-sm font-semibold leading-tight">{config.title}</p>
-                <p className="text-xs text-muted-foreground">{config.description}</p>
+        <>
+          {/* Backdrop — covers page content including mobile action bar (z-40), blurs background */}
+          <div
+            className="fixed inset-0 z-[49] bg-black/30 backdrop-blur-sm"
+            onClick={() => setOpen(false)}
+          />
+
+          {/* Floating chat window */}
+          <div
+            className="fixed bottom-44 right-4 md:bottom-20 md:right-6 z-50 flex flex-col rounded-2xl border bg-background shadow-2xl"
+            style={{ width: 'min(360px, calc(100vw - 2rem))', height: 'min(520px, calc(100dvh - 12rem))' }}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between border-b px-4 py-3">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-5 w-5 text-primary" />
+                <div>
+                  <p className="text-sm font-semibold leading-tight">{config.title}</p>
+                  <p className="text-xs text-muted-foreground">{config.description}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-1">
+                {messages.length > 0 && (
+                  <Button variant="ghost" size="icon" onClick={handleClear} className="h-8 w-8">
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                )}
+                <Button variant="ghost" size="icon" onClick={() => setOpen(false)} className="h-8 w-8">
+                  <X className="h-4 w-4" />
+                </Button>
               </div>
             </div>
-            <div className="flex items-center gap-1">
-              {messages.length > 0 && (
-                <Button variant="ghost" size="icon" onClick={handleClear} className="h-8 w-8">
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              )}
-              <Button variant="ghost" size="icon" onClick={() => setOpen(false)} className="h-8 w-8">
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
 
-          {/* Messages */}
-          <ScrollArea className="flex-1 px-4" ref={scrollRef}>
-            <div className="space-y-4 py-4">
-              {isLoadingContext && (
-                <div className="space-y-3">
-                  <Skeleton className="h-4 w-3/4" />
-                  <Skeleton className="h-4 w-1/2" />
-                  <Skeleton className="h-4 w-2/3" />
-                  <p className="text-xs text-muted-foreground text-center mt-2">
-                    Cargando datos de entrenamiento...
-                  </p>
-                </div>
-              )}
-
-              {!isLoadingContext && messages.length === 0 && (
-                <div className="flex flex-col items-center justify-center py-12 text-center">
-                  <Sparkles className="h-10 w-10 text-muted-foreground/40 mb-3" />
-                  <p className="text-sm text-muted-foreground">{config.emptyText}</p>
-                  {noContext && (
-                    <p className="text-xs text-muted-foreground/60 mt-2">
-                      No hay datos disponibles para el coach.
+            {/* Messages */}
+            <ScrollArea className="flex-1 px-4">
+              <div className="space-y-4 py-4">
+                {isLoadingContext && (
+                  <div className="space-y-3">
+                    <Skeleton className="h-4 w-3/4" />
+                    <Skeleton className="h-4 w-1/2" />
+                    <Skeleton className="h-4 w-2/3" />
+                    <p className="text-xs text-muted-foreground text-center mt-2">
+                      Cargando datos de entrenamiento...
                     </p>
-                  )}
-                </div>
-              )}
+                  </div>
+                )}
 
-              {messages.map((msg, i) => (
-                <MessageBubble key={i} message={msg} isLast={i === messages.length - 1} isStreaming={isStreaming} />
-              ))}
-            </div>
-          </ScrollArea>
+                {!isLoadingContext && messages.length === 0 && (
+                  <div className="flex flex-col items-center justify-center py-12 text-center">
+                    <Sparkles className="h-10 w-10 text-muted-foreground/40 mb-3" />
+                    <p className="text-sm text-muted-foreground">{config.emptyText}</p>
+                    {noContext && (
+                      <p className="text-xs text-muted-foreground/60 mt-2">
+                        No hay datos disponibles para el coach.
+                      </p>
+                    )}
+                  </div>
+                )}
 
-          {/* Error */}
-          {error && (
-            <div className="px-4 pb-2">
-              <Alert variant="destructive">
-                <AlertDescription className="text-xs">{error}</AlertDescription>
-              </Alert>
-            </div>
-          )}
+                {messages.map((msg, i) => (
+                  <MessageBubble key={i} message={msg} isLast={i === messages.length - 1} isStreaming={isStreaming} />
+                ))}
 
-          {/* Input */}
-          <div className="border-t px-4 py-3">
-            <div className="flex gap-2 items-end">
-              <Textarea
-                ref={textareaRef}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder={config.placeholder}
-                disabled={isStreaming || noContext || isLoadingContext}
-                className="min-h-[80px] max-h-[160px] resize-none text-sm"
-                rows={3}
-              />
-              {isStreaming ? (
-                <Button size="icon" variant="outline" onClick={stopStreaming} className="shrink-0">
-                  <Square className="h-4 w-4" />
-                </Button>
-              ) : (
-                <Button
-                  size="icon"
-                  onClick={handleSend}
-                  disabled={!input.trim() || noContext || isLoadingContext}
-                  className="shrink-0"
-                >
-                  <Send className="h-4 w-4" />
-                </Button>
-              )}
+                {/* Sentinel — must be last child; scrollIntoView targets this */}
+                <div ref={bottomRef} />
+              </div>
+            </ScrollArea>
+
+            {/* Error */}
+            {error && (
+              <div className="px-4 pb-2">
+                <Alert variant="destructive">
+                  <AlertDescription className="text-xs">{error}</AlertDescription>
+                </Alert>
+              </div>
+            )}
+
+            {/* Input */}
+            <div className="border-t px-4 py-3">
+              <div className="flex gap-2 items-end">
+                <Textarea
+                  ref={textareaRef}
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder={config.placeholder}
+                  disabled={isStreaming || noContext || isLoadingContext}
+                  className="min-h-[80px] max-h-[160px] resize-none text-sm"
+                  rows={3}
+                />
+                {isStreaming ? (
+                  <Button size="icon" variant="outline" onClick={stopStreaming} className="shrink-0">
+                    <Square className="h-4 w-4" />
+                  </Button>
+                ) : (
+                  <Button
+                    size="icon"
+                    onClick={handleSend}
+                    disabled={!input.trim() || noContext || isLoadingContext}
+                    className="shrink-0"
+                  >
+                    <Send className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
-        </div>
+        </>
       )}
     </>
   );
-}
-
-// ─── Thinking block stripper ─────────────────────────────────────────
-
-function stripThinkingBlocks(text: string): string {
-  // Remove complete <think>...</think> blocks
-  let result = text.replace(/<think>[\s\S]*?<\/think>\n?/g, '');
-  // Remove incomplete opening block (still streaming)
-  const openIdx = result.indexOf('<think>');
-  if (openIdx !== -1) result = result.slice(0, openIdx);
-  return result.trimStart();
 }
 
 // ─── Message Bubble ──────────────────────────────────────────────────
@@ -257,16 +255,67 @@ function MessageBubble({
         {isUser ? (
           <span className="whitespace-pre-wrap">{message.content}</span>
         ) : (
-          <div className="prose-sm space-y-1">
-            {renderMarkdown(stripThinkingBlocks(message.content))}
-            {isLast && isStreaming && message.content && (
-              <span className="inline-block w-1 h-4 bg-foreground/60 animate-pulse ml-0.5 align-text-bottom" />
-            )}
-          </div>
+          <SegmentRenderer content={message.content} />
         )}
       </div>
     </div>
   );
+}
+
+// ─── Segment Renderer ────────────────────────────────────────────────
+
+type Segment = { type: 'text' | 'exercise' | 'heading'; value: string };
+
+function sanitizeFallback(text: string): string {
+  // Strip <think>...</think> blocks defensively (in case model emits them in fallback path)
+  let result = text.replace(/<think>[\s\S]*?<\/think>\n?/g, '');
+  const openIdx = result.indexOf('<think>');
+  if (openIdx !== -1) result = result.slice(0, openIdx);
+
+  return result
+    .split('\n')
+    .filter((line) => line.trim() !== '---')
+    // Convert ### headings to plain text (renderMarkdown handles heading style via bold)
+    .map((line) => line.replace(/^###\s+/, ''))
+    .join('\n');
+}
+
+function SegmentRenderer({ content }: { content: string }) {
+  try {
+    const parsed = JSON.parse(content) as { segments?: Segment[] };
+    if (parsed?.segments?.length) {
+      return (
+        <div className="space-y-1">
+          {parsed.segments.map((seg, i) => {
+            if (seg.type === 'heading') {
+              return (
+                <p key={i} className="font-semibold text-sm mt-2 pb-0.5 border-b border-primary/30 text-foreground">
+                  {seg.value}
+                </p>
+              );
+            }
+            if (seg.type === 'exercise') {
+              return (
+                <span key={i} className="italic text-primary font-medium block">
+                  {seg.value}
+                </span>
+              );
+            }
+            // "text"
+            return (
+              <span key={i} className="block leading-snug">
+                {seg.value}
+              </span>
+            );
+          })}
+        </div>
+      );
+    }
+  } catch {
+    /* not valid JSON — fall through to markdown */
+  }
+  // Fallback: sanitize then render as markdown
+  return <div className="prose-sm space-y-1">{renderMarkdown(sanitizeFallback(content))}</div>;
 }
 
 // ─── Lightweight Markdown Renderer ──────────────────────────────────
