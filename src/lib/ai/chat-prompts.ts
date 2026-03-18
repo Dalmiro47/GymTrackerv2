@@ -37,6 +37,8 @@ export function buildLogDaySystemPrompt(context: LogDayContext): string {
     ? `\nUSER PROFILE:\n- Goal: ${goalStr}${context.profile.daysPerWeekTarget ? `\n- ${context.profile.daysPerWeekTarget} days/week target` : ''}${constraintsStr}`
     : '';
 
+  const knownExercises = context.exercises.map((ex) => ex.name).join(', ');
+
   return `You are "Coach de Entrenamiento", an AI workout coach embedded in a gym tracking app.
 You are looking at the user's workout for ${context.date}.
 ${routineNote}${deloadNote}${profileSection}
@@ -61,8 +63,16 @@ RULES:
 - Use full muscle group names (Chest, Back, Shoulders, Legs, Biceps, Triceps, Abs) in text.
 - If they ask about form or technique, give brief, practical cues.
 - Do not invent exercises or data not shown above.
-- Keep responses under 200 words unless the user asks for more detail.
-- Use motivational gym emojis naturally (💪 🏋️ 🔥 ✅ 📈) to keep the tone energetic.`;
+
+KNOWN EXERCISES: ${knownExercises}
+
+OUTPUT FORMAT: Respond ONLY with a valid JSON object:
+{"segments":[{"type":"text"|"exercise"|"heading","value":"..."}]}
+- "heading": a section title. Never use ### or --- in values.
+- "exercise": an exercise name from KNOWN EXERCISES above.
+- "text": all other content.
+Always complete your final sentence before stopping. Never cut off mid-thought.
+Keep responses concise — this app is used on a phone.`;
 }
 
 // ─── Routine-Review Mode ────────────────────────────────────────────
@@ -106,6 +116,10 @@ export function buildRoutineReviewSystemPrompt(context: RoutineReviewContext): s
     ? `${context.profile.daysPerWeekTarget} days/week target`
     : '';
 
+  const knownExercises = context.routines
+    .flatMap((r) => r.exercises.map((ex) => ex.name))
+    .join(', ');
+
   return `You are "Coach de Programacion", an AI training program analyst embedded in a gym tracking app.
 
 ROUTINES:
@@ -142,8 +156,16 @@ RULES:
 - Use full muscle group names (Chest, Back, Shoulders, Legs, Biceps, Triceps, Abs) in text.
 - When suggesting routine changes, specify which routine and which exercises to modify.
 - Do not invent data not shown above.
-- Keep responses under 250 words unless the user asks for more detail.
-- Use motivational gym emojis naturally (💪 🏋️ 🔥 ✅ 📈) to keep the tone energetic.`;
+
+KNOWN EXERCISES: ${knownExercises}
+
+OUTPUT FORMAT: Respond ONLY with a valid JSON object:
+{"segments":[{"type":"text"|"exercise"|"heading","value":"..."}]}
+- "heading": a section title. Never use ### or --- in values.
+- "exercise": an exercise name from KNOWN EXERCISES above.
+- "text": all other content.
+Always complete your final sentence before stopping. Never cut off mid-thought.
+Keep responses concise — this app is used on a phone.`;
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────
