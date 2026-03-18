@@ -13,17 +13,24 @@ type ChatMode = 'log-day' | 'routine-review';
 const today = () => new Date().toISOString().slice(0, 10); // YYYY-MM-DD
 const STORAGE_KEY = (mode: ChatMode) => `coach-chat-${mode}-${today()}`;
 
+function stripThinking(text: string): string {
+  let result = text.replace(/<think>[\s\S]*?<\/think>\n?/g, '');
+  const openIdx = result.indexOf('<think>');
+  if (openIdx !== -1) result = result.slice(0, openIdx);
+  return result.trim();
+}
+
 /** Extract plain text from a JSON segments string (for conversation history sent to the API). */
 function extractTextFromContent(content: string): string {
   try {
-    const parsed = JSON.parse(content);
+    const parsed = JSON.parse(stripThinking(content));
     if (parsed?.segments) {
       return parsed.segments.map((s: { value?: string }) => s.value ?? '').join(' ');
     }
   } catch {
     /* not JSON — pass through */
   }
-  return content;
+  return stripThinking(content);
 }
 
 function loadFromStorage(mode: ChatMode): ChatMessage[] {

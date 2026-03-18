@@ -249,10 +249,9 @@ function MessageBubble({
           isUser ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground'
         }`}
       >
-        {!isUser && !message.content && isLast && isStreaming && (
+        {!isUser && !message.content && isLast && isStreaming ? (
           <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-        )}
-        {isUser ? (
+        ) : isUser ? (
           <span className="whitespace-pre-wrap">{message.content}</span>
         ) : (
           <SegmentRenderer content={message.content} />
@@ -262,76 +261,41 @@ function MessageBubble({
   );
 }
 
-// ─── Segment Renderer ────────────────────────────────────────────────
+// ─── Markdown Renderer ───────────────────────────────────────────────
 
-type Segment = { type: 'text' | 'exercise' | 'heading'; value: string };
-
-function sanitizeFallback(text: string): string {
-  // Strip <think>...</think> blocks defensively (in case model emits them in fallback path)
+function stripThinking(text: string): string {
   let result = text.replace(/<think>[\s\S]*?<\/think>\n?/g, '');
   const openIdx = result.indexOf('<think>');
   if (openIdx !== -1) result = result.slice(0, openIdx);
-
-  return result
-    .split('\n')
-    .filter((line) => line.trim() !== '---')
-    // Convert ### headings to plain text (renderMarkdown handles heading style via bold)
-    .map((line) => line.replace(/^###\s+/, ''))
-    .join('\n');
+  return result.trim() || 'No se pudo generar una respuesta. Intenta de nuevo.';
 }
 
 function SegmentRenderer({ content }: { content: string }) {
-  try {
-    const parsed = JSON.parse(content) as { segments?: Segment[] };
-    if (parsed?.segments?.length) {
-      return (
-        <div className="space-y-1">
-          {parsed.segments.map((seg, i) => {
-            if (seg.type === 'heading') {
-              return (
-                <p key={i} className="font-semibold text-sm mt-2 pb-0.5 border-b border-primary/30 text-foreground">
-                  {seg.value}
-                </p>
-              );
-            }
-            if (seg.type === 'exercise') {
-              return (
-                <span key={i} className="italic text-primary font-medium block">
-                  {seg.value}
-                </span>
-              );
-            }
-            // "text"
-            return (
-              <span key={i} className="block leading-snug">
-                {seg.value}
-              </span>
-            );
-          })}
-        </div>
-      );
-    }
-  } catch {
-    /* not valid JSON — fall through to markdown */
+  if (!content) {
+    return <span className="text-xl animate-pulse">🤔</span>;
   }
-  // Fallback: sanitize then render as markdown
-  return <div className="prose-sm space-y-1">{renderMarkdown(sanitizeFallback(content))}</div>;
+  return <div className="space-y-1">{renderMarkdown(stripThinking(content))}</div>;
 }
 
-// ─── Lightweight Markdown Renderer ──────────────────────────────────
-
 function renderInline(text: string): React.ReactNode {
-  const parts = text.split(/(\*\*[^*]+\*\*)/g);
-  return (
-    <>
-      {parts.map((part, i) => {
-        if (part.startsWith('**') && part.endsWith('**')) {
-          return <strong key={i}>{part.slice(2, -2)}</strong>;
-        }
-        return part;
-      })}
-    </>
-  );
+  const nodes: React.ReactNode[] = [];
+  // Match **bold** (non-greedy) or *italic* (no nested *)
+  const re = /\*\*(.+?)\*\*|\*([^*]+)\*/g;
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) nodes.push(text.slice(last, m.index));
+    if (m[1] !== undefined) {
+      // **bold** — recurse so *italic* inside bold also renders
+      nodes.push(<strong key={m.index}>{renderInline(m[1])}</strong>);
+    } else {
+      // *italic*
+      nodes.push(<em key={m.index}>{m[2]}</em>);
+    }
+    last = re.lastIndex;
+  }
+  if (last < text.length) nodes.push(text.slice(last));
+  return <>{nodes}</>;
 }
 
 function renderMarkdown(text: string): React.ReactNode {
@@ -339,29 +303,59 @@ function renderMarkdown(text: string): React.ReactNode {
   const lines = text.split('\n');
   const result: React.ReactNode[] = [];
   let listItems: React.ReactNode[] = [];
+  let listType: 'ul' | 'ol' = 'ul';
 
   const flushList = (key: number) => {
     if (listItems.length > 0) {
+      const Tag = listType;
       result.push(
-        <ul key={`list-${key}`} className="list-disc list-inside space-y-0.5 my-1">
+        <Tag key={`list-${key}`} className={`${listType === 'ol' ? 'list-decimal' : 'list-disc'} list-inside space-y-1 my-1.5`}>
           {listItems}
-        </ul>,
+        </Tag>,
       );
       listItems = [];
     }
   };
 
   lines.forEach((line, i) => {
-    const bulletMatch = line.match(/^[\*\-] (.+)/);
-    if (bulletMatch) {
-      listItems.push(<li key={i}>{renderInline(bulletMatch[1])}</li>);
-    } else {
+    const t = line.trimStart(); // strip leading indent so indented bullets/headings match
+
+    // Skip dividers
+    if (t === '---') return;
+
+    // ### Heading (any number of #)
+    const headingMatch = t.match(/^#{1,6}\s+(.+)/);
+    if (headingMatch) {
       flushList(i);
-      if (line === '') {
-        result.push(<br key={i} />);
-      } else {
-        result.push(<span key={i} className="block">{renderInline(line)}</span>);
-      }
+      result.push(
+        <p key={i} className="font-semibold text-sm mt-2 pb-0.5 border-b border-primary/30">
+          {renderInline(headingMatch[1].trim())}
+        </p>,
+      );
+      return;
+    }
+
+    // Numbered list: 1. 2. 3.
+    const numberedMatch = t.match(/^\d+\.\s+(.+)/);
+    if (numberedMatch) {
+      if (listType !== 'ol' && listItems.length > 0) flushList(i);
+      listType = 'ol';
+      listItems.push(<li key={i}>{renderInline(numberedMatch[1])}</li>);
+      return;
+    }
+
+    // Bullet list: - or *
+    const bulletMatch = t.match(/^[-*]\s+(.+)/);
+    if (bulletMatch) {
+      if (listType !== 'ul' && listItems.length > 0) flushList(i);
+      listType = 'ul';
+      listItems.push(<li key={i}>{renderInline(bulletMatch[1])}</li>);
+      return;
+    }
+
+    flushList(i);
+    if (t !== '') {
+      result.push(<span key={i} className="block leading-normal mb-0.5">{renderInline(t)}</span>);
     }
   });
 

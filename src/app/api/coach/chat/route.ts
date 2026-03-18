@@ -46,8 +46,7 @@ export async function POST(req: Request) {
     const provider = createLLMProvider();
     const result = await provider.chat(fullMessages, {
       temperature: 0.4,
-      maxTokens: 400,
-      jsonMode: true,
+      maxTokens: 1500,
     });
 
     return NextResponse.json({ content: result.content });

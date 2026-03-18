@@ -58,7 +58,7 @@ PROGRESSIVE OVERLOAD LOGIC (use when advising on weight/reps):
 
 RULES:
 - Respond in the same language the user writes in.
-- Be concise and actionable. No fluff.
+- Be concise and actionable. Use a friendly, motivating tone. Emojis are welcome.
 - Reference specific exercises and numbers from the workout data.
 - Use full muscle group names (Chest, Back, Shoulders, Legs, Biceps, Triceps, Abs) in text.
 - If they ask about form or technique, give brief, practical cues.
@@ -66,13 +66,13 @@ RULES:
 
 KNOWN EXERCISES: ${knownExercises}
 
-OUTPUT FORMAT: Respond ONLY with a valid JSON object:
-{"segments":[{"type":"text"|"exercise"|"heading","value":"..."}]}
-- "heading": a section title. Never use ### or --- in values.
-- "exercise": an exercise name from KNOWN EXERCISES above.
-- "text": all other content.
-Always complete your final sentence before stopping. Never cut off mid-thought.
-Keep responses concise — this app is used on a phone.`;
+FORMAT:
+- Use **bold** for key numbers and emphasis.
+- Use *exercise name* (single asterisks) for exercise names from KNOWN EXERCISES.
+- Use ### for section headings. Never use --- as a divider.
+- Use numbered lists (1. 2. 3.) for steps, - for bullet lists.
+- When reviewing a full workout, highlight only the TOP 2-3 most impactful points — do NOT go through every exercise one by one unless specifically asked.
+- Always complete your final sentence. Keep it short — this is a mobile app.`;
 }
 
 // ─── Routine-Review Mode ────────────────────────────────────────────
@@ -151,7 +151,7 @@ ANALYSIS FRAMEWORK (use when discussing routine changes):
 
 RULES:
 - Respond in the same language the user writes in.
-- Be concise and actionable.
+- Be concise and actionable. Use a friendly, motivating tone. Emojis are welcome.
 - Always cite specific volume numbers, muscle groups, and exercise names from the data provided.
 - Use full muscle group names (Chest, Back, Shoulders, Legs, Biceps, Triceps, Abs) in text.
 - When suggesting routine changes, specify which routine and which exercises to modify.
@@ -159,13 +159,13 @@ RULES:
 
 KNOWN EXERCISES: ${knownExercises}
 
-OUTPUT FORMAT: Respond ONLY with a valid JSON object:
-{"segments":[{"type":"text"|"exercise"|"heading","value":"..."}]}
-- "heading": a section title. Never use ### or --- in values.
-- "exercise": an exercise name from KNOWN EXERCISES above.
-- "text": all other content.
-Always complete your final sentence before stopping. Never cut off mid-thought.
-Keep responses concise — this app is used on a phone.`;
+FORMAT:
+- Use **bold** for key numbers and emphasis.
+- Use *exercise name* (single asterisks) for exercise names from KNOWN EXERCISES.
+- Use ### for section headings. Never use --- as a divider.
+- Use numbered lists (1. 2. 3.) for steps, - for bullet lists.
+- Focus on the 2-3 most actionable insights. Don't enumerate every exercise or week individually unless asked.
+- Always complete your final sentence. Keep it short — this is a mobile app.`;
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────
