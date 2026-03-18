@@ -42,20 +42,14 @@ export async function POST(req: Request) {
       })),
     ];
 
-    // Stream response
+    // Non-streaming JSON response
     const provider = createLLMProvider();
-    const stream = await provider.chatStream(fullMessages, {
+    const result = await provider.chat(fullMessages, {
       temperature: 0.4,
-      maxTokens: 1024,
+      maxTokens: 1500,
     });
 
-    return new Response(stream, {
-      headers: {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        Connection: 'keep-alive',
-      },
-    });
+    return NextResponse.json({ content: result.content });
   } catch (error: unknown) {
     console.error('Coach chat error:', error);
     const message = error instanceof Error ? error.message : 'Error interno del servidor.';

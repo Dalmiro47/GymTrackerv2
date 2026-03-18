@@ -56,15 +56,15 @@ users/{userId}/
 
 ### AI Coach
 
-The Coach is a contextual chat embedded in `/log` (workout coaching) and `/routines` (program analysis). It uses Groq (model: `meta-llama/llama-4-scout-17b-16e-instruct`) via a vendor-agnostic LLM provider interface.
+The Coach is a contextual chat embedded in `/log` (workout coaching) and `/routines` (program analysis). It uses Groq (model: `qwen/qwen3-32b`) via a vendor-agnostic LLM provider interface.
 
 **Key files:**
 - `src/lib/ai/llm-provider.ts` — `LLMProvider` interface + `GroqProvider` (OpenAI-compatible REST)
 - `src/lib/ai/context-builders.ts` — Serializes page data into compact context (log-day + routine-review)
-- `src/lib/ai/chat-prompts.ts` — System prompt builders with goal-based volume targets and progressive overload logic
-- `src/app/api/coach/chat/route.ts` — Single streaming SSE endpoint
-- `src/hooks/use-coach-chat.ts` — Client-side chat state + SSE stream reader
-- `src/components/coach/CoachChatSheet.tsx` — Shared Sheet UI component
+- `src/lib/ai/chat-prompts.ts` — System prompt builders with goal-based volume targets, progressive overload logic, and KNOWN EXERCISES injection
+- `src/app/api/coach/chat/route.ts` — **Non-streaming** JSON endpoint: `POST` → `{ content: string }`. Uses `provider.chat()` (not SSE). `maxTokens: 1500` (covers qwen3 thinking ~600–800 tokens + response ~400 tokens).
+- `src/hooks/use-coach-chat.ts` — Client-side chat state. Uses `fetch` + `res.json()` (no SSE). History sanitized via `extractTextFromContent()` before being sent to the API.
+- `src/components/coach/CoachChatSheet.tsx` — Shared Sheet UI. `SegmentRenderer` renders markdown (bold, italic, headings `#`–`######`, bullet/numbered lists, strips `---`). Raw markdown never shown to user.
 
 **To extend AI features:** Add a new mode in `context-builders.ts` + `chat-prompts.ts`, then use `CoachChatSheet` with `mode="your-mode"`.
 
