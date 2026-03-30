@@ -110,18 +110,52 @@ export function useCoachChat(mode: ChatMode) {
           throw new Error(errBody?.error || `Error ${res.status}`);
         }
 
-        const data = await res.json();
-        const content = data.content ?? '';
+        // Read the SSE stream and append deltas to the assistant bubble
+        const reader = res.body!.getReader();
+        const dec = new TextDecoder();
+        let sseBuffer = '';
+        let receivedAny = false;
 
-        // Replace the empty bubble with actual content
-        persistMessages((prev) => {
-          const updated = [...prev];
-          updated[updated.length - 1] = {
-            role: 'assistant',
-            content: content || 'No se recibio respuesta del coach. Intenta de nuevo.',
-          };
-          return updated;
-        });
+        outer: while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          sseBuffer += dec.decode(value, { stream: true });
+          const lines = sseBuffer.split('\n');
+          sseBuffer = lines.pop() ?? '';
+
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            const raw = line.slice(6).trim();
+            if (raw === '[DONE]') break outer;
+
+            try {
+              const { v } = JSON.parse(raw) as { v?: string };
+              if (v) {
+                receivedAny = true;
+                persistMessages((prev) => {
+                  const updated = [...prev];
+                  const last = updated[updated.length - 1];
+                  if (last?.role === 'assistant') {
+                    updated[updated.length - 1] = { ...last, content: last.content + v };
+                  }
+                  return updated;
+                });
+              }
+            } catch { /* skip malformed */ }
+          }
+        }
+
+        if (!receivedAny) {
+          persistMessages((prev) => {
+            const updated = [...prev];
+            updated[updated.length - 1] = {
+              role: 'assistant',
+              content: 'No se recibio respuesta del coach. Intenta de nuevo.',
+            };
+            return updated;
+          });
+        }
       } catch (err: unknown) {
         if (err instanceof DOMException && err.name === 'AbortError') {
           // On abort: remove the empty bubble
