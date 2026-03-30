@@ -47,6 +47,7 @@ export function CoachChatSheet({ mode, context, loadContext }: CoachChatSheetPro
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const config = MODE_CONFIG[mode];
 
+
   // Update resolved context when prop changes
   useEffect(() => {
     if (context) setResolvedContext(context);
@@ -63,10 +64,11 @@ export function CoachChatSheet({ mode, context, loadContext }: CoachChatSheetPro
     }
   }, [open, resolvedContext, loadContext]);
 
-  // Auto-scroll to bottom on new messages or when panel opens
+  // Auto-scroll to bottom on new content (including each streaming chunk) or when panel opens
+  const lastMsgContent = messages[messages.length - 1]?.content ?? '';
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'instant' });
-  }, [messages, open]);
+  }, [lastMsgContent, open]);
 
   // Lock body scroll when chat is open
   useEffect(() => {
@@ -85,17 +87,17 @@ export function CoachChatSheet({ mode, context, loadContext }: CoachChatSheetPro
     if (!input.trim() || !resolvedContext || isStreaming) return;
     sendMessage(input, resolvedContext);
     setInput('');
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+    }
   }, [input, resolvedContext, isStreaming, sendMessage]);
 
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        handleSend();
-      }
-    },
-    [handleSend],
-  );
+  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setInput(e.target.value);
+    const el = e.target;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+  }, []);
 
   const handleClear = useCallback(() => {
     clearChat();
@@ -125,8 +127,8 @@ export function CoachChatSheet({ mode, context, loadContext }: CoachChatSheetPro
 
           {/* Floating chat window */}
           <div
-            className="fixed bottom-44 right-4 md:bottom-20 md:right-6 z-50 flex flex-col rounded-2xl border bg-background shadow-2xl"
-            style={{ width: 'min(360px, calc(100vw - 2rem))', height: 'min(520px, calc(100dvh - 12rem))' }}
+            className="fixed bottom-36 right-4 md:bottom-20 md:right-6 z-50 flex flex-col rounded-2xl border bg-background shadow-2xl"
+            style={{ width: 'min(360px, calc(100vw - 2rem))', height: 'min(680px, calc(100dvh - 10rem))' }}
           >
             {/* Header */}
             <div className="flex items-center justify-between border-b px-4 py-3">
@@ -199,12 +201,12 @@ export function CoachChatSheet({ mode, context, loadContext }: CoachChatSheetPro
                 <Textarea
                   ref={textareaRef}
                   value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={handleKeyDown}
+                  onChange={handleInputChange}
                   placeholder={config.placeholder}
                   disabled={isStreaming || noContext || isLoadingContext}
-                  className="min-h-[80px] max-h-[160px] resize-none text-sm"
-                  rows={3}
+                  className="resize-none text-sm overflow-y-auto"
+                  rows={1}
+                  style={{ minHeight: '80px', height: '80px', maxHeight: '160px' }}
                 />
                 {isStreaming ? (
                   <Button size="icon" variant="outline" onClick={stopStreaming} className="shrink-0">

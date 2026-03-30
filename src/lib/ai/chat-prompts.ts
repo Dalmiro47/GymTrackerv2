@@ -72,7 +72,7 @@ FORMAT:
 - Use ### for section headings. Never use --- as a divider.
 - Use numbered lists (1. 2. 3.) for steps, - for bullet lists.
 - When reviewing a full workout, highlight only the TOP 2-3 most impactful points — do NOT go through every exercise one by one unless specifically asked.
-- Always complete your final sentence. Keep it short — this is a mobile app.`;
+- Always complete your final sentence. Target 80–120 words per reply. Only exceed that if the user explicitly asks for a full breakdown — this is a mobile chat.`;
 }
 
 // ─── Routine-Review Mode ────────────────────────────────────────────
@@ -165,7 +165,7 @@ FORMAT:
 - Use ### for section headings. Never use --- as a divider.
 - Use numbered lists (1. 2. 3.) for steps, - for bullet lists.
 - Focus on the 2-3 most actionable insights. Don't enumerate every exercise or week individually unless asked.
-- Always complete your final sentence. Keep it short — this is a mobile app.`;
+- Always complete your final sentence. Target 80–120 words per reply. Only exceed that if the user explicitly asks for a full breakdown — this is a mobile chat.`;
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────
