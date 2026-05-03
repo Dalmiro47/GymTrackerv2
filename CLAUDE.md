@@ -1,3 +1,14 @@
+## Constraints
+
+Read and follow `CONSTRAINTS.md` at the repo root before every task. It defines:
+- What you must never do (Section 1)
+- When to stop and ask (Section 2)
+- How to resolve goal vs. constraint conflicts (Section 3)
+- Session hygiene rules (Section 4)
+- Project-specific extensions (Section 5)
+
+CONSTRAINTS.md rules are non-negotiable. If a task conflicts with a constraint, stop and surface the conflict — do not silently resolve it.
+
 # CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
