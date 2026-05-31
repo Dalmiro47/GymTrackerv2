@@ -130,5 +130,10 @@ Keep this file between 200–300 lines max. Every line must earn its keep.
 - Never log user emails, session data, or any PII to console or external services
 - Secret keys and service role keys must live in environment variables only — never in source code or chat
 
+### Destructive Operations
+- Before ANY destructive or irreversible operation, do NOT execute directly. First confirm a recent backup/export exists (or create one), then STOP and ask for explicit confirmation, stating: (a) exactly what will be affected, (b) why it's irreversible, (c) what backup/rollback exists
+- Covers (non-exhaustive): deleting or mass-updating Firestore documents or collections, unscoped writes across `users/{userId}/...`, deploying Firestore rules that broaden or remove access (`firebase deploy --only firestore:rules`), deleting files or directories (`rm -rf`, fs deletes), overwriting production data, force-pushing or rewriting git history on shared branches
+- "I'll just do it quickly" is not a reason to skip this. Speed is exactly the risk
+
 ### Scale Expectation
 - This is a gym app (1–5 users). Do not over-engineer for scale. Optimize for simplicity and readability over performance
