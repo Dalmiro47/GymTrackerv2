@@ -53,7 +53,8 @@ export function WorkoutCalendarSection() {
   const [loggedDayStrings, setLoggedDayStrings] = useState<string[]>([]);
   const [deloadDayStrings, setDeloadDayStrings] = useState<string[]>([]);
   const [isLoadingLoggedDays, setIsLoadingLoggedDays] = useState(true);
-  const today = new Date();
+  // Stable per-mount "today" so it doesn't invalidate memos/props every render
+  const today = useMemo(() => new Date(), []);
 
   // Fetch the month’s underlines whenever month/user changes
   const fetchMonthDates = useCallback(async () => {

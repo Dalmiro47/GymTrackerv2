@@ -4,15 +4,15 @@
  * - saveWorkoutLog: Saves or updates the workout log for a specific date.
  * - getWorkoutLog: Fetches the workout log for a specific date.
  * - deleteWorkoutLog: Deletes the workout log for a specific date.
- * - saveExercisePerformanceEntry: Saves/updates the performance snapshot (last session & PR) for an exercise. Deletes entry if it becomes empty.
+ * - saveExercisePerformanceEntry / saveExercisePerformanceEntries: Save/update the performance snapshot (last session & PR) per exercise.
  * - getLastLoggedPerformance: Retrieves the performance snapshot for an exercise.
+ * - getLastNonDeloadPerformance: Performance snapshot with last-session sets sourced from the most recent non-deload log.
+ * - getMonthLogFlags: Logged/deload day strings for a month (calendar underlines).
  * - deleteAllPerformanceEntriesForExercise: Deletes the performance entry for a specific exercise.
- * - getLoggedDateStrings: Fetches all dates ("yyyy-MM-dd") that have workout logs.
  * - updatePerformanceEntryOnLogDelete: Updates an exercise's performance entry (PR, last sets) if sourced from a deleted log, attempting to fall back to the next newest log. Deletes entry if it becomes empty.
- * - saveSingleExerciseToLogService: This function is deprecated and replaced by saveWorkoutLog. It is kept for reference but should not be used.
  */
 import { db } from '@/lib/firebaseConfig';
-import type { WorkoutLog, LoggedSet, LoggedExercise, ExercisePerformanceEntry, PersonalRecord } from '@/types';
+import type { WorkoutLog, LoggedSet, LoggedExercise, ExercisePerformanceEntry, PerformanceSet } from '@/types';
 import {
   doc,
   setDoc,
@@ -26,6 +26,7 @@ import {
   orderBy,
   limit,
   deleteField,
+  writeBatch,
 } from 'firebase/firestore';
 import { parseISO, startOfMonth, endOfMonth, format as fmt } from 'date-fns';
 import { stripUndefinedDeep } from '@/lib/sanitize';
@@ -41,17 +42,14 @@ export const saveWorkoutLog = async (userId: string, date: string, workoutLogPay
   if (!userId) throw new Error("User ID is required.");
   if (!date) throw new Error("Date is required to save a workout log.");
 
-  if (workoutLogPayload.id !== date || workoutLogPayload.date !== date) {
-    workoutLogPayload.id = date;
-    workoutLogPayload.date = date;
-  }
-  
   const exerciseIds = workoutLogPayload.exercises.map(ex => ex.exerciseId);
-  
-  const payloadForFirestore: WorkoutLog = { 
+
+  const payloadForFirestore: WorkoutLog = {
     ...workoutLogPayload,
+    id: date,
+    date: date,
     exerciseIds: exerciseIds,
-    exercises: workoutLogPayload.exercises.map(ex => { 
+    exercises: workoutLogPayload.exercises.map(ex => {
       // Destructure to remove UI-only fields before saving
       const { personalRecordDisplay, isProvisional, currentPR, ...restOfEx } = ex;
 
@@ -66,25 +64,28 @@ export const saveWorkoutLog = async (userId: string, date: string, workoutLogPay
       
       return {
         ...exerciseToSave,
-        sets: ex.sets.map(s => {
-          const { isProvisional, ...restOfSet } = s;
-        
-          // reps: 0..99 integer
-          const repsNum = Number(restOfSet.reps);
-          const reps =
-            Number.isFinite(repsNum) ? clamp(Math.trunc(Math.abs(repsNum)), 0, 99) : 0;
-        
-          // weight: 0..999 snapped to .0/.5 only
-          const wNum = Number(restOfSet.weight);
-          let weight = Number.isFinite(wNum) ? clamp(Math.abs(wNum), 0, 999) : 0;
-          weight = snapToHalf(weight) ?? 0;
-        
-          return {
-            id: restOfSet.id,
-            reps,
-            weight,
-          };
-        })
+        sets: ex.sets
+          // Drop fully-empty sets instead of persisting them as 0x0 rows
+          .filter(s => s.reps != null || s.weight != null)
+          .map(s => {
+            const { isProvisional, ...restOfSet } = s;
+
+            // reps: 0..99 integer
+            const repsNum = Number(restOfSet.reps);
+            const reps =
+              Number.isFinite(repsNum) ? clamp(Math.trunc(Math.abs(repsNum)), 0, 99) : 0;
+
+            // weight: 0..999 snapped to .0/.5 only
+            const wNum = Number(restOfSet.weight);
+            let weight = Number.isFinite(wNum) ? clamp(Math.abs(wNum), 0, 999) : 0;
+            weight = snapToHalf(weight) ?? 0;
+
+            return {
+              id: restOfSet.id,
+              reps,
+              weight,
+            };
+          })
       } as LoggedExercise;
     })
   };
@@ -112,11 +113,6 @@ export const saveWorkoutLog = async (userId: string, date: string, workoutLogPay
     throw new Error(`Failed to save workout log. ${error.message}`);
   }
 };
-
-export const saveSingleExerciseToLogService = async (userId: string, date: string, workoutLogPayload: WorkoutLog): Promise<void> => {
-  await saveWorkoutLog(userId, date, workoutLogPayload);
-};
-
 
 export const getWorkoutLog = async (userId: string, date: string): Promise<WorkoutLog | null> => {
   if (!userId) {
@@ -157,54 +153,6 @@ export const deleteWorkoutLog = async (userId: string, date: string): Promise<vo
   } catch (error: any) {
     console.error(`[SERVICE] Error deleting workout log for ${date}, user ${userId}:`, error);
     throw new Error(`Failed to delete workout log. ${error.message}`);
-  }
-};
-
-export const getLoggedDateStrings = async (userId: string): Promise<string[]> => {
-  if (!userId) {
-    console.error("[SERVICE] getLoggedDateStrings: User ID is required.");
-    return [];
-  }
-  const logsCollectionRef = collection(db, getUserWorkoutLogsCollectionPath(userId));
-  try {
-    const querySnapshot = await getDocs(logsCollectionRef);
-    const dates: string[] = [];
-    querySnapshot.forEach((doc) => {
-      dates.push(doc.id); 
-    });
-    return dates;
-  } catch (error: any) {
-    console.error(`[SERVICE] getLoggedDateStrings: Error fetching logged dates for userId ${userId}:`, error);
-    return []; 
-  }
-};
-
-// New: fetch only the log doc IDs (yyyy-MM-dd) inside a given month.
-export const getLoggedDateStringsInMonth = async (
-  userId: string,
-  month: Date
-): Promise<string[]> => {
-  if (!userId) return [];
-  const logsCollectionRef = collection(db, getUserWorkoutLogsCollectionPath(userId));
-
-  // IDs are 'yyyy-MM-dd', so we can use lexicographic range on the "date" field.
-  const start = fmt(startOfMonth(month), 'yyyy-MM-dd');
-  const end = fmt(endOfMonth(month), 'yyyy-MM-dd');
-
-  try {
-    const q = query(
-      logsCollectionRef,
-      where('date', '>=', start),
-      where('date', '<=', end),
-      orderBy('date', 'asc')
-    );
-    const snap = await getDocs(q);
-    const dates: string[] = [];
-    snap.forEach(doc => dates.push(doc.id));
-    return dates;
-  } catch (e) {
-    console.error('[SERVICE] getLoggedDateStringsInMonth error:', e);
-    return [];
   }
 };
 
@@ -252,52 +200,67 @@ export const getMonthLogFlags = async (
   }
 };
 
+export type PerformanceEntryInput = {
+  exerciseId: string;
+  sets: LoggedSet[];
+};
+
+/**
+ * Saves/updates performance snapshots for several exercises at once:
+ * existing entries are read in parallel, then all writes go out in a single batch.
+ */
+export const saveExercisePerformanceEntries = async (
+  userId: string,
+  entries: PerformanceEntryInput[],
+  logDate: string
+): Promise<void> => {
+  if (!userId) throw new Error("User ID is required.");
+  if (!logDate) throw new Error("Log date is required for PR tracking.");
+  if (entries.length === 0) return;
+
+  const achievedAtMs = Timestamp.fromDate(parseISO(logDate)).toMillis();
+
+  try {
+    const prepared = await Promise.all(
+      entries.map(async ({ exerciseId, sets }) => {
+        if (!exerciseId) throw new Error("Exercise ID is required.");
+        const ref = doc(db, getUserPerformanceEntriesCollectionPath(userId), exerciseId);
+        const snap = await getDoc(ref);
+        const existing = snap.exists() ? (snap.data() as ExercisePerformanceEntry) : null;
+
+        const bestToday = pickBestSet(sets);
+        const updatePayload: Partial<ExercisePerformanceEntry> = {
+          lastPerformedSets: validWorkingSets(sets),
+          lastPerformedDate: achievedAtMs,
+        };
+        if (isBetterPR(bestToday, existing?.personalRecord ?? null)) {
+          updatePayload.personalRecord = {
+            reps: bestToday!.reps,
+            weight: bestToday!.weight,
+            date: achievedAtMs,
+            logId: logDate,
+          };
+        }
+        return { ref, payload: stripUndefinedDeep(updatePayload) };
+      })
+    );
+
+    const batch = writeBatch(db);
+    prepared.forEach(({ ref, payload }) => batch.set(ref, payload, { merge: true }));
+    await batch.commit();
+  } catch (error: any) {
+    console.error(`[SERVICE] saveExercisePerformanceEntries: Error saving performance entries:`, error);
+    throw new Error(`Failed to save performance entries. ${error.message}`);
+  }
+};
+
 export const saveExercisePerformanceEntry = async (
   userId: string,
   exerciseId: string,
   currentSessionSets: LoggedSet[],
-  logDate: string 
+  logDate: string
 ): Promise<void> => {
-  if (!userId) throw new Error("User ID is required.");
-  if (!exerciseId) throw new Error("Exercise ID is required.");
-  if (!logDate) throw new Error("Log date is required for PR tracking.");
-  
-  const performanceEntryDocRef = doc(db, getUserPerformanceEntriesCollectionPath(userId), exerciseId);
-  
-  try {
-    const existingDocSnap = await getDoc(performanceEntryDocRef);
-    const existingEntryData = existingDocSnap.exists() ? existingDocSnap.data() as ExercisePerformanceEntry : null;
-    
-    const bestToday = pickBestSet(currentSessionSets);
-    const currentPR = existingEntryData?.personalRecord ?? null;
-    const achievedAtMs = Timestamp.fromDate(parseISO(logDate)).toMillis();
-    
-    const updatePayload: Partial<ExercisePerformanceEntry> & { lastPerformedDate?: number } = {
-        lastPerformedSets: validWorkingSets(currentSessionSets),
-        lastPerformedDate: achievedAtMs
-    };
-    
-    if (isBetterPR(bestToday, currentPR)) {
-        updatePayload.personalRecord = {
-            reps: bestToday!.reps,
-            weight: bestToday!.weight,
-            date: achievedAtMs, 
-            logId: logDate, 
-        };
-    }
-
-    const sanitizedPayload = stripUndefinedDeep(updatePayload);
-
-    if (existingDocSnap.exists()) {
-        await setDoc(performanceEntryDocRef, sanitizedPayload, { merge: true });
-    } else {
-        await setDoc(performanceEntryDocRef, sanitizedPayload);
-    }
-
-  } catch (error: any) {
-    console.error(`[SERVICE] saveExercisePerformanceEntry: Error saving/updating exercise performance entry for exerciseId=${exerciseId}:`, error);
-    throw new Error(`Failed to save performance entry for ${exerciseId}. ${error.message}`);
-  }
+  await saveExercisePerformanceEntries(userId, [{ exerciseId, sets: currentSessionSets }], logDate);
 };
 
 
@@ -321,7 +284,7 @@ export const getLastLoggedPerformance = async (userId: string, exerciseId: strin
   }
 };
 
-export const getLastNonDeloadPerformance = async (userId: string, exerciseId: string, routineId?: string): Promise<ExercisePerformanceEntry | null> => {
+export const getLastNonDeloadPerformance = async (userId: string, exerciseId: string): Promise<ExercisePerformanceEntry | null> => {
     if (!userId || !exerciseId) return null;
 
     try {
@@ -339,7 +302,7 @@ export const getLastNonDeloadPerformance = async (userId: string, exerciseId: st
         const logsSnap = await getDocs(q);
         const lastNonDeloadLogDoc = logsSnap.docs.find(doc => doc.data()?.isDeload !== true);
 
-        let lastSets: LoggedSet[] = [];
+        let lastSets: PerformanceSet[] = [];
         let lastDate: number | null = null;
 
         if (lastNonDeloadLogDoc) {
@@ -403,13 +366,16 @@ export const updatePerformanceEntryOnLogDelete = async (
   }
   
   const logsCol = collection(db, getUserWorkoutLogsCollectionPath(userId));
-  let logsQuery = query(
+  // Only the next most recent log is needed — bound the read instead of
+  // fetching every log that ever contained this exercise.
+  const logsQuery = query(
     logsCol,
     where("exerciseIds", "array-contains", exerciseId),
-    orderBy("date", "desc")
+    orderBy("date", "desc"),
+    limit(10)
   );
-  
-  let logsSnap = await getDocs(logsQuery);
+
+  const logsSnap = await getDocs(logsQuery);
   let fallbackLogDoc: typeof logsSnap.docs[0] | undefined;
 
   // Find the next most recent log that isn't the one being deleted

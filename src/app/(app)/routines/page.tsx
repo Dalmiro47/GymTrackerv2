@@ -323,12 +323,12 @@ export default function RoutinesPage() {
                 <ListChecks className="mr-2 h-5 w-5 text-primary"/>
                 Your Routines
             </CardTitle>
-            <CardDescription>You haven't created any routines yet.</CardDescription>
+            <CardDescription>You haven&apos;t created any routines yet.</CardDescription>
           </CardHeader>
           <CardContent className="text-center py-12">
             <ListChecks className="mx-auto h-20 w-20 text-muted-foreground mb-4 opacity-50" />
             <p className="text-lg text-muted-foreground font-semibold">No routines found.</p>
-            <p className="text-muted-foreground">Click "Create Routine" to get started!</p>
+            <p className="text-muted-foreground">Click &quot;Create Routine&quot; to get started!</p>
           </CardContent>
         </Card>
       )}
@@ -339,7 +339,7 @@ export default function RoutinesPage() {
             <AlertDialogTitle>Are you sure?</AlertDialogTitle>
             <AlertDialogDescription>
               This action cannot be undone. This will permanently delete the routine
-              "{routines.find(r => r.id === routineToDeleteId)?.name}".
+              &quot;{routines.find(r => r.id === routineToDeleteId)?.name}&quot;.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

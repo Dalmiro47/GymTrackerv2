@@ -17,11 +17,12 @@ interface SetInputRowProps {
   onRemoveSet: () => void;
   isProvisional?: boolean;
   onInteract: () => void;
+  disabled?: boolean;
   weightDisplay: string;
   setWeightDisplay: (value: string) => void;
 }
 
-export function SetInputRow({ set, index, onSetChange, onRemoveSet, isProvisional, onInteract, weightDisplay, setWeightDisplay }: SetInputRowProps) {
+export function SetInputRow({ set, index, onSetChange, onRemoveSet, isProvisional, onInteract, disabled, weightDisplay, setWeightDisplay }: SetInputRowProps) {
   
   const change = (field: 'reps'|'weight', v: string) => {
     onSetChange(index, field, v); // allow '' to go through -> becomes null in parent
@@ -38,6 +39,7 @@ export function SetInputRow({ set, index, onSetChange, onRemoveSet, isProvisiona
         inputMode="numeric"
         maxLength={2}
         draggable={false}
+        disabled={disabled}
         placeholder="Reps"
         aria-label={`Reps for set ${index + 1}`}
         value={set.reps == null ? '' : String(set.reps)}
@@ -83,6 +85,7 @@ export function SetInputRow({ set, index, onSetChange, onRemoveSet, isProvisiona
         inputMode="decimal"
         maxLength={5}
         draggable={false}
+        disabled={disabled}
         placeholder="Weight"
         aria-label={`Weight for set ${index + 1}`}
         value={weightDisplay}
@@ -169,7 +172,7 @@ export function SetInputRow({ set, index, onSetChange, onRemoveSet, isProvisiona
 
       <span className="text-muted-foreground">kg</span>
 
-      <Button variant="ghost" size="icon" onClick={onRemoveSet}
+      <Button variant="ghost" size="icon" onClick={onRemoveSet} disabled={disabled}
         className="text-muted-foreground hover:text-destructive h-9 w-9">
         <Trash2 className="h-4 w-4" />
       </Button>

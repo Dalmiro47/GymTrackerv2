@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useMemo, useEffect, Suspense } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import {
@@ -33,7 +33,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
 import {
@@ -84,7 +83,6 @@ const getGroupSize = (type: string) => {
 
 function TrainingLogPageContent() {
   const { user, isLoading: authIsLoading } = useAuth();
-  const router = useRouter();
   const isMobile = useIsMobile();
   
   const searchParams = useSearchParams();
@@ -155,7 +153,8 @@ function TrainingLogPageContent() {
   const [showLogNotes, setShowLogNotes] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
-  const today = new Date();
+  // Stable per-mount "today" so it doesn't invalidate memos/props every render
+  const today = useMemo(() => new Date(), []);
 
 
   const daysWithLogs = useMemo(
@@ -234,25 +233,6 @@ function TrainingLogPageContent() {
 
   const routineSelectValue = currentLog?.routineId || "";
 
-
-  if (authIsLoading) {
-    return (
-      <div className="flex h-screen items-center justify-center">
-        <Loader2 className="h-12 w-12 animate-spin text-primary" />
-      </div>
-    );
-  }
-
-  if (!user && !authIsLoading) {
-     router.push('/login'); 
-    return (
-      <div className="flex h-screen items-center justify-center">
-        <p>Redirecting to login...</p>
-        <Loader2 className="h-12 w-12 animate-spin text-primary" />
-      </div>
-    );
-  }
-  
   const deloadDescription = useMemo(() => {
     if (!currentLog?.deloadParams) {
         return "Sets reduced by ~50%, weight by ~10%. This log will be excluded from future progression calculations.";
@@ -262,7 +242,20 @@ function TrainingLogPageContent() {
     const weightPercent = Math.round((1 - intensityMultiplier) * 100);
     return `Sets reduced by ~${setsPercent}%, weight by ~${weightPercent}%. This log will be excluded from future progression calculations.`;
   }, [currentLog?.deloadParams]);
-  
+
+  if (authIsLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  // AppLayout (useRequireAuth) redirects unauthenticated visitors to /login.
+  if (!user) {
+    return null;
+  }
+
   return (
     <div className="space-y-6">
       {/* Header row */}
@@ -271,40 +264,16 @@ function TrainingLogPageContent() {
         
         {/* Desktop actions (hidden on mobile) */}
         <div className="hidden md:flex gap-2">
-          <AlertDialog open={isDeleteConfirmOpen} onOpenChange={setIsDeleteConfirmOpen}>
-            <AlertDialogTrigger asChild>
-              <Button
-                variant="destructive"
-                disabled={isDeletingLog || isLoadingLog || !canDeleteLog || isSavingLog}
-                className="gap-2"
-                title="Delete today's log"
-              >
-                <Trash2 className="h-4 w-4" />
-                Delete Day’s Log
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle className="flex items-center">
-                    <AlertTriangle className="mr-2 h-5 w-5 text-destructive" />
-                    Confirm Deletion
-                </AlertDialogTitle>
-                <AlertDialogDescription>
-                  Are you sure you want to delete the entire log for {format(selectedDate, 'PPP')}? This action cannot be undone.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={handleDeleteConfirmed}
-                  disabled={isDeletingLog}
-                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                >
-                  {isDeletingLog ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Delete Log"}
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+          <Button
+            variant="destructive"
+            onClick={() => setIsDeleteConfirmOpen(true)}
+            disabled={isDeletingLog || isLoadingLog || !canDeleteLog || isSavingLog}
+            className="gap-2"
+            title="Delete today's log"
+          >
+            <Trash2 className="h-4 w-4" />
+            Delete Day’s Log
+          </Button>
 
           <Button
             onClick={async () => await saveCurrentLog()}
@@ -496,6 +465,7 @@ function TrainingLogPageContent() {
                               isSavingParentLog={isSavingLog || isDeletingLog}
                               onMarkAsInteracted={() => markExerciseAsInteracted(loggedEx.id)}
                               onUpdateSetStructureOverride={updateExerciseSetStructureOverride}
+                              isReadOnly={isDeload}
                             />
                         </div>
                         {index < currentLog.exercises.length - 1 && (
@@ -566,43 +536,19 @@ function TrainingLogPageContent() {
 
         </CardContent>
         <CardFooter className="hidden sm:flex justify-end gap-2 pt-6 border-t">
-          <AlertDialog open={isDeleteConfirmOpen} onOpenChange={setIsDeleteConfirmOpen}>
-            <AlertDialogTrigger asChild>
-              <Button 
-                  variant="outline" 
-                  className="border-destructive text-destructive hover:bg-destructive/10"
-                  disabled={isDeletingLog || isLoadingLog || !canDeleteLog || isSavingLog}
-              >
-                {isDeletingLog ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
-                Delete Day's Log
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle className="flex items-center">
-                  <AlertTriangle className="mr-2 h-5 w-5 text-destructive" />
-                  Confirm Deletion
-                </AlertDialogTitle>
-                <AlertDialogDescription>
-                  Are you sure you want to delete the entire log for {format(selectedDate, 'PPP')}? This action cannot be undone.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction 
-                  onClick={handleDeleteConfirmed} 
-                  className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
-                  disabled={isDeletingLog}
-                >
-                  {isDeletingLog ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Delete Log"}
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+          <Button
+              variant="outline"
+              className="border-destructive text-destructive hover:bg-destructive/10"
+              onClick={() => setIsDeleteConfirmOpen(true)}
+              disabled={isDeletingLog || isLoadingLog || !canDeleteLog || isSavingLog}
+          >
+            {isDeletingLog ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
+            Delete Day&apos;s Log
+          </Button>
 
           <Button onClick={async () => await saveCurrentLog()} disabled={isSavingLog || isLoadingLog || isDeletingLog} className="bg-accent hover:bg-accent/90">
               {isSavingLog ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-              Save Day's Log
+              Save Day&apos;s Log
           </Button>
         </CardFooter>
       </Card>
@@ -635,36 +581,15 @@ function TrainingLogPageContent() {
       {/* Mobile sticky action bar */}
       <div className="md:hidden fixed bottom-0 inset-x-0 z-40 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="container px-4 py-3 grid grid-cols-2 gap-2 pb-[env(safe-area-inset-bottom)]">
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button
-                variant="outline"
-                className="h-12 text-base gap-2 border-destructive text-destructive hover:bg-destructive/10"
-                disabled={isDeletingLog || isLoadingLog || !canDeleteLog || isSavingLog}
-              >
-                <Trash2 className="h-5 w-5 text-destructive" />
-                Delete
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Delete today’s log?</AlertDialogTitle>
-                <AlertDialogDescription>
-                    Are you sure you want to delete the entire log for {format(selectedDate, 'PPP')}? This cannot be undone.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={handleDeleteConfirmed}
-                  disabled={isDeletingLog}
-                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                >
-                  {isDeletingLog ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Delete"}
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+          <Button
+            variant="outline"
+            className="h-12 text-base gap-2 border-destructive text-destructive hover:bg-destructive/10"
+            onClick={() => setIsDeleteConfirmOpen(true)}
+            disabled={isDeletingLog || isLoadingLog || !canDeleteLog || isSavingLog}
+          >
+            <Trash2 className="h-5 w-5 text-destructive" />
+            Delete
+          </Button>
 
           <Button
             onClick={async () => await saveCurrentLog()}
@@ -676,6 +601,32 @@ function TrainingLogPageContent() {
           </Button>
         </div>
       </div>
+
+      {/* Shared delete-log confirmation (triggered from all three delete buttons) */}
+      <AlertDialog open={isDeleteConfirmOpen} onOpenChange={setIsDeleteConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center">
+              <AlertTriangle className="mr-2 h-5 w-5 text-destructive" />
+              Confirm Deletion
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete the entire log for {format(selectedDate, 'PPP')}? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteConfirmed}
+              disabled={isDeletingLog}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeletingLog ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Delete Log"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Floating AI Coach */}
       <CoachChatSheet mode="log-day" context={logDayContext} />
     </div>

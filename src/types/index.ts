@@ -3,6 +3,10 @@ import type { LucideIcon } from 'lucide-react';
 import type { SetStructure } from './setStructure';
 import type { MuscleGroup } from '@/lib/constants';
 
+// Re-export commonly used domain types so '@/types' is a single import point.
+export type { SetStructure } from './setStructure';
+export type { MuscleGroup } from '@/lib/constants';
+
 export type NavItem = {
   title: string;
   href: string;
@@ -53,6 +57,16 @@ export interface RoutineExercise extends Exercise {
   setStructure?: SetStructure;
   isMissing?: boolean; // Flag for UI if exercise was deleted from main library
 }
+
+export interface Routine {
+  id: string; // Firestore document ID (slugified name)
+  name: string;
+  description?: string;
+  exercises: RoutineExercise[];
+  order: number;
+}
+
+export type RoutineData = Omit<Routine, 'id'>;
 
 export interface LoggedSet {
   id: string; // Unique ID for the set (e.g., UUID or timestamp-based)
@@ -105,9 +119,17 @@ export interface PersonalRecord {
   logId: string; // ID of the WorkoutLog (YYYY-MM-DD) from which this PR was achieved
 }
 
+// A set as stored in a performance entry — id is optional because entries are
+// built from validWorkingSets(), which strips ids.
+export interface PerformanceSet {
+  id?: string;
+  reps: number | null;
+  weight: number | null;
+}
+
 export interface ExercisePerformanceEntry {
   lastPerformedDate: number | null; // Timestamp (milliseconds) of when sets were last performed, or null
-  lastPerformedSets: LoggedSet[]; // The sets recorded for the last performance for pre-filling
+  lastPerformedSets: PerformanceSet[]; // The sets recorded for the last performance for pre-filling
   personalRecord: PersonalRecord | null; // The best single set ever
 }
 
