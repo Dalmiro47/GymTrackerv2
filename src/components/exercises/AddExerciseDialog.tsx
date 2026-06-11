@@ -120,8 +120,8 @@ export function AddExerciseDialog({
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       {triggerButton && <DialogTrigger asChild>{triggerButton}</DialogTrigger>}
-      <DialogContent 
-        className="sm:max-w-3xl max-h-[90vh] flex flex-col p-0 gap-0"
+      <DialogContent
+        className="sm:max-w-3xl max-h-[85dvh] flex flex-col p-0 gap-0 overflow-hidden"
         onOpenAutoFocus={(e) => e.preventDefault()} // STOP MOBILE KEYBOARD
       >
         
@@ -138,7 +138,7 @@ export function AddExerciseDialog({
                     
                     {/* LEFT COLUMN: Basic Info */}
                     <div className="space-y-4">
-                        <div className="flex items-center gap-2 text-primary font-semibold border-b pb-2 mb-2 h-8">
+                        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground border-b pb-2 mb-2 h-8">
                             <Dumbbell className="h-4 w-4" /> Basic Info
                         </div>
 
@@ -198,7 +198,7 @@ export function AddExerciseDialog({
 
                     {/* RIGHT COLUMN: Advanced Details */}
                     <div className="space-y-4">
-                        <div className="flex items-center gap-2 text-primary font-semibold border-b pb-2 mb-2 h-8">
+                        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground border-b pb-2 mb-2 h-8">
                             <Settings2 className="h-4 w-4" /> Training Details
                         </div>
 
@@ -240,7 +240,7 @@ export function AddExerciseDialog({
                             render={({ field }) => (
                                 <FormItem>
                                     <FormLabel className="flex items-center gap-2 h-5">
-                                        <Flame className="h-3.5 w-3.5 text-orange-500" /> 
+                                        <Flame className="h-3.5 w-3.5 text-chart-5" />
                                         Warm-up Config
                                         <Popover>
                                             <PopoverTrigger asChild>
@@ -273,11 +273,11 @@ export function AddExerciseDialog({
                     </div>
                 </div>
 
-                <DialogFooter className="p-4 border-t bg-muted/5">
+                <DialogFooter className="p-4 border-t bg-muted/30">
                     <Button type="button" variant="outline" onClick={() => setIsOpen(false)} disabled={isSaving}>
                     Cancel
                     </Button>
-                    <Button type="submit" disabled={isSaving} className="bg-primary hover:bg-primary/90 text-primary-foreground min-w-[120px]">
+                    <Button type="submit" disabled={isSaving} className="min-w-[120px]">
                     {isSaving ? (exerciseToEdit ? "Saving..." : "Adding...") : (exerciseToEdit ? "Save Changes" : "Add Exercise")}
                     </Button>
                 </DialogFooter>

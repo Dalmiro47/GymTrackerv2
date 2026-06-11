@@ -51,7 +51,7 @@ export default function LoginPage() {
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-sm shadow-xl">
+      <Card className="w-full max-w-sm shadow-md">
         <CardHeader className="text-center">
           <div className="mb-6 flex justify-center">
             <Logo iconSize={32} textSize="text-3xl" />
@@ -60,7 +60,7 @@ export default function LoginPage() {
           <CardDescription>Sign in to continue to DDS Gym Tracker.</CardDescription>
         </CardHeader>
         <CardContent>
-          <Button onClick={handleGoogleSignIn} className="w-full bg-primary hover:bg-primary/90 text-primary-foreground" aria-label="Sign in with Google" disabled={isLoading}>
+          <Button onClick={handleGoogleSignIn} className="w-full" aria-label="Sign in with Google" disabled={isLoading}>
             {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <GoogleIcon />}
             Sign in with Google
           </Button>

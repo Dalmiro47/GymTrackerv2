@@ -83,6 +83,7 @@ The Coach is a contextual chat embedded in `/log` (workout coaching) and `/routi
 
 - **shadCN/UI** components in `src/components/ui/` (Radix primitives + Tailwind)
 - **Tailwind** with CSS variable theming — colors/fonts defined in `src/app/globals.css` and `tailwind.config.ts`
+- **Design tokens (2026-06 redesign)**: single brand accent is `--primary` (violet); `--accent` is a NEUTRAL gray wired to shadcn ghost/outline hovers — never use `bg-accent`/`text-accent` for brand actions (the pre-redesign code did, and it caused the color chaos). No Tailwind palette classes (`text-blue-600` etc.) outside the token system
 - Custom fonts: PT Sans (body), Space Grotesk (headlines)
 - **PWA** enabled in production only (configured in `next.config.ts`)
 

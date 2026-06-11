@@ -265,10 +265,10 @@ function TrainingLogPageContent() {
         {/* Desktop actions (hidden on mobile) */}
         <div className="hidden md:flex gap-2">
           <Button
-            variant="destructive"
+            variant="outline"
             onClick={() => setIsDeleteConfirmOpen(true)}
             disabled={isDeletingLog || isLoadingLog || !canDeleteLog || isSavingLog}
-            className="gap-2"
+            className="gap-2 text-destructive hover:bg-destructive/10 hover:text-destructive"
             title="Delete today's log"
           >
             <Trash2 className="h-4 w-4" />
@@ -278,7 +278,7 @@ function TrainingLogPageContent() {
           <Button
             onClick={async () => await saveCurrentLog()}
             disabled={isSavingLog || isLoadingLog || isDeletingLog}
-            className="gap-2 bg-accent hover:bg-accent/90"
+            className="gap-2"
             title="Save today’s log"
           >
              {isSavingLog ? (
@@ -291,7 +291,7 @@ function TrainingLogPageContent() {
         </div>
       </div>
 
-      <Card className="shadow-lg">
+      <Card>
         <CardHeader>
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
@@ -348,11 +348,11 @@ function TrainingLogPageContent() {
                 <div className="p-3 border-t">
                   <div className="mt-0 flex items-center justify-center gap-4 text-xs text-muted-foreground">
                     <span className="inline-flex items-center gap-1.5">
-                      <span className="inline-block h-[3px] w-5 rounded bg-[hsl(var(--primary))]" />
+                      <span className="inline-block h-[3px] w-5 rounded bg-primary" />
                       Logged
                     </span>
                     <span className="inline-flex items-center gap-1.5">
-                      <span className="inline-block h-[3px] w-5 rounded bg-[hsl(var(--accent))]" />
+                      <span className="inline-block h-[3px] w-5 rounded bg-chart-4" />
                       Deload
                     </span>
                   </div>
@@ -538,7 +538,7 @@ function TrainingLogPageContent() {
         <CardFooter className="hidden sm:flex justify-end gap-2 pt-6 border-t">
           <Button
               variant="outline"
-              className="border-destructive text-destructive hover:bg-destructive/10"
+              className="text-destructive hover:bg-destructive/10 hover:text-destructive"
               onClick={() => setIsDeleteConfirmOpen(true)}
               disabled={isDeletingLog || isLoadingLog || !canDeleteLog || isSavingLog}
           >
@@ -546,7 +546,7 @@ function TrainingLogPageContent() {
             Delete Day&apos;s Log
           </Button>
 
-          <Button onClick={async () => await saveCurrentLog()} disabled={isSavingLog || isLoadingLog || isDeletingLog} className="bg-accent hover:bg-accent/90">
+          <Button onClick={async () => await saveCurrentLog()} disabled={isSavingLog || isLoadingLog || isDeletingLog}>
               {isSavingLog ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
               Save Day&apos;s Log
           </Button>
@@ -583,18 +583,18 @@ function TrainingLogPageContent() {
         <div className="container px-4 py-3 grid grid-cols-2 gap-2 pb-[env(safe-area-inset-bottom)]">
           <Button
             variant="outline"
-            className="h-12 text-base gap-2 border-destructive text-destructive hover:bg-destructive/10"
+            className="h-12 text-base gap-2 text-destructive hover:bg-destructive/10 hover:text-destructive"
             onClick={() => setIsDeleteConfirmOpen(true)}
             disabled={isDeletingLog || isLoadingLog || !canDeleteLog || isSavingLog}
           >
-            <Trash2 className="h-5 w-5 text-destructive" />
+            <Trash2 className="h-5 w-5" />
             Delete
           </Button>
 
           <Button
             onClick={async () => await saveCurrentLog()}
             disabled={isSavingLog || isLoadingLog || isDeletingLog}
-            className="h-12 text-base gap-2 bg-accent hover:bg-accent/90"
+            className="h-12 text-base gap-2"
           >
             {isSavingLog ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Save className="h-5 w-5" />}
             Save

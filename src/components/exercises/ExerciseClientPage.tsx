@@ -23,6 +23,7 @@ import { assertMuscleGroup } from '@/lib/muscleGroup';
 
 import { PageHeader } from '@/components/PageHeader';
 import { ExerciseCard } from './ExerciseCard';
+import { MuscleGroupIcon } from './MuscleGroupIcon';
 import { AddExerciseDialog } from './AddExerciseDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -358,7 +359,7 @@ export function ExerciseClientPage() {
     return (
       <div className="flex justify-center items-center h-screen">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
-        <p className="ml-4 text-xl text-primary font-semibold">
+        <p className="ml-4 text-lg text-muted-foreground font-medium">
           {authContext.isLoading ? "Loading authentication..." : "Loading your exercises..."}
         </p>
       </div>
@@ -368,7 +369,7 @@ export function ExerciseClientPage() {
   if (!user && !authContext.isLoading) { 
     return (
       <div className="flex flex-col justify-center items-center h-64">
-        <p className="text-xl text-primary font-semibold mb-4">Please log in to manage your exercises.</p>
+        <p className="text-lg font-semibold mb-4">Please log in to manage your exercises.</p>
         <Button onClick={() => router.push('/login')}>Go to Login</Button>
       </div>
     );
@@ -389,9 +390,8 @@ export function ExerciseClientPage() {
             )}
             <Button
               variant="default"
-              className="bg-accent hover:bg-accent/90 text-accent-foreground"
               onClick={handleOpenAddDialog}
-              disabled={isLoading} 
+              disabled={isLoading}
             >
               <PlusCircle className="mr-2 h-4 w-4" />
               Add Exercise
@@ -500,17 +500,17 @@ export function ExerciseClientPage() {
                         <div className="text-center py-12 text-muted-foreground">No exercises found.</div>
                     )
                 ) : (
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
                         <button
                             onClick={() => setActiveMuscleGroup('All')}
-                            className="flex flex-col items-center justify-center p-6 rounded-xl border bg-card hover:bg-accent/50 hover:border-primary/30 transition-all text-center gap-3 shadow-sm hover:shadow-md"
+                            className="flex items-center gap-3 p-3.5 rounded-lg border bg-card hover:border-primary/40 hover:bg-accent/50 transition-colors text-left shadow-sm"
                         >
-                            <div className="p-3 rounded-full bg-primary/10 text-primary">
-                                <Dumbbell className="h-8 w-8" />
+                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+                                <Dumbbell className="h-5 w-5" />
                             </div>
-                            <div>
-                                <span className="font-bold text-lg block">All Exercises</span>
-                                <span className="text-sm text-muted-foreground">{canonicalExercises.length} items</span>
+                            <div className="min-w-0">
+                                <span className="font-semibold text-sm block truncate">All Exercises</span>
+                                <span className="text-xs text-muted-foreground">{canonicalExercises.length} items</span>
                             </div>
                         </button>
 
@@ -521,10 +521,15 @@ export function ExerciseClientPage() {
                                 <button
                                     key={mg}
                                     onClick={() => setActiveMuscleGroup(mg)}
-                                    className="flex flex-col items-start p-6 rounded-xl border bg-card hover:bg-accent/50 hover:border-primary/30 transition-all text-left gap-1 shadow-sm hover:shadow-md"
+                                    className="flex items-center gap-3 p-3.5 rounded-lg border bg-card hover:border-primary/40 hover:bg-accent/50 transition-colors text-left shadow-sm"
                                 >
-                                    <span className="font-bold text-lg">{mg}</span>
-                                    <span className="text-sm text-muted-foreground">{count} exercises</span>
+                                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                                        <MuscleGroupIcon muscleGroup={mg} size={20} />
+                                    </div>
+                                    <div className="min-w-0">
+                                        <span className="font-semibold text-sm block truncate">{mg}</span>
+                                        <span className="text-xs text-muted-foreground">{count} exercise{count === 1 ? '' : 's'}</span>
+                                    </div>
                                 </button>
                             );
                         })}
@@ -549,7 +554,7 @@ export function ExerciseClientPage() {
                             <ArrowLeft className="mr-2 h-4 w-4" />
                             Categories
                         </Button>
-                        <h2 className="text-2xl font-bold tracking-tight">
+                        <h2 className="text-xl font-headline font-bold tracking-tight">
                             {activeMuscleGroup === 'All' ? 'All Exercises' : activeMuscleGroup}
                         </h2>
                     </div>

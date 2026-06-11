@@ -276,7 +276,7 @@ export function LoggedExerciseCard({
           '--card-border-color': borderColor,
         } as React.CSSProperties}
         className={cn(
-          "shadow-md transition-all rounded-lg border", 
+          "shadow-sm transition-all rounded-lg border",
           "border-[var(--card-border-color)]",
           localStructure !== 'normal' && "border-2",
           isDragging && "ring-2 ring-primary"
@@ -304,7 +304,7 @@ export function LoggedExerciseCard({
               {loggedExercise.warmupConfig && loggedExercise.warmupConfig.template !== 'NONE' && (
                   <Popover>
                       <PopoverTrigger asChild>
-                          <Button variant="ghost" size="icon" className="text-orange-500 hover:text-orange-400 h-8 w-8">
+                          <Button variant="ghost" size="icon" className="text-chart-5 hover:text-chart-5/80 h-8 w-8">
                               <Flame className="h-4 w-4" />
                           </Button>
                       </PopoverTrigger>
@@ -321,24 +321,22 @@ export function LoggedExerciseCard({
               </Button>
             </div>
           </div>
-          <div className="pl-8 space-y-0.5">
-            <div className="flex items-center justify-between text-xs text-muted-foreground mt-1">
-              <span className="flex items-center leading-tight">
-                <Dumbbell aria-hidden="true" className="mr-1.5 h-3 w-3 text-primary" />
-                <span className="tabular-nums">{loggedExercise.personalRecordDisplay || 'PR: N/A'}</span>
-              </span>
-            </div>
+          <div className="pl-8 mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary leading-tight">
+              <Dumbbell aria-hidden="true" className="h-3 w-3" />
+              <span className="tabular-nums">{loggedExercise.personalRecordDisplay || 'PR: N/A'}</span>
+            </span>
             {loggedExercise.exerciseSetup && (
-                <div className="text-xs text-muted-foreground flex items-center leading-tight">
-                    <Settings2 aria-hidden="true" className="mr-1 h-3 w-3 text-primary" />
-                    Setup: {loggedExercise.exerciseSetup}
-                </div>
+                <span className="inline-flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground leading-tight">
+                    <Settings2 aria-hidden="true" className="h-3 w-3" />
+                    {loggedExercise.exerciseSetup}
+                </span>
             )}
             {loggedExercise.progressiveOverload && (
-              <div className="text-xs text-muted-foreground flex items-center leading-tight">
-                <TrendingUp aria-hidden="true" className="mr-1 h-3 w-3 text-primary" />
-                Progressive overload: {loggedExercise.progressiveOverload}
-              </div>
+              <span className="inline-flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground leading-tight">
+                <TrendingUp aria-hidden="true" className="h-3 w-3" />
+                {loggedExercise.progressiveOverload}
+              </span>
             )}
           </div>
         </CardHeader>

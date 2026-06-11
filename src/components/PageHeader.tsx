@@ -9,11 +9,11 @@ export function PageHeader({ title, description, children }: PageHeaderProps) {
     <div className="mb-6 md:mb-8">
       <div className="flex flex-col items-start justify-between gap-4 md:flex-row md:items-center">
         <div>
-          <h1 className="text-3xl font-headline font-bold tracking-tight text-primary md:text-4xl">
+          <h1 className="text-2xl font-headline font-bold tracking-tight text-foreground md:text-3xl">
             {title}
           </h1>
           {description && (
-            <p className="mt-1 text-base text-muted-foreground md:text-lg">
+            <p className="mt-1 text-sm text-muted-foreground md:text-base">
               {description}
             </p>
           )}

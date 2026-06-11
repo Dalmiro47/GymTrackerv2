@@ -15,7 +15,7 @@ interface ExerciseCardProps {
 export function ExerciseCard({ exercise, onEdit, onDelete, onViewDetails }: ExerciseCardProps) {
   // console.log('ExerciseCard received exercise:', exercise); // DEBUGGING LINE
   return (
-    <Card className="flex h-full flex-col overflow-hidden shadow-lg transition-shadow hover:shadow-xl">
+    <Card className="flex h-full flex-col overflow-hidden transition-shadow hover:shadow-md">
       <CardHeader className="pb-2">
         <CardTitle className="font-headline text-xl leading-tight">
           {exercise.name}
@@ -64,7 +64,7 @@ export function ExerciseCard({ exercise, onEdit, onDelete, onViewDetails }: Exer
         <Button variant="outline" size="sm" onClick={() => onEdit(exercise)} aria-label={`Edit ${exercise.name}`}>
           <Edit3 className="h-4 w-4" />
         </Button>
-        <Button variant="destructive" size="sm" onClick={() => onDelete(exercise.id)} aria-label={`Delete ${exercise.name}`}>
+        <Button variant="ghost" size="sm" onClick={() => onDelete(exercise.id)} aria-label={`Delete ${exercise.name}`} className="text-destructive hover:bg-destructive/10 hover:text-destructive">
           <Trash2 className="h-4 w-4" />
         </Button>
       </CardFooter>

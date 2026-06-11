@@ -125,10 +125,10 @@ export function CoachChatSheet({ mode, context, loadContext }: CoachChatSheetPro
             onClick={() => setOpen(false)}
           />
 
-          {/* Floating chat window */}
+          {/* Floating chat window — centered on mobile, anchored bottom-right on desktop */}
           <div
-            className="fixed bottom-36 right-4 md:bottom-20 md:right-6 z-50 flex flex-col rounded-2xl border bg-background shadow-2xl"
-            style={{ width: 'min(360px, calc(100vw - 2rem))', height: 'min(680px, calc(100dvh - 10rem))' }}
+            className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 md:left-auto md:top-auto md:translate-x-0 md:translate-y-0 md:bottom-20 md:right-6 z-50 flex flex-col rounded-2xl border bg-background shadow-2xl"
+            style={{ width: 'min(360px, calc(100vw - 2rem))', height: 'min(680px, calc(100dvh - 7rem))' }}
           >
             {/* Header */}
             <div className="flex items-center justify-between border-b px-4 py-3">

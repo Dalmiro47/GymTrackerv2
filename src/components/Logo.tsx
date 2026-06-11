@@ -11,7 +11,7 @@ export function Logo({ className, iconSize = 24, textSize = 'text-2xl' }: LogoPr
   return (
     <Link href="/dashboard" className={`flex items-center gap-2 ${className}`}>
       <Dumbbell className="text-primary" size={iconSize} />
-      <span className={`font-headline font-bold ${textSize} text-primary`}>
+      <span className={`font-headline font-bold ${textSize}`}>
         DDS Gym Tracker
       </span>
     </Link>

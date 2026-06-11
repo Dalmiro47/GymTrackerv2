@@ -35,7 +35,7 @@ export function RoutineCard({ routine, onEdit, onDelete }: RoutineCardProps) {
       ref={setNodeRef} 
       style={style}
       className={cn(
-        "flex h-full flex-col overflow-hidden shadow-lg transition-shadow hover:shadow-xl",
+        "flex h-full flex-col overflow-hidden transition-shadow hover:shadow-md",
         isDragging && "ring-2 ring-primary ring-offset-2"
       )}
     >
@@ -79,7 +79,7 @@ export function RoutineCard({ routine, onEdit, onDelete }: RoutineCardProps) {
         <Button variant="outline" size="sm" onClick={() => onEdit(routine)} aria-label={`Edit ${routine.name}`}>
           <Edit3 className="h-4 w-4" />
         </Button>
-        <Button variant="destructive" size="sm" onClick={() => onDelete(routine.id)} aria-label={`Delete ${routine.name}`}>
+        <Button variant="ghost" size="sm" onClick={() => onDelete(routine.id)} aria-label={`Delete ${routine.name}`} className="text-destructive hover:bg-destructive/10 hover:text-destructive">
           <Trash2 className="h-4 w-4" />
         </Button>
       </CardFooter>
