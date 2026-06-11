@@ -11,6 +11,36 @@ type ChatMode = 'log-day' | 'routine-review';
 const MAX_HISTORY_MESSAGES = 20;
 
 /**
+ * Verifies the Firebase ID token sent by the client so unauthenticated callers
+ * can't consume the Groq quota. Uses the Identity Toolkit REST API to avoid
+ * pulling in firebase-admin.
+ */
+async function verifyFirebaseIdToken(req: Request): Promise<boolean> {
+  const authHeader = req.headers.get('authorization') ?? '';
+  const idToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+  if (!idToken) return false;
+
+  const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
+  if (!apiKey) return false;
+
+  try {
+    const res = await fetch(
+      `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken }),
+      },
+    );
+    if (!res.ok) return false;
+    const data = await res.json();
+    return Array.isArray(data?.users) && data.users.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Wraps the raw Groq SSE stream and strips <think>...</think> tokens before forwarding.
  * Re-emits chunks as `data: {"v":"<delta>"}\n\n` — simpler than the full OpenAI format.
  */
@@ -70,12 +100,28 @@ function filterThinkingStream(raw: ReadableStream<Uint8Array>): ReadableStream<U
           }
         }
       },
+      flush(controller) {
+        // Stream ended while still buffering: a reply shorter than 7 chars never
+        // hit the "no <think> opening" branch — deliver it instead of dropping it.
+        // (A buffer that starts with an unclosed <think> is thinking-only; skip.)
+        if (!thinkDone && contentBuffer && !contentBuffer.startsWith('<think>')) {
+          controller.enqueue(enc.encode(`data: ${JSON.stringify({ v: contentBuffer })}\n\n`));
+        }
+      },
     }),
   );
 }
 
 export async function POST(req: Request) {
   try {
+    const isAuthenticated = await verifyFirebaseIdToken(req);
+    if (!isAuthenticated) {
+      return NextResponse.json(
+        { error: 'No autorizado. Inicia sesión para hablar con el coach.' },
+        { status: 401 },
+      );
+    }
+
     const body = await req.json();
     const { mode, messages, context } = body as {
       mode: ChatMode;

@@ -54,14 +54,22 @@ export const addRoutine = async (userId: string, routineData: Omit<RoutineData, 
       updatedAt: serverTimestamp() as Timestamp,
     };
 
-    const routineIdSlug = slugify(routineData.name); 
-    if (!routineIdSlug) {
+    const baseSlug = slugify(routineData.name);
+    if (!baseSlug) {
         throw new Error("Routine name is invalid and cannot be used to generate an ID.");
     }
 
-    const routineDocRef = doc(userRoutinesColRef, routineIdSlug); 
-    
-    await setDoc(routineDocRef, dataToSave); 
+    // Suffix the slug on collision (-2, -3, ...) so a routine with the same
+    // name never silently overwrites an existing one.
+    let routineIdSlug = baseSlug;
+    let suffix = 2;
+    while ((await getDoc(doc(userRoutinesColRef, routineIdSlug))).exists()) {
+        routineIdSlug = `${baseSlug}-${suffix++}`;
+    }
+
+    const routineDocRef = doc(userRoutinesColRef, routineIdSlug);
+
+    await setDoc(routineDocRef, dataToSave);
 
     return { id: routineIdSlug, ...dataToSave } as Routine;
   } catch (error: any) {

@@ -29,9 +29,9 @@ export default async (): Promise<NextConfig> => {
   return withPWA({
     dest: 'public',
     register: true,
-    skipWaiting: true,
     disable: false, // prod enabled
     workboxOptions: {
+      skipWaiting: true,
       runtimeCaching: [
         {
           urlPattern: ({ request }) =>

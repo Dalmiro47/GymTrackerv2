@@ -1,6 +1,9 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { format } from 'date-fns';
+import { getAuth } from 'firebase/auth';
+import { app } from '@/lib/firebaseConfig';
 import type { LogDayContext, RoutineReviewContext } from '@/lib/ai/context-builders';
 
 export type ChatMessage = {
@@ -10,7 +13,8 @@ export type ChatMessage = {
 
 type ChatMode = 'log-day' | 'routine-review';
 
-const today = () => new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+// Local date (not UTC) so the chat rolls over at local midnight, same as logs
+const today = () => format(new Date(), 'yyyy-MM-dd');
 const STORAGE_KEY = (mode: ChatMode) => `coach-chat-${mode}-${today()}`;
 
 function stripThinking(text: string): string {
@@ -56,10 +60,16 @@ function saveToStorage(mode: ChatMode, messages: ChatMessage[]) {
 }
 
 export function useCoachChat(mode: ChatMode) {
-  const [messages, setMessages] = useState<ChatMessage[]>(() => loadFromStorage(mode));
-  const [isStreaming, setIsStreaming] = useState(false); // now means "waiting for JSON response" (tech debt: rename to isLoading)
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+
+  // Load persisted history after mount — reading localStorage during the
+  // initial render causes a server/client hydration mismatch.
+  useEffect(() => {
+    setMessages(loadFromStorage(mode));
+  }, [mode]);
 
   const persistMessages = useCallback(
     (updater: ChatMessage[] | ((prev: ChatMessage[]) => ChatMessage[])) => {
@@ -90,9 +100,14 @@ export function useCoachChat(mode: ChatMode) {
         // Insert empty assistant bubble immediately so the Loader2 spinner shows during the request
         persistMessages((prev) => [...prev, { role: 'assistant', content: '' }]);
 
+        const idToken = await getAuth(app).currentUser?.getIdToken();
+
         const res = await fetch('/api/coach/chat', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
+          },
           body: JSON.stringify({
             mode,
             messages: updatedMessages.map((m) =>

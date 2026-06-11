@@ -2,14 +2,14 @@
 claude --dangerously-skip-permissions 
 
 ## Pull Request to Github 
-git switch -c chore/brain-sync-readme-audit
+git switch -c chore/fable5-code-review
 
 ## Do ALL THE CHANGES 
 
 ## Pull Request to Github 
 git add -A 
-git commit -m "chore(claude): add Step 0b README drift audit to brain-sync" 
-git push -u origin chore/brain-sync-readme-audit
+git commit -m "chore(claude): Add REVIEW.md with full codebase review findings and prioritized improvement proposals." 
+git push -u origin chore/fable5-code-review
 
 ## Make local main match GitHub
 
@@ -24,5 +24,5 @@ git rev-parse HEAD
 git rev-parse origin/main 
  
 ## After merge, delete the branch
-git branch -D chore/brain-sync-readme-audit
+git branch -D chore/fable5-code-review
  

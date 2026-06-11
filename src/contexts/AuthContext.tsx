@@ -12,6 +12,7 @@ import {
   type User as FirebaseUser 
 } from 'firebase/auth';
 import { app } from '@/lib/firebaseConfig'; // Ensure app is initialized
+import { useToast } from '@/hooks/use-toast';
 
 interface AuthContextType {
   user: AppUserProfile | null;
@@ -28,6 +29,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<AppUserProfile | null>(null);
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const { toast } = useToast();
   const auth = getAuth(app); // Get auth instance
 
   useEffect(() => {
@@ -59,24 +61,37 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const provider = new GoogleAuthProvider();
     try {
       await signInWithPopup(auth, provider);
-      // onAuthStateChanged will handle setting the user state
+      // On success, onAuthStateChanged sets the user and clears isLoading.
     } catch (error) {
-      console.error("Error during Google sign-in:", error);
-      // Handle error (e.g., show a toast message)
-      // For now, loading will be set to false by onAuthStateChanged eventually
+      // A failed/cancelled popup never triggers onAuthStateChanged — reset
+      // here or the app is stuck on a spinner forever.
+      setIsLoading(false);
+      const code = (error as { code?: string })?.code;
+      if (code !== 'auth/popup-closed-by-user' && code !== 'auth/cancelled-popup-request') {
+        console.error("Error during Google sign-in:", error);
+        toast({
+          title: "Error de inicio de sesión",
+          description: "No se pudo iniciar sesión con Google. Inténtalo de nuevo.",
+          variant: "destructive",
+        });
+      }
     }
-    // setIsLoading(false); // onAuthStateChanged will set loading to false
   };
 
   const logout = async () => {
     setIsLoading(true);
     try {
       await firebaseSignOut(auth);
-      // onAuthStateChanged will handle clearing the user state
+      // On success, onAuthStateChanged clears the user and isLoading.
     } catch (error) {
+      setIsLoading(false);
       console.error("Error during sign-out:", error);
+      toast({
+        title: "Error al cerrar sesión",
+        description: "No se pudo cerrar la sesión. Inténtalo de nuevo.",
+        variant: "destructive",
+      });
     }
-    // setIsLoading(false); // onAuthStateChanged will set loading to false
   };
 
   return (

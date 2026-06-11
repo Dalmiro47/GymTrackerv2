@@ -248,7 +248,7 @@ export function SelectedRoutineExercisesList({
             </div>
             <p className="text-sm font-medium text-foreground">No exercises yet</p>
             <p className="text-xs text-muted-foreground mt-1 max-w-[200px]">
-              Tap "Add Exercises" below to build your routine.
+              Tap &quot;Add Exercises&quot; below to build your routine.
             </p>
           </div>
         ) : (

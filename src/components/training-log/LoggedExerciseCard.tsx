@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import type { LoggedExercise, LoggedSet, SetStructure } from '@/types';
-import { computeWarmup, WarmupInput, type WarmupStep } from '@/lib/utils';
+import { computeWarmup, inferWarmupTemplate, WarmupInput, type WarmupStep } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -27,15 +27,16 @@ const WarmupPanel: React.FC<{ loggedExercise: LoggedExercise }> = ({ loggedExerc
     const warmupSteps: WarmupStep[] = useMemo(() => {
         if (!loggedExercise.warmupConfig || (workingWeight <= 0 && loggedExercise.warmupConfig.template !== 'BODYWEIGHT')) return [];
         // For Bodyweight, we want to show steps even if workingWeight is 0 (handled in utils)
-        
+
         const input: WarmupInput = {
             template: loggedExercise.warmupConfig.template,
             workingWeight: workingWeight,
-            // isWeightedBodyweight removed - logic is now inferred automatically
+            // Lower-body barbell lifts get an extra "Empty Bar" step
+            isLowerBodyBarbell: inferWarmupTemplate(loggedExercise.name).isLowerBodyBarbell,
             overrideSteps: loggedExercise.warmupConfig.overrideSteps,
         };
         return computeWarmup(input);
-    }, [loggedExercise.warmupConfig, workingWeight]);
+    }, [loggedExercise.warmupConfig, loggedExercise.name, workingWeight]);
 
     if (workingWeight <= 0 && loggedExercise.warmupConfig?.template !== 'BODYWEIGHT') {
          return <div className="p-4 text-sm text-muted-foreground">Enter a working weight to calculate warm-ups.</div>;
@@ -99,6 +100,9 @@ interface LoggedExerciseCardProps {
   isSavingParentLog: boolean;
   onMarkAsInteracted: () => void;
   onUpdateSetStructureOverride: (exerciseId: string, override: SetStructure | null) => void;
+  /** Deload Mode shows a derived (reduced) view — set values must not be edited
+   *  there, or the reduced numbers would be written back into the baseline. */
+  isReadOnly?: boolean;
 }
 
 export function LoggedExerciseCard({
@@ -110,6 +114,7 @@ export function LoggedExerciseCard({
   isSavingParentLog,
   onMarkAsInteracted,
   onUpdateSetStructureOverride,
+  isReadOnly = false,
 }: LoggedExerciseCardProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [localSets, setLocalSets] = useState<LoggedSet[]>(loggedExercise.sets);
@@ -187,6 +192,7 @@ export function LoggedExerciseCard({
     field: 'reps' | 'weight',
     value: string
   ) => {
+    if (isReadOnly) return;
     onMarkAsInteracted();
   
     // Ignore transient "12." values for weight just in case
@@ -220,22 +226,30 @@ export function LoggedExerciseCard({
   };
 
   const addSet = () => {
-    onMarkAsInteracted(); 
-    const newSet: LoggedSet = { 
-        id: `set-${Date.now()}-${localSets.length + 1}`, 
-        reps: null, 
-        weight: null, 
-        isProvisional: false 
+    if (isReadOnly) return;
+    onMarkAsInteracted();
+    const newSet: LoggedSet = {
+        id: `set-${Date.now()}-${localSets.length + 1}`,
+        reps: null,
+        weight: null,
+        isProvisional: false
     };
     const newSets = [...localSets, newSet];
     setLocalSets(newSets);
+    setWeightDisplays(prev => [...prev, '']);
     onUpdateSets(newSets);
   };
 
   const removeSet = (setId: string) => {
-    onMarkAsInteracted(); 
+    if (isReadOnly) return;
+    onMarkAsInteracted();
+    const removedIndex = localSets.findIndex(s => s.id === setId);
     const newSets = localSets.filter(s => s.id !== setId);
     setLocalSets(newSets);
+    // Keep the index-aligned weight display strings in sync with the sets
+    if (removedIndex !== -1) {
+      setWeightDisplays(prev => prev.filter((_, i) => i !== removedIndex));
+    }
     onUpdateSets(newSets);
   };
 
@@ -357,15 +371,16 @@ export function LoggedExerciseCard({
 
           {localSets.map((set, index) => (
             <SetInputRow
-              key={set.id} 
+              key={set.id}
               set={set}
               index={index}
               onSetChange={handleSetChange}
               onRemoveSet={() => removeSet(set.id)}
-              isProvisional={set.isProvisional} 
-              onInteract={onMarkAsInteracted} 
+              isProvisional={set.isProvisional}
+              onInteract={onMarkAsInteracted}
+              disabled={isReadOnly}
               weightDisplay={weightDisplays[index] ?? ''}
-              setWeightDisplay={(val) => 
+              setWeightDisplay={(val) =>
                 setWeightDisplays(prev => {
                   const next = [...prev];
                   next[index] = val;
@@ -374,18 +389,18 @@ export function LoggedExerciseCard({
               }
             />
           ))}
-          
+
           <div className="pt-2">
             <Separator className="mb-4 border-dashed" />
             <div className="flex justify-center">
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={addSet} 
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={addSet}
                 className="border-dashed hover:border-solid hover:bg-muted/50 text-muted-foreground hover:text-foreground"
-                disabled={isSavingThisExercise || isSavingParentLog}
+                disabled={isSavingThisExercise || isSavingParentLog || isReadOnly}
               >
-                <PlusCircle className="mr-2 h-4 w-4" /> 
+                <PlusCircle className="mr-2 h-4 w-4" />
                 Add Set Here
               </Button>
             </div>

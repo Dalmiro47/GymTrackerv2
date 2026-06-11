@@ -2,7 +2,7 @@
 
 "use client";
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import type { WorkoutLog, LoggedExercise, LoggedSet, Routine, Exercise, ExercisePerformanceEntry, PersonalRecord, SetStructure, WarmupConfig } from '@/types';
 import { useAuth } from '@/contexts/AuthContext';
 import {
@@ -13,6 +13,7 @@ import {
   updatePerformanceEntryOnLogDelete,
   getLastNonDeloadPerformance,
   saveExercisePerformanceEntry,
+  saveExercisePerformanceEntries,
 } from '@/services/trainingLogService';
 import { getExercises as fetchAllUserExercises } from '@/services/exerciseService';
 import { getRoutines as fetchUserRoutines } from '@/services/routineService';
@@ -21,16 +22,6 @@ import { useToast } from './use-toast';
 import { inferWarmupTemplate, roundToGymHalf } from '@/lib/utils';
 import { isBetterPR, formatPR, pickBestSet } from '@/lib/pr';
 
-
-// A safe deep-clone function using JSON stringify/parse, suitable for serializable data.
-const cloneDeep = <T>(obj: T): T => {
-  try {
-    return JSON.parse(JSON.stringify(obj));
-  } catch (e) {
-    console.error("Deep clone failed:", e);
-    return obj; // Fallback to shallow copy if deep clone fails
-  }
-};
 
 const DEFAULT_DELOAD_PARAMS = {
     volumeMultiplier: 0.5,
@@ -56,7 +47,6 @@ export const useTrainingLog = (initialDate: Date) => {
   const { toast } = useToast();
 
   const [selectedDate, setSelectedDate] = useState<Date>(initialDate);
-  const [currentLog, setCurrentLog] = useState<WorkoutLog | null>(null);
   const [isLoadingLog, setIsLoadingLog] = useState(true);
   const [isSavingLog, setIsSavingLog] = useState(false);
   const [isDeletingLog, setIsDeletingLog] = useState(false);
@@ -109,10 +99,26 @@ export const useTrainingLog = (initialDate: Date) => {
     return () => { alive = false; };
   }, [user?.id, displayedMonth]);
 
-  const fetchExercisePerformanceData = useCallback(async (exerciseId: string, routineId?: string): Promise<ExercisePerformanceEntry | null> => {
+  const fetchExercisePerformanceData = useCallback(async (exerciseId: string): Promise<ExercisePerformanceEntry | null> => {
     if (!user?.id || !exerciseId) return null;
-    return await getLastNonDeloadPerformance(user.id, exerciseId, routineId);
+    return await getLastNonDeloadPerformance(user.id, exerciseId);
   }, [user?.id]);
+
+  const refreshMonthFlags = useCallback(async () => {
+    if (!user?.id) return;
+    const { logged, deload } = await getMonthLogFlags(user.id, displayedMonth);
+    setLoggedDayStrings(logged);
+    setDeloadDayStrings(deload);
+  }, [user?.id, displayedMonth]);
+
+  // One parallel read per unique exercise — replaces N sequential round-trips.
+  const fetchPerformanceDataByExerciseId = useCallback(async (exerciseIds: string[]) => {
+    const uniqueIds = Array.from(new Set(exerciseIds));
+    const entries = await Promise.all(
+      uniqueIds.map(async (id) => [id, await fetchExercisePerformanceData(id)] as const)
+    );
+    return new Map(entries);
+  }, [fetchExercisePerformanceData]);
 
   const getWarmupConfig = (exercise: Exercise): WarmupConfig => {
     if (exercise.warmup) {
@@ -125,9 +131,7 @@ export const useTrainingLog = (initialDate: Date) => {
   const loadLogForDate = useCallback(async (dateToLoad: Date) => {
     const dateId = format(dateToLoad, 'yyyy-MM-dd');
     if (!user?.id) {
-        const emptyLog = makeEmptyLog(dateId);
-        setCurrentLog(emptyLog);
-        setOriginalLogState(cloneDeep(emptyLog));
+        setOriginalLogState(makeEmptyLog(dateId));
         setIsLoadingLog(false);
         return;
     }
@@ -139,7 +143,7 @@ export const useTrainingLog = (initialDate: Date) => {
         if (fetchedLog) {
             const finalExercisesForCurrentLog = await Promise.all(
                 fetchedLog.exercises.map(async (exFromStoredLog) => {
-                    const performanceEntry = await fetchExercisePerformanceData(exFromStoredLog.exerciseId, fetchedLog.routineId);
+                    const performanceEntry = await fetchExercisePerformanceData(exFromStoredLog.exerciseId);
                     const fullDef = availableExercises.find(e => e.id === exFromStoredLog.exerciseId);
                     
                     const setsWithIds = exFromStoredLog.sets.map((s, idx) => ({
@@ -177,20 +181,17 @@ export const useTrainingLog = (initialDate: Date) => {
                 isDeload: fetchedLog.isDeload ?? false,
                 deloadParams: fetchedLog.deloadParams,
             };
-            setCurrentLog(log);
-            setOriginalLogState(cloneDeep(log));
+            setOriginalLogState(log);
             setIsDeload(log.isDeload ?? false);
 
         } else {
-            const newLog = makeEmptyLog(dateId);
-            setCurrentLog(newLog);
-            setOriginalLogState(cloneDeep(newLog));
+            setOriginalLogState(makeEmptyLog(dateId));
             setIsDeload(false);
         }
 
     } catch (error: any) {
         toast({ title: "Error Loading Log", description: `Could not load log for ${dateId}. ${error.message}`, variant: "destructive" });
-        setCurrentLog(makeEmptyLog(dateId));
+        setOriginalLogState(makeEmptyLog(dateId));
     } finally {
         setIsLoadingLog(false);
     }
@@ -270,28 +271,23 @@ export const useTrainingLog = (initialDate: Date) => {
     return { ...log, exercises: log.exercises.map(ex => ({ ...ex, sets: transformSets(ex.sets) })) };
   }, []);
 
-  useEffect(() => {
-    if (!currentLog) return;
-    if (isDeload) {
-      const src = originalLogState ?? currentLog;
-      const next = applyDeloadTransform(src);
-      if (next) setCurrentLog(next);
-    } else if (originalLogState) {
-      setCurrentLog(cloneDeep(originalLogState));
-    }
-  }, [isDeload, originalLogState, applyDeloadTransform]);
+  // The displayed log is *derived* from the baseline, never stored — so deload
+  // (transformed) values can't be fed back into the baseline and compound.
+  const currentLog = useMemo(() => {
+    if (!originalLogState) return null;
+    return isDeload ? applyDeloadTransform(originalLogState) : originalLogState;
+  }, [originalLogState, isDeload, applyDeloadTransform]);
 
-  const mutateBaseline = (
+  // Stable callback: mutations go through the functional updater so they never
+  // read a stale baseline; the displayed log re-derives in the same render.
+  const mutateBaseline = useCallback((
     produceNextFromBaseline: (baseline: WorkoutLog | null) => WorkoutLog | null
   ) => {
-    const baseline = originalLogState ?? currentLog ?? null;
-    const nextBaseline = produceNextFromBaseline(baseline);
-
-    if (!nextBaseline) return;
-
-    setOriginalLogState(nextBaseline);
-    setCurrentLog(isDeload ? applyDeloadTransform(nextBaseline) : nextBaseline);
-  };
+    setOriginalLogState(prev => {
+      const next = produceNextFromBaseline(prev);
+      return next ?? prev;
+    });
+  }, []);
 
 
   const markExerciseAsInteracted = (exerciseIdToUpdate: string) => {
@@ -315,8 +311,7 @@ export const useTrainingLog = (initialDate: Date) => {
 
     if (routineId === "none") {
       const clearedLog = makeEmptyLog(dateOfLog);
-      setOriginalLogState(cloneDeep(clearedLog));
-      setCurrentLog(clearedLog);
+      setOriginalLogState(clearedLog);
       setIsDeload(false);
       return;
     }
@@ -329,7 +324,7 @@ export const useTrainingLog = (initialDate: Date) => {
     const exercisesFromRoutine: LoggedExercise[] = await Promise.all(
         selectedRoutine.exercises.map(async (routineEx, index) => {
             const fullExerciseDef = availableExercises.find(ex => ex.id === routineEx.id);
-            const performanceEntry = await fetchExercisePerformanceData(routineEx.id, selectedRoutine.id);
+            const performanceEntry = await fetchExercisePerformanceData(routineEx.id);
             let initialSets: LoggedSet[];
             if (performanceEntry?.lastPerformedSets && performanceEntry.lastPerformedSets.length > 0) {
                 initialSets = performanceEntry.lastPerformedSets.map((s, i) => ({
@@ -372,16 +367,14 @@ export const useTrainingLog = (initialDate: Date) => {
         exerciseIds: exercisesFromRoutine.map(e => e.exerciseId), 
         notes: currentNotes 
     };
-    setOriginalLogState(cloneDeep(newLog));
-    setCurrentLog(isDeload ? applyDeloadTransform(newLog) : newLog);
+    setOriginalLogState(newLog);
   };
 
   const addExerciseToLog = async (exercise: Exercise, index?: number) => {
     if (!user?.id) return;
     const dateOfLog = format(selectedDate, 'yyyy-MM-dd');
-    
-    const baseLogForPerf = currentLog || makeEmptyLog(dateOfLog);
-    const performanceEntry = await fetchExercisePerformanceData(exercise.id, baseLogForPerf.routineId);
+
+    const performanceEntry = await fetchExercisePerformanceData(exercise.id);
 
     let initialSets: LoggedSet[];
     if (performanceEntry?.lastPerformedSets && performanceEntry.lastPerformedSets.length > 0) {
@@ -444,8 +437,7 @@ export const useTrainingLog = (initialDate: Date) => {
   const replaceExerciseInLog = async (exerciseIdToReplace: string, newExercise: Exercise) => {
     if (!user?.id) return;
     const dateOfLog = format(selectedDate, 'yyyy-MM-dd');
-    const baseLogForPerf = currentLog || makeEmptyLog(dateOfLog);
-    const performanceEntry = await fetchExercisePerformanceData(newExercise.id, baseLogForPerf.routineId);
+    const performanceEntry = await fetchExercisePerformanceData(newExercise.id);
 
     const initialSets: LoggedSet[] = (performanceEntry?.lastPerformedSets?.length ? performanceEntry.lastPerformedSets : [{ reps: null, weight: null }])
       .map((s, i) => ({ ...s, id: `set-${dateOfLog}-${newExercise.id}-${i}-${Date.now()}`, isProvisional: true }));
@@ -513,28 +505,27 @@ export const useTrainingLog = (initialDate: Date) => {
   };
   
   const updateExerciseSetStructureOverride = (exerciseId: string, structure: SetStructure | null) => {
-    mutateBaseline((base) => {
-      if (!base) return null;
-      const updatedLog = {
-        ...base,
-        exercises: base.exercises.map(ex =>
-          ex.id === exerciseId
-            ? { ...ex, setStructureOverride: structure }
-            : ex
-        )
-      };
-      return updatedLog;
-    });
+    const base = originalLogState ?? currentLog;
+    if (!base) return;
 
-    if (user?.id && currentLog?.id) {
-      saveWorkoutLog(user.id, currentLog.id, {
-        ...currentLog,
-        exercises: currentLog.exercises.map(ex =>
-          ex.id === exerciseId ? { ...ex, setStructureOverride: structure } : ex
-        ),
-      }).catch(err => {
-          console.error("Failed to persist set structure override in background", err);
-          // Optional: implement UI to show save error
+    const nextBaseline: WorkoutLog = {
+      ...base,
+      exercises: base.exercises.map(ex =>
+        ex.id === exerciseId
+          ? { ...ex, setStructureOverride: structure }
+          : ex
+      ),
+    };
+    setOriginalLogState(nextBaseline);
+
+    // Persist in the background, but only for days that already exist on the
+    // backend — otherwise a structure tweak would silently create a log full
+    // of provisional (pre-filled, unperformed) data.
+    const existsOnBackend =
+      loggedDayStrings.includes(nextBaseline.id) || deloadDayStrings.includes(nextBaseline.id);
+    if (user?.id && existsOnBackend) {
+      saveLogService(user.id, nextBaseline.id, nextBaseline).catch((err: unknown) => {
+        console.error("Failed to persist set structure override in background", err);
       });
     }
   };
@@ -553,15 +544,15 @@ export const useTrainingLog = (initialDate: Date) => {
                 const newIsBetter = isBetterPR(bestToday, ex.currentPR ?? null);
                 const nextPR = newIsBetter ? bestToday : (ex.currentPR ?? null);
 
-                return { 
-                  ...ex, 
+                return {
+                  ...ex,
                   currentPR: nextPR,
                   personalRecordDisplay: formatPR(nextPR),
                 };
             })
         };
     });
-  }, []);
+  }, [mutateBaseline]);
 
   const saveCurrentLog = async () => {
     if (!user?.id || !currentLog) {
@@ -581,27 +572,36 @@ export const useTrainingLog = (initialDate: Date) => {
         logToSave.deloadParams = undefined;
       }
 
-      const exercisesWithUpdatedPrs = await Promise.all(
-        logToSave.exercises.map(async (loggedEx) => {
-          const { isProvisional, ...restOfEx } = loggedEx; 
-          const performanceEntry = await fetchExercisePerformanceData(restOfEx.exerciseId, logToSave.routineId);
-          const currentPR = performanceEntry?.personalRecord
-              ? { reps: performanceEntry.personalRecord.reps, weight: performanceEntry.personalRecord.weight }
-              : null;
-          return {
-            ...restOfEx,
-            personalRecordDisplay: formatPR(currentPR),
-            currentPR: currentPR,
-            sets: restOfEx.sets.map(s => {
-                const { isProvisional: setProvisional, ...restOfSet } = s; 
-                return restOfSet;
-            })
-          };
-        })
+      const perfById = await fetchPerformanceDataByExerciseId(
+        logToSave.exercises.map(ex => ex.exerciseId)
       );
-      
+
+      const exercisesWithUpdatedPrs = logToSave.exercises.map((loggedEx) => {
+        const { isProvisional, ...restOfEx } = loggedEx;
+        const performanceEntry = perfById.get(restOfEx.exerciseId) ?? null;
+        const storedPR = performanceEntry?.personalRecord
+            ? { reps: performanceEntry.personalRecord.reps, weight: performanceEntry.personalRecord.weight }
+            : null;
+        const sets = restOfEx.sets.map(s => {
+            const { isProvisional: setProvisional, ...restOfSet } = s;
+            return restOfSet;
+        });
+
+        // Fold today's best set into the local PR display (the backend entry is
+        // updated below) so no refetch is needed after saving.
+        const bestToday = (!isDeload && !isProvisional) ? pickBestSet(sets) : null;
+        const currentPR = bestToday && isBetterPR(bestToday, storedPR) ? bestToday : storedPR;
+
+        return {
+          ...restOfEx,
+          personalRecordDisplay: formatPR(currentPR),
+          currentPR: currentPR,
+          sets,
+        };
+      });
+
       const finalLogToSave: WorkoutLog = {
-        ...logToSave, 
+        ...logToSave,
         exercises: exercisesWithUpdatedPrs,
         exerciseIds: Array.from(new Set(exercisesWithUpdatedPrs.map(ex => ex.exerciseId))),
       };
@@ -611,40 +611,30 @@ export const useTrainingLog = (initialDate: Date) => {
       if (shouldSaveMainLogDocument) {
           await saveLogService(user.id, finalLogToSave.id, finalLogToSave);
           if (!finalLogToSave.isDeload) {
-            for (const loggedEx of finalLogToSave.exercises) {
-                const originalExerciseInLog = currentLog.exercises.find(ex => ex.id === loggedEx.id);
-                if (originalExerciseInLog && !originalExerciseInLog.isProvisional) {
-                    await saveExercisePerformanceEntry(
-                      user.id,
-                      loggedEx.exerciseId,
-                      loggedEx.sets,
-                      finalLogToSave.id
-                    );
-                    applyLocalPRUpdate(loggedEx.exerciseId, loggedEx.sets);
-                }
+            const entriesToPersist = logToSave.exercises
+              .filter(ex => !ex.isProvisional)
+              .map(ex => ({ exerciseId: ex.exerciseId, sets: ex.sets }));
+            if (entriesToPersist.length > 0) {
+              await saveExercisePerformanceEntries(user.id, entriesToPersist, finalLogToSave.id);
             }
           }
-          const { logged, deload } = await getMonthLogFlags(user.id, displayedMonth);
-          setLoggedDayStrings(logged);
-          setDeloadDayStrings(deload);
+          // Update local state from the payload just saved instead of refetching.
+          setOriginalLogState(finalLogToSave);
+          await refreshMonthFlags();
           toast({ title: "Log Saved", description: `Workout for ${formattedDateId} saved.` });
       } else {
           const existingLogDocument = await fetchLogService(user.id, finalLogToSave.id);
-          if (existingLogDocument) { 
+          if (existingLogDocument) {
               await deleteLogService(user.id, finalLogToSave.id);
-              for (const exInDeletedLog of existingLogDocument.exercises) { 
-                  await updatePerformanceEntryOnLogDelete(user.id, exInDeletedLog.exerciseId, finalLogToSave.id);
-              }
-              const { logged, deload } = await getMonthLogFlags(user.id, displayedMonth);
-              setLoggedDayStrings(logged);
-              setDeloadDayStrings(deload);
+              await Promise.all(existingLogDocument.exercises.map(exInDeletedLog =>
+                  updatePerformanceEntryOnLogDelete(user.id!, exInDeletedLog.exerciseId, finalLogToSave.id)
+              ));
+              await refreshMonthFlags();
               toast({ title: "Log Cleared", description: `Empty log for ${formattedDateId} was cleared.`});
           } else {
               toast({ title: "Log Not Saved", description: "Log is empty."});
           }
       }
-      
-      await loadLogForDate(selectedDate);
 
     } catch (error: any) {
       toast({ title: "Error Saving Log", description: `Could not save log. ${error.message}`, variant: "destructive" });
@@ -676,34 +666,40 @@ export const useTrainingLog = (initialDate: Date) => {
         logToSave.isDeload = false;
         logToSave.deloadParams = undefined;
       }
-  
-      const exercisesForPayload = await Promise.all(
-        logToSave.exercises.map(async (ex) => {
-          const { isProvisional, ...rest } = ex;
-          const perf = await fetchExercisePerformanceData(rest.exerciseId, logToSave.routineId);
-          const currentPR = perf?.personalRecord
-              ? { reps: perf.personalRecord.reps, weight: perf.personalRecord.weight }
-              : null;
-          return {
-            ...rest,
-            personalRecordDisplay: formatPR(currentPR),
-            currentPR: currentPR,
-            sets: rest.sets.map(({ isProvisional: _p, ...s }) => s),
-          };
-        })
+
+      // Only persist exercises the user has actually interacted with — untouched
+      // provisional (pre-filled) exercises stay local until saved explicitly.
+      const exercisesToPersist = logToSave.exercises.filter(
+        ex => !ex.isProvisional || ex.id === exerciseLogId
       );
-  
+
+      const perfById = await fetchPerformanceDataByExerciseId(
+        exercisesToPersist.map(ex => ex.exerciseId)
+      );
+
+      const exercisesForPayload = exercisesToPersist.map((ex) => {
+        const { isProvisional, ...rest } = ex;
+        const perf = perfById.get(rest.exerciseId) ?? null;
+        const currentPR = perf?.personalRecord
+            ? { reps: perf.personalRecord.reps, weight: perf.personalRecord.weight }
+            : null;
+        return {
+          ...rest,
+          personalRecordDisplay: formatPR(currentPR),
+          currentPR: currentPR,
+          sets: rest.sets.map(({ isProvisional: _p, ...s }) => s),
+        };
+      });
+
       const payload: WorkoutLog = {
         ...logToSave,
         exercises: exercisesForPayload,
         exerciseIds: Array.from(new Set(exercisesForPayload.map(e => e.exerciseId))),
       };
-  
+
       await saveLogService(user.id, payload.id, payload);
-      const { logged, deload } = await getMonthLogFlags(user.id, displayedMonth);
-      setLoggedDayStrings(logged);
-      setDeloadDayStrings(deload);
-  
+      await refreshMonthFlags();
+
       if (!payload.isDeload) {
           await saveExercisePerformanceEntry(
             user.id,
@@ -713,7 +709,7 @@ export const useTrainingLog = (initialDate: Date) => {
           );
           applyLocalPRUpdate(selectedExercise.exerciseId, selectedExercise.sets);
       }
-  
+
       toast({ title: "Exercise Saved", description: `${selectedExercise?.name ?? "Exercise"} saved.` });
     } catch (error: any) {
       toast({ title: "Error", description: `Could not save exercise. ${error.message}`, variant: "destructive" });
@@ -743,24 +739,19 @@ export const useTrainingLog = (initialDate: Date) => {
 
     try {
       await deleteLogService(user.id, logIdToDelete);
-      
-      for (const deletedEx of exercisesInDeletedLog) {
-        try {
-          await updatePerformanceEntryOnLogDelete(user.id, deletedEx.exerciseId, logIdToDelete);
-        } catch (prClearError: any) {
-          console.error(`[HOOK] deleteCurrentLog: Failed to clear/update PR for ${deletedEx.name}: ${prClearError.message}`);
-        }
-      }
-      
-      const emptyLog = makeEmptyLog(logIdToDelete);
-      setCurrentLog(emptyLog);
-      setOriginalLogState(cloneDeep(emptyLog));
+
+      await Promise.all(exercisesInDeletedLog.map(deletedEx =>
+        updatePerformanceEntryOnLogDelete(user.id!, deletedEx.exerciseId, logIdToDelete)
+          .catch((prClearError: any) => {
+            console.error(`[HOOK] deleteCurrentLog: Failed to clear/update PR for ${deletedEx.name}: ${prClearError.message}`);
+          })
+      ));
+
+      setOriginalLogState(makeEmptyLog(logIdToDelete));
       setIsDeload(false);
 
       toast({ title: "Log Deleted", description: `Workout for ${logIdToDelete} has been deleted.` });
-      const { logged, deload } = await getMonthLogFlags(user.id, displayedMonth);
-      setLoggedDayStrings(logged);
-      setDeloadDayStrings(deload);
+      await refreshMonthFlags();
     } catch (error: any) {
       toast({ title: "Error Deleting Log", description: `Could not delete log. ${error.message}`, variant: "destructive" });
       if (user?.id) { 

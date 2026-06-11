@@ -88,7 +88,7 @@ This project includes a `firestore.rules` file. These rules are crucial for secu
     ```bash
     npm run dev
     ```
-    This will typically start the application on [http://localhost:9002](http://localhost:9002).
+    This will typically start the application on [http://localhost:3000](http://localhost:3000) (Next.js default — the dev script sets no custom port).
 
 ## Deployment
 
@@ -97,7 +97,7 @@ This project includes a `firestore.rules` file. These rules are crucial for secu
 
 ## Exploring the App
 
-Once the server is running, you can open your browser to [http://localhost:9002](http://localhost:9002) (or the port your Next.js app is running on) to see the application.
+Once the server is running, you can open your browser to [http://localhost:3000](http://localhost:3000) (or the port your Next.js app is running on) to see the application.
 
 ### Key Project Structure:
 

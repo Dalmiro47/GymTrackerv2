@@ -16,7 +16,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-npm run dev        # Start dev server with Turbopack (http://localhost:9002)
+npm run dev        # Start dev server with Turbopack (default port 3000 — no -p flag is set, so NOT 9002)
 npm run build      # Production build
 npm run lint       # Next.js ESLint
 npm run typecheck  # TypeScript check (no emit)
@@ -73,8 +73,8 @@ The Coach is a contextual chat embedded in `/log` (workout coaching) and `/routi
 - `src/lib/ai/llm-provider.ts` — `LLMProvider` interface + `GroqProvider` (OpenAI-compatible REST)
 - `src/lib/ai/context-builders.ts` — Serializes page data into compact context (log-day + routine-review)
 - `src/lib/ai/chat-prompts.ts` — System prompt builders with goal-based volume targets, progressive overload logic, and KNOWN EXERCISES injection
-- `src/app/api/coach/chat/route.ts` — **Non-streaming** JSON endpoint: `POST` → `{ content: string }`. Uses `provider.chat()` (not SSE). `maxTokens: 1500` (covers qwen3 thinking ~600–800 tokens + response ~400 tokens).
-- `src/hooks/use-coach-chat.ts` — Client-side chat state. Uses `fetch` + `res.json()` (no SSE). History sanitized via `extractTextFromContent()` before being sent to the API.
+- `src/app/api/coach/chat/route.ts` — **SSE streaming** endpoint: `POST` → `text/event-stream` of `data: {"v":"<delta>"}` chunks. Uses `provider.chatStream()`; `filterThinkingStream` strips qwen3 `<think>…</think>` tokens before forwarding (with a `flush()` for short replies). Requires a Firebase ID token (`Authorization: Bearer <token>`), verified via the Identity Toolkit REST API. `maxTokens: 1500`.
+- `src/hooks/use-coach-chat.ts` — Client-side chat state. Reads the SSE stream and appends deltas to the assistant bubble; sends the user's Firebase ID token; history sanitized via `extractTextFromContent()` before being sent to the API. Chat history persists in localStorage per local day.
 - `src/components/coach/CoachChatSheet.tsx` — Shared Sheet UI. `SegmentRenderer` renders markdown (bold, italic, headings `#`–`######`, bullet/numbered lists, strips `---`). Raw markdown never shown to user.
 
 **To extend AI features:** Add a new mode in `context-builders.ts` + `chat-prompts.ts`, then use `CoachChatSheet` with `mode="your-mode"`.
@@ -98,6 +98,7 @@ All domain types are in `src/types/index.ts` — `Exercise`, `Routine`, `Workout
 ## Constraints (non-negotiable)
 - Constraints are hard guardrails, not problems to solve
 - Historical bugs mentioned as context = things to avoid, always
+- Deload invariant: in `useTrainingLog`, `currentLog` is *derived* (`useMemo`) from `originalLogState` — never store the deload-transformed view in state or write it back to the baseline; doing so compounded weight reductions and corrupted saved logs (fixed 2026-06)
 - Minimum viable plan: match the stated UX outcome with the minimum change needed
 - Do not add scope (refactors, extra configurability) unless explicitly asked
 - When proposing UX changes, separate effects/polish (welcome) from structural/layout changes (require explicit approval)

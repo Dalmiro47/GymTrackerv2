@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import type { Exercise, ExerciseData, Routine } from '@/types';
 import type { MuscleGroup } from '@/lib/constants';
 import type { ExerciseFormData } from './AddExerciseDialog';
@@ -143,6 +143,21 @@ export function ExerciseClientPage() {
     }
   }, [user, authContext.isLoading, fetchUserExercises, fetchHiddenDefaults, toast]);
   
+  const searchParams = useSearchParams();
+
+  // Open the edit dialog when arriving via /exercises?edit=<id>
+  // (e.g. from the warm-up panel's "Edit warm-up settings" link).
+  useEffect(() => {
+    const editId = searchParams.get('edit');
+    if (!editId || isLoading) return;
+    const exercise = exercises.find(ex => ex.id === editId);
+    if (exercise) {
+      setExerciseToEdit(exercise);
+      setIsDialogOpen(true);
+    }
+    router.replace('/exercises', { scroll: false });
+  }, [searchParams, isLoading, exercises, router]);
+
   const canonicalExercises = useMemo(() => {
       return exercises.map(e => ({...e, muscleGroup: assertMuscleGroup(e.muscleGroup as any)}));
   }, [exercises]);
@@ -598,7 +613,7 @@ export function ExerciseClientPage() {
                     </div>
                 ) : (
                   <div>
-                    This will permanently delete the exercise "{exercises.find(ex => ex.id === exerciseToDeleteId)?.name}".
+                    This will permanently delete the exercise &quot;{exercises.find(ex => ex.id === exerciseToDeleteId)?.name}&quot;.
                   </div>
                 )}
               </div>

@@ -8,12 +8,8 @@ service cloud.firestore {
     }
 
     // Allow users to read and write documents in their own 'users' subcollections
+    // (covers exercises, routines, workoutLogs, performanceEntries and profile/profile)
     match /users/{userId}/{collection}/{docId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
-    }
-
-    // Allow users to read/write their own profile (a document, not a collection)
-    match /users/{userId}/profile/profile {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
   }
