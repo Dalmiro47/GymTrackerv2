@@ -4,8 +4,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import { db } from '@/lib/firebaseConfig';
 import { doc, getDoc } from 'firebase/firestore';
 import type { UserProfile } from '@/lib/types.gym';
-import { Loader2, Settings } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { CoachProfileForm } from '@/components/coach/CoachProfileForm';
+import { PageHeader } from '@/components/PageHeader';
 
 export default function SettingsProfilePage() {
   const { user, isLoading } = useAuth();
@@ -24,20 +25,21 @@ export default function SettingsProfilePage() {
 
   if (isLoading || loadingProfile || !profile) {
     return (
-      <div className="container mx-auto py-8 flex items-center gap-2 text-muted-foreground">
+      <div className="mx-auto w-full max-w-2xl flex items-center gap-2 text-muted-foreground py-8">
         <Loader2 className="h-5 w-5 animate-spin" /> Loading profile…
       </div>
     );
   }
 
   const first = (user?.name ?? 'Your').split(' ')[0];
-  const title = `${first} Profile`;
+  const title = `${first}'s Profile`;
 
   return (
-    <div className="container mx-auto space-y-6 py-6">
-      <h1 className="text-2xl font-semibold flex items-center gap-2">
-        <Settings className="h-5 w-5" /> Profile Settings
-      </h1>
+    <div className="mx-auto w-full max-w-2xl">
+      <PageHeader
+        title="Profile Settings"
+        description="Your goals and constraints — the AI Coach uses these to tailor advice."
+      />
       <CoachProfileForm initial={profile} title={title} />
     </div>
   );

@@ -53,10 +53,14 @@ export function CoachProfileForm({ initial, title = 'Profile' }: { initial: User
 
   return (
     <Card>
-      <CardHeader><CardTitle>{title}</CardTitle></CardHeader>
-      <CardContent className="grid grid-cols-2 gap-4">
+      <CardHeader className="border-b">
+        <CardTitle>{title}</CardTitle>
+      </CardHeader>
+      <CardContent className="pt-6 space-y-6">
+       <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Training targets</p>
+       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 !mt-3">
         {/* Goal */}
-        <div>
+        <div className="space-y-1.5">
           <Label>Goal</Label>
           <Select value={form.goal} onValueChange={(v) => setForm({ ...form, goal: v as Goal })}>
             <SelectTrigger><SelectValue placeholder="Goal" /></SelectTrigger>
@@ -70,7 +74,61 @@ export function CoachProfileForm({ initial, title = 'Profile' }: { initial: User
           </Select>
         </div>
 
-        <div>
+        {/* Days/week target */}
+        <div className="space-y-1.5">
+          <Label>Days/week target</Label>
+          <Input
+            type="number"
+            value={form.daysPerWeekTarget ?? ''}
+            onChange={(e) => {
+              const val = e.target.value;
+              const n = val === '' ? undefined : Math.min(7, Math.max(1, Number(val)));
+              setForm({ ...form, daysPerWeekTarget: n });
+            }}
+          />
+        </div>
+
+        {/* Approx. time per session */}
+        <div className="space-y-1.5">
+          <Label>Approx. time per session (min)</Label>
+          <Input
+            type="number"
+            inputMode="numeric"
+            min={20}
+            max={180}
+            value={form.sessionTimeTargetMin ?? ''}
+            onChange={(e) => {
+              const val = e.target.value;
+              const n = val === '' ? undefined : Number(val);
+              setForm({
+                ...form,
+                sessionTimeTargetMin: Number.isFinite(n as number) ? (n as number) : undefined,
+              });
+            }}
+            placeholder="e.g. 60"
+          />
+        </div>
+
+        <div className="space-y-1.5 sm:col-span-2">
+          <Label>Constraints</Label>
+          <Input
+            placeholder="e.g., Lower back sensitivity, Home gym"
+            value={(form.constraints || []).join(', ')}
+            onChange={(e) =>
+              setForm({
+                ...form,
+                constraints: e.target.value
+                  ? e.target.value.split(',').map((s) => s.trim()).filter(Boolean)
+                  : [],
+              })
+            }
+          />
+        </div>
+       </div>
+
+       <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground border-t pt-5">About you</p>
+       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 !mt-3">
+        <div className="space-y-1.5">
           <Label>Age</Label>
           <Input
             type="number"
@@ -83,7 +141,7 @@ export function CoachProfileForm({ initial, title = 'Profile' }: { initial: User
         </div>
 
         {/* Gender (col 1) */}
-        <div>
+        <div className="space-y-1.5">
           <Label>Gender</Label>
           <Select
             value={gender}
@@ -113,7 +171,7 @@ export function CoachProfileForm({ initial, title = 'Profile' }: { initial: User
 
         {/* Self-describe (col 2, same row as Gender when selected) */}
         {form.gender === 'Self-describe' && (
-          <div>
+          <div className="space-y-1.5">
             <Label>Please self-describe</Label>
             <Input
               placeholder="Enter your gender"
@@ -122,67 +180,19 @@ export function CoachProfileForm({ initial, title = 'Profile' }: { initial: User
             />
           </div>
         )}
+       </div>
 
-        {/* Days/week target (next cell after the gender/self-describe pair) */}
-        <div>
-          <Label>Days/week target</Label>
-          <Input
-            type="number"
-            value={form.daysPerWeekTarget ?? ''}
-            onChange={(e) => {
-              const val = e.target.value;
-              const n = val === '' ? undefined : Math.min(7, Math.max(1, Number(val)));
-              setForm({ ...form, daysPerWeekTarget: n });
-            }}
-          />
-        </div>
-
-        {/* Approx. time per session */}
-        <div>
-          <Label>Approx. time per session (min)</Label>
-          <Input
-            type="number"
-            inputMode="numeric"
-            min={20}
-            max={180}
-            value={form.sessionTimeTargetMin ?? ''}
-            onChange={(e) => {
-              const val = e.target.value;
-              const n = val === '' ? undefined : Number(val);
-              setForm({
-                ...form,
-                sessionTimeTargetMin: Number.isFinite(n as number) ? (n as number) : undefined,
-              });
-            }}
-            placeholder="e.g. 60"
-          />
-        </div>
-
-        <div className="col-span-2">
-          <Label>Constraints</Label>
-          <Input
-            placeholder="e.g., Lower back sensitivity, Home gym"
-            value={(form.constraints || []).join(', ')}
-            onChange={(e) =>
-              setForm({
-                ...form,
-                constraints: e.target.value
-                  ? e.target.value.split(',').map((s) => s.trim()).filter(Boolean)
-                  : [],
-              })
-            }
-          />
-        </div>
-
-        <div className="col-span-2 flex items-center gap-3">
+        <div className="flex items-center gap-3 border-t pt-4 !mt-6">
           <Button onClick={save} disabled={saving || !isDirty}>
             {saving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving…</> : 'Save profile'}
           </Button>
-          {saved && (
-            <span className="text-sm text-emerald-600 flex items-center gap-1" aria-live="polite">
+          {saved ? (
+            <span className="text-sm text-success flex items-center gap-1" aria-live="polite">
               <CheckCircle2 className="h-4 w-4" /> Saved
             </span>
-          )}
+          ) : isDirty ? (
+            <span className="text-sm text-muted-foreground" aria-live="polite">Unsaved changes</span>
+          ) : null}
         </div>
       </CardContent>
     </Card>

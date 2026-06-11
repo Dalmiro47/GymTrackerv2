@@ -8,8 +8,8 @@ import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { getWorkoutLog, getMonthLogFlags } from '@/services/trainingLogService';
 import type { WorkoutLog, LoggedSet } from '@/types';
-import { format, parseISO, startOfMonth, getMonth, getYear, isValid } from 'date-fns';
-import { Loader2, CalendarIcon, ListChecks, ExternalLink, PlusCircle } from 'lucide-react';
+import { format, parseISO, startOfMonth, getMonth, getYear, isValid, startOfWeek, isWithinInterval } from 'date-fns';
+import { Loader2, CalendarIcon, ListChecks, ExternalLink, PlusCircle, Flame, CalendarCheck2, BatteryLow } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import Link from 'next/link';
 
@@ -130,24 +130,64 @@ export function WorkoutCalendarSection() {
     [logsInCurrentDisplayedMonth, displayedMonth, today]
   );
 
+  // Compact stats derived from data already loaded for the displayed month
+  const deloadsInDisplayedMonth = useMemo(() => {
+    return deloadDayStrings.filter(dateStr => {
+      const d = parseISO(dateStr);
+      return !isNaN(d.getTime()) &&
+        d.getFullYear() === displayedMonth.getFullYear() &&
+        d.getMonth() === displayedMonth.getMonth();
+    }).length;
+  }, [deloadDayStrings, displayedMonth]);
+
+  const sessionsThisWeek = useMemo(() => {
+    const weekStart = startOfWeek(today, { weekStartsOn: 1 });
+    return [...loggedDayStrings, ...deloadDayStrings].filter(dateStr => {
+      const d = parseISO(dateStr);
+      return !isNaN(d.getTime()) && isWithinInterval(d, { start: weekStart, end: today });
+    }).length;
+  }, [loggedDayStrings, deloadDayStrings, today]);
+
   return (
-    <Card className="shadow-xl overflow-hidden">
-      <CardHeader>
-        <CardTitle className="font-headline text-2xl flex items-center">
-          <CalendarIcon className="mr-2 h-6 w-6 text-primary" />
-          Workout Calendar
-        </CardTitle>
-        <CardDescription>Visualize your training consistency and review past workouts.</CardDescription>
-      </CardHeader>
-      <CardContent className="grid md:grid-cols-2 gap-6 p-4 md:p-6">
+    <div className="space-y-4">
+      {/* Monthly stats strip */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="rounded-lg border bg-card px-3 py-2.5 sm:px-4 sm:py-3">
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <CalendarCheck2 className="h-3.5 w-3.5" />
+            <span className="truncate">Sessions</span>
+          </div>
+          <p className="mt-1 text-2xl font-bold tabular-nums leading-none">
+            {isLoadingLoggedDays ? '–' : logsInCurrentDisplayedMonth}
+          </p>
+          <p className="mt-1 text-[11px] text-muted-foreground truncate">{format(displayedMonth, 'MMMM')}</p>
+        </div>
+        <div className="rounded-lg border bg-card px-3 py-2.5 sm:px-4 sm:py-3">
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Flame className="h-3.5 w-3.5" />
+            <span className="truncate">This week</span>
+          </div>
+          <p className="mt-1 text-2xl font-bold tabular-nums leading-none">
+            {isLoadingLoggedDays ? '–' : sessionsThisWeek}
+          </p>
+          <p className="mt-1 text-[11px] text-muted-foreground truncate">since Monday</p>
+        </div>
+        <div className="rounded-lg border bg-card px-3 py-2.5 sm:px-4 sm:py-3">
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <BatteryLow className="h-3.5 w-3.5" />
+            <span className="truncate">Deloads</span>
+          </div>
+          <p className="mt-1 text-2xl font-bold tabular-nums leading-none">
+            {isLoadingLoggedDays ? '–' : deloadsInDisplayedMonth}
+          </p>
+          <p className="mt-1 text-[11px] text-muted-foreground truncate">{format(displayedMonth, 'MMMM')}</p>
+        </div>
+      </div>
+
+      <div className="grid md:grid-cols-2 gap-4 md:items-stretch">
         {/* Left Column: Calendar */}
-        <div className="space-y-4">
-          <Card className="shadow-md h-full flex flex-col">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-lg font-headline">Your Training Schedule</CardTitle>
-              <CardDescription>Days with logged workouts are underlined. Click a day to see details.</CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-col items-center flex-grow">
+        <Card className="flex flex-col">
+          <CardContent className="flex flex-col items-center flex-grow p-4 sm:p-5">
               {isLoadingLoggedDays ? (
                 <div className="flex-grow flex justify-center items-center h-[200px]">
                   <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -180,37 +220,35 @@ export function WorkoutCalendarSection() {
                         );
                       },
                     }}
-                    className="rounded-md border bg-card shadow"
+                    className="p-0"
                     weekStartsOn={1}
                     toDate={today}
                     disabled={{ after: today }}
                   />
-                  <div className="mt-2 flex items-center justify-center gap-3 text-xs text-muted-foreground">
+                  <div className="mt-3 flex items-center justify-center gap-4 text-xs text-muted-foreground">
                     <span className="inline-flex items-center gap-1.5">
-                      <span className="inline-block h-[3px] w-5 rounded bg-[hsl(var(--primary))]" />
+                      <span className="inline-block h-[3px] w-5 rounded bg-primary" />
                       Logged
                     </span>
                     <span className="inline-flex items-center gap-1.5">
-                      <span className="inline-block h-[3px] w-5 rounded bg-[hsl(var(--accent))]" />
+                      <span className="inline-block h-[3px] w-5 rounded bg-chart-4" />
                       Deload
                     </span>
                   </div>
                 </>
               )}
-              <p className="text-sm text-muted-foreground mt-3 text-center px-2">
+              <p className="text-xs text-muted-foreground mt-3 text-center px-2 border-t pt-3 w-full">
                 {monthlySummaryMessage}
               </p>
             </CardContent>
-          </Card>
-        </div>
+        </Card>
 
         {/* Right Column: Workout Details */}
-        <div className="space-y-4">
-          <Card className="shadow-md h-full flex flex-col">
-            <CardHeader>
-              <CardTitle className="text-lg font-headline">Workout Details</CardTitle>
+        <Card className="flex flex-col">
+            <CardHeader className="pb-3">
+              <CardTitle className="font-headline">Workout Details</CardTitle>
               <CardDescription>
-                {selectedDate ? `Details for ${format(selectedDate, 'MMMM do, yyyy')}` : "Select a day to see details."}
+                {selectedDate ? `${format(selectedDate, 'MMMM do, yyyy')}` : "Select a day to see details."}
               </CardDescription>
             </CardHeader>
             <CardContent className="flex-grow flex flex-col">
@@ -266,27 +304,30 @@ export function WorkoutCalendarSection() {
                   </div>
                 </ScrollArea>
               ) : selectedDate ? (
-                <div className="flex-grow flex flex-col justify-center items-center text-center py-10">
-                  <CalendarIcon className="mx-auto h-12 w-12 text-muted-foreground opacity-50 mb-3" />
-                  <p className="text-md text-muted-foreground font-semibold">No workout logged for this day.</p>
-                  <p className="text-sm text-muted-foreground">Select another day or log a workout!</p>
+                <div className="flex-grow flex flex-col justify-center items-center text-center rounded-lg border border-dashed bg-muted/30 px-4 py-10 my-1">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary mb-3">
+                    <CalendarIcon className="h-6 w-6" />
+                  </div>
+                  <p className="text-sm font-semibold">Rest day — nothing logged.</p>
+                  <p className="text-sm text-muted-foreground mt-0.5">Pick another day, or start a session for this one.</p>
                    <Link href={`/log?date=${format(selectedDate, 'yyyy-MM-dd')}`}>
-                        <Button variant="default" size="sm" className="mt-4 bg-accent hover:bg-accent/90">
+                        <Button size="sm" className="mt-4">
                             <PlusCircle className="mr-2 h-4 w-4" />
                             Log Workout for this Day
                         </Button>
                     </Link>
                 </div>
               ) : (
-                 <div className="flex-grow flex flex-col justify-center items-center text-center py-10">
-                    <CalendarIcon className="mx-auto h-12 w-12 text-muted-foreground opacity-50 mb-3" />
-                    <p className="text-md text-muted-foreground font-semibold">Please select a day on the calendar.</p>
+                 <div className="flex-grow flex flex-col justify-center items-center text-center rounded-lg border border-dashed bg-muted/30 px-4 py-10 my-1">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary mb-3">
+                      <CalendarIcon className="h-6 w-6" />
+                    </div>
+                    <p className="text-sm font-semibold text-muted-foreground">Select a day on the calendar to see its workout.</p>
                 </div>
               )}
             </CardContent>
-          </Card>
-        </div>
-      </CardContent>
-    </Card>
+        </Card>
+      </div>
+    </div>
   );
 }

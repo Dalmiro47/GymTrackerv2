@@ -72,7 +72,7 @@ export function SetInputRow({ set, index, onSetChange, onRemoveSet, isProvisiona
           if (blocked.includes(e.key)) e.preventDefault();
         }}
         className={cn(
-          "h-9 text-sm text-center placeholder:text-center",
+          "h-10 text-sm font-medium tabular-nums text-center placeholder:text-center placeholder:font-normal",
           isProvisional && "bg-muted/40 dark:bg-muted/20 placeholder:text-muted-foreground/70 opacity-80"
         )}
       />
@@ -165,7 +165,7 @@ export function SetInputRow({ set, index, onSetChange, onRemoveSet, isProvisiona
           if (block.includes(e.key)) e.preventDefault();
         }}
         className={cn(
-          "h-9 text-sm text-center placeholder:text-center",
+          "h-10 text-sm font-medium tabular-nums text-center placeholder:text-center placeholder:font-normal",
           isProvisional && "bg-muted/40 dark:bg-muted/20 placeholder:text-muted-foreground/70 opacity-80"
         )}
       />

@@ -3,10 +3,6 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  font-family: Arial, Helvetica, sans-serif;
-}
-
 html {
   /* when `#id` scrolling happens, leave room for header */
   scroll-padding-top: var(--appbar-offset);
@@ -17,72 +13,111 @@ html {
 
 @layer base {
   :root {
-    --background: 200 60% 96.7%; /* #EBF4F8 */
-    --foreground: 220 15% 25%; /* Darker gray for better contrast on light grayish-blue */
+    /*
+     * Design tokens — single source of truth.
+     * One brand accent (violet-indigo) on a cool neutral scale.
+     * Semantic colors: destructive (muted red) + success (emerald) only.
+     * `accent` is a NEUTRAL (used by ghost/outline hover states) — never a brand color.
+     */
+    --background: 222 25% 97%;
+    --foreground: 228 22% 13%;
     --card: 0 0% 100%;
-    --card-foreground: 220 15% 25%;
+    --card-foreground: 228 22% 13%;
     --popover: 0 0% 100%;
-    --popover-foreground: 220 15% 25%;
-    --primary: 196 76% 52%; /* #29ABE2 */
+    --popover-foreground: 228 22% 13%;
+    --primary: 250 75% 58%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 200 50% 90%;
-    --secondary-foreground: 196 76% 42%; /* Darker primary for contrast */
-    --muted: 200 40% 88%;
-    --muted-foreground: 220 10% 45%;
-    --accent: 284 62% 40%; /* #8E24AA */
-    --accent-foreground: 0 0% 100%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 200 30% 85%;
-    --input: 200 30% 90%;
-    --ring: 196 76% 52%; 
+    --secondary: 224 18% 93%;
+    --secondary-foreground: 228 18% 25%;
+    --muted: 224 18% 94%;
+    --muted-foreground: 226 11% 44%;
+    --accent: 224 18% 93%;
+    --accent-foreground: 228 22% 13%;
+    --destructive: 0 60% 48%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 152 55% 34%;
+    --success-foreground: 0 0% 100%;
+    --border: 224 16% 89%;
+    --input: 224 14% 83%;
+    --ring: 250 75% 58%;
     --chart-1: 12 76% 61%;
     --chart-2: 173 58% 39%;
     --chart-3: 197 37% 24%;
-    --chart-4: 43 74% 66%;
-    --chart-5: 27 87% 67%;
-    --radius: 0.5rem;
+    --chart-4: 38 92% 50%;
+    --chart-5: 27 87% 60%;
+    --radius: 0.75rem;
 
-    /* Sidebar specific variables, can be overridden or extended */
-    --sidebar-background: 220 20% 18%; /* Darker blue/gray for sidebar */
-    --sidebar-foreground: 0 0% 95%; /* Light text for dark sidebar */
-    --sidebar-primary: 196 76% 62%; /* Brighter primary for active/hover states in dark sidebar */
+    /* Dark sidebar — active state and brand mark share the single accent */
+    --sidebar-background: 228 26% 11%;
+    --sidebar-foreground: 224 12% 88%;
+    --sidebar-primary: 250 75% 60%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 196 76% 52%; /* Primary color as accent in sidebar */
+    --sidebar-accent: 228 18% 19%;
     --sidebar-accent-foreground: 0 0% 100%;
-    --sidebar-border: 220 15% 30%;
-    --sidebar-ring: 196 76% 62%;
+    --sidebar-border: 228 18% 18%;
+    --sidebar-ring: 250 75% 64%;
+
+    /* Set-structure badge palette (categorical, data-viz) */
+    --ss-superset-bg: 217 95% 95%;
+    --ss-superset-border: 217 85% 82%;
+    --ss-superset-text: 221 65% 42%;
+    --ss-triset-bg: 45 100% 94%;
+    --ss-triset-border: 45 95% 76%;
+    --ss-triset-text: 35 80% 36%;
+    --ss-dropset-bg: 355 100% 96%;
+    --ss-dropset-border: 355 90% 86%;
+    --ss-dropset-text: 347 80% 38%;
+    --ss-restpause-bg: 168 80% 95%;
+    --ss-restpause-border: 168 70% 78%;
+    --ss-restpause-text: 170 70% 30%;
   }
 
   .dark {
-    --background: 220 15% 10%; 
-    --foreground: 200 60% 96.7%;
-    --card: 220 15% 12%;
-    --card-foreground: 200 60% 96.7%;
-    --popover: 220 15% 12%;
-    --popover-foreground: 200 60% 96.7%;
-    --primary: 196 76% 62%; 
-    --primary-foreground: 220 20% 10%; 
-    --secondary: 220 15% 20%;
-    --secondary-foreground: 196 76% 72%;
-    --muted: 220 15% 25%;
-    --muted-foreground: 200 30% 70%;
-    --accent: 284 62% 55%; 
-    --accent-foreground: 0 0% 100%;
-    --destructive: 0 72.2% 50.6%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 220 15% 25%;
-    --input: 220 15% 25%;
-    --ring: 196 76% 62%;
+    --background: 228 22% 8%;
+    --foreground: 224 18% 94%;
+    --card: 228 20% 11%;
+    --card-foreground: 224 18% 94%;
+    --popover: 228 20% 11%;
+    --popover-foreground: 224 18% 94%;
+    --primary: 250 85% 70%;
+    --primary-foreground: 228 22% 10%;
+    --secondary: 228 16% 18%;
+    --secondary-foreground: 224 14% 86%;
+    --muted: 228 16% 18%;
+    --muted-foreground: 224 10% 64%;
+    --accent: 228 16% 18%;
+    --accent-foreground: 224 18% 94%;
+    --destructive: 0 60% 54%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 152 50% 44%;
+    --success-foreground: 0 0% 100%;
+    --border: 228 14% 20%;
+    --input: 228 14% 26%;
+    --ring: 250 85% 70%;
+    --chart-4: 38 92% 56%;
+    --chart-5: 27 87% 64%;
 
-    --sidebar-background: 220 15% 8%; /* Even darker for dark mode sidebar */
-    --sidebar-foreground: 0 0% 90%;
-    --sidebar-primary: 196 76% 72%; 
+    --sidebar-background: 228 26% 7%;
+    --sidebar-foreground: 224 12% 88%;
+    --sidebar-primary: 250 80% 64%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 196 76% 62%;
+    --sidebar-accent: 228 18% 16%;
     --sidebar-accent-foreground: 0 0% 100%;
-    --sidebar-border: 220 15% 20%;
-    --sidebar-ring: 196 76% 72%;
+    --sidebar-border: 228 18% 15%;
+    --sidebar-ring: 250 80% 68%;
+
+    --ss-superset-bg: 221 60% 16%;
+    --ss-superset-border: 221 60% 30%;
+    --ss-superset-text: 217 85% 75%;
+    --ss-triset-bg: 40 70% 14%;
+    --ss-triset-border: 40 70% 28%;
+    --ss-triset-text: 45 90% 68%;
+    --ss-dropset-bg: 350 55% 15%;
+    --ss-dropset-border: 350 55% 30%;
+    --ss-dropset-text: 352 90% 76%;
+    --ss-restpause-bg: 170 50% 12%;
+    --ss-restpause-border: 170 50% 26%;
+    --ss-restpause-text: 168 70% 64%;
   }
 }
 
@@ -120,7 +155,7 @@ html {
 
 /* Ensure indicator contrasts on 'today' if it's not also selected */
 .rdp-day_today:not(.rdp-day_selected).day-is-logged::after {
-   @apply bg-accent; /* Using accent color for today's logged indicator, if not selected */
+   @apply bg-primary;
 }
 
 /* If today is also selected and logged */
@@ -156,8 +191,8 @@ html {
   transform: translateX(-50%);
   width: 60%;
   height: 3px;
-  /* Use accent for deload to contrast with primary (normal) */
-  @apply bg-accent;
+  /* Amber (chart-4) for deload to contrast with primary (normal) */
+  background-color: hsl(var(--chart-4));
   border-radius: 1px;
 }
 
@@ -166,7 +201,7 @@ html {
   @apply bg-primary-foreground;
 }
 .rdp-day_today:not(.rdp-day_selected).day-is-deload::after {
-  @apply bg-accent; /* already accent; keep for clarity */
+  background-color: hsl(var(--chart-4));
 }
 .rdp-day_today.rdp-day_selected.day-is-deload::after {
   @apply bg-primary-foreground;

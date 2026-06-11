@@ -170,8 +170,8 @@ export function AddEditRoutineDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogContent 
-        className="!max-w-4xl !w-[95vw] flex flex-col h-[90vh] sm:h-[85vh] p-0 gap-0 overflow-hidden"
+      <DialogContent
+        className="max-w-4xl sm:w-[95vw] flex flex-col h-[85dvh] sm:h-[85vh] p-0 gap-0 overflow-hidden"
         onOpenAutoFocus={(e) => e.preventDefault()} // STOP MOBILE KEYBOARD
       >
         
@@ -274,7 +274,6 @@ export function AddEditRoutineDialog({
                 <Button 
                     type="button" 
                     onClick={handleDoneAdding} 
-                    className="bg-primary"
                 >
                     <Check className="mr-2 h-4 w-4" /> Done Adding
                 </Button>
@@ -293,7 +292,6 @@ export function AddEditRoutineDialog({
                     type="submit" 
                     form="routine-form" 
                     disabled={isSaving || isLoadingExercises} 
-                    className="bg-primary"
                 >
                     {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                     {isSaving ? "Saving..." : (routineToEdit ? "Save Changes" : "Create Routine")}

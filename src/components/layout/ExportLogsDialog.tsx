@@ -261,7 +261,7 @@ export function ExportLogsDialog({ isOpen, setIsOpen }: ExportLogsDialogProps) {
             {isDownloading && downloadFormat === 'xlsx' ? (
               <Loader2 className="h-6 w-6 animate-spin mb-2" />
             ) : (
-              <FileSpreadsheet className="h-6 w-6 mb-2 text-green-600" />
+              <FileSpreadsheet className="h-6 w-6 mb-2 text-success" />
             )}
             <span>Excel (.xlsx)</span>
             <span className="text-xs text-muted-foreground">Best for analysis</span>
@@ -275,7 +275,7 @@ export function ExportLogsDialog({ isOpen, setIsOpen }: ExportLogsDialogProps) {
             {isDownloading && downloadFormat === 'csv' ? (
               <Loader2 className="h-6 w-6 animate-spin mb-2" />
             ) : (
-              <FileText className="h-6 w-6 mb-2 text-blue-600" />
+              <FileText className="h-6 w-6 mb-2 text-primary" />
             )}
             <span>CSV (smaller file)</span>
              <span className="text-xs text-muted-foreground">Best for compatibility</span>

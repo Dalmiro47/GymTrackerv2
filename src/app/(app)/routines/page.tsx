@@ -247,7 +247,7 @@ export default function RoutinesPage() {
     return (
       <div className="flex justify-center items-center h-screen">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
-        <p className="ml-4 text-xl text-primary font-semibold">Loading authentication...</p>
+        <p className="ml-4 text-lg text-muted-foreground font-medium">Loading authentication...</p>
       </div>
     );
   }
@@ -255,7 +255,7 @@ export default function RoutinesPage() {
   if (!user && !authContext.isLoading) {
     return (
       <div className="flex flex-col justify-center items-center h-64">
-        <p className="text-xl text-primary font-semibold mb-4">Please log in to manage your routines.</p>
+        <p className="text-lg font-semibold mb-4">Please log in to manage your routines.</p>
         <Button onClick={() => router.push('/login')}>Go to Login</Button>
       </div>
     );
@@ -273,7 +273,6 @@ export default function RoutinesPage() {
             )}
             <Button
                 variant="default"
-                className="bg-accent hover:bg-accent/90 text-accent-foreground"
                 onClick={handleOpenAddDialog}
                 disabled={isLoading || isOrderSaving || isLoadingExercises}
             >
@@ -295,7 +294,7 @@ export default function RoutinesPage() {
       {isLoading && user ? (
         <div className="flex justify-center items-center py-10">
           <Loader2 className="h-10 w-10 animate-spin text-primary" />
-          <p className="ml-3 text-lg text-primary">Loading your routines...</p>
+          <p className="ml-3 text-lg text-muted-foreground">Loading your routines...</p>
         </div>
       ) : routines.length > 0 ? (
         <DndContext
@@ -317,7 +316,7 @@ export default function RoutinesPage() {
           </SortableContext>
         </DndContext>
       ) : (
-        <Card className="shadow-lg">
+        <Card>
           <CardHeader>
             <CardTitle className="font-headline text-xl flex items-center">
                 <ListChecks className="mr-2 h-5 w-5 text-primary"/>

@@ -80,7 +80,7 @@ export function AvailableExercisesSelector({
           <div className="grid grid-cols-2 gap-3 pb-4">
             <button
                 onClick={() => setActiveMuscleGroup('All')}
-                className="flex flex-col items-center justify-center p-4 rounded-xl border bg-card hover:bg-accent/50 hover:border-primary/30 transition-all text-center gap-2"
+                className="flex flex-col items-center justify-center p-4 rounded-lg border bg-card hover:bg-accent/50 hover:border-primary/40 transition-colors text-center gap-2"
             >
                 <div className="p-2 rounded-full bg-primary/10 text-primary">
                     <Dumbbell className="h-6 w-6" />
@@ -98,7 +98,7 @@ export function AvailableExercisesSelector({
                 <button
                   key={mg}
                   onClick={() => setActiveMuscleGroup(mg)}
-                  className="flex flex-col items-start p-4 rounded-xl border bg-card hover:bg-accent/50 hover:border-primary/30 transition-all text-left"
+                  className="flex flex-col items-start p-4 rounded-lg border bg-card hover:bg-accent/50 hover:border-primary/40 transition-colors text-left"
                 >
                   <span className="font-semibold text-base">{mg}</span>
                   <span className="text-xs text-muted-foreground">{count} exercises</span>
