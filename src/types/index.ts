@@ -48,6 +48,7 @@ export interface Exercise {
   dataAiHint?: string;
   warmup?: WarmupConfig;
   userEdited?: boolean; // NEW: flag to indicate user has modified this exercise
+  trackProgression?: boolean; // Optional override: force key (true) / accessory (false) in the progression detector
 }
 
 export type ExerciseData = Omit<Exercise, 'id'>;
@@ -90,6 +91,7 @@ export interface LoggedExercise {
   warmupConfig?: WarmupConfig; // Pass along for warmup calculation
   setStructure?: SetStructure; // Default from the routine
   setStructureOverride?: SetStructure | null; // User override for this specific log
+  trackProgression?: boolean; // Optional: copied from the Exercise for the progression detector
 }
 
 // Represents the entire workout log for a specific day

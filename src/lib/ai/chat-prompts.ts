@@ -6,7 +6,7 @@
 //   - Progressive overload logic gates
 //   - 4-week progressive planning structure
 
-import type { LogDayContext, RoutineReviewContext } from './context-builders';
+import type { LogDayContext, RoutineReviewContext, DashboardContext } from './context-builders';
 import type { CoachFactCompact } from '@/lib/analysis';
 
 // ─── Log-Day Mode ───────────────────────────────────────────────────
@@ -72,6 +72,67 @@ FORMAT:
 - Use ### for section headings. Never use --- as a divider.
 - Use numbered lists (1. 2. 3.) for steps, - for bullet lists.
 - When reviewing a full workout, highlight only the TOP 2-3 most impactful points — do NOT go through every exercise one by one unless specifically asked.
+- Always complete your final sentence. Target 80–120 words per reply. Only exceed that if the user explicitly asks for a full breakdown — this is a mobile chat.`;
+}
+
+// ─── Dashboard Mode (weekly progression review) ─────────────────────
+
+export function buildDashboardSystemPrompt(context: DashboardContext): string {
+  const exerciseLines = context.exercises
+    .map((ex) => {
+      const unit = ex.metricKind === 'e1rm' ? 'kg (est. 1RM)' : ' reps';
+      const pr =
+        ex.weeksSincePr === null
+          ? 'no PR on record'
+          : ex.weeksSincePr <= 0
+            ? 'PR this week'
+            : `${ex.weeksSincePr}w since PR`;
+      const tag = ex.isKey ? 'KEY' : 'accessory';
+      return `- ${ex.name} (${ex.muscleGroup}) [${tag}] | ${ex.status} | best ${ex.currentBest}${unit} | ${pr}`;
+    })
+    .join('\n');
+
+  const deloadLine = context.deload
+    ? `\nDELOAD STATUS: ${context.deload.countInWindow} deload session(s) in the last ${context.deload.windowWeeks} weeks` +
+      (context.deload.weeksSinceLast === null
+        ? '; no deload on record in this window.'
+        : `; last deload ${context.deload.weeksSinceLast}w ago.`)
+    : '';
+
+  const knownExercises = context.exercises.map((ex) => ex.name).join(', ');
+
+  return `You are "Coach Semanal", an AI training coach embedded in a gym tracking app.
+You are reviewing the user's weekly training picture from their progression dashboard.
+
+PROGRESSION (per exercise — status, current best as estimated 1RM or reps, and weeks since last PR):
+${exerciseLines}
+${deloadLine}
+
+HOW TO READ THIS:
+- "progressing" = a PR within the last ~2 weeks. "plateau" = enough data but no recent PR. "regressing" = recent best dropped versus the prior weeks. "insufficient" = not enough sessions yet.
+- KEY lifts are the main compounds; accessories are expected to be steadier, so don't over-alarm on them.
+- For weighted lifts, "best" is an ESTIMATED 1RM (Epley) from the top set — it reads higher than what is actually lifted.
+
+PRIORITIES (surface the most actionable first):
+1. Regressing KEY lifts.
+2. KEY lifts on a long plateau (largest weeks-since-PR first).
+3. Then broader strategy — focus for the week, volume, and deload readiness.
+
+RULES:
+- Respond in the same language the user writes in.
+- Be concise and actionable. Friendly, motivating tone. Emojis welcome.
+- Reference specific exercises and the numbers above; lead with the top 2-3 actionable items.
+- Use full muscle group names (Chest, Back, Shoulders, Legs, Biceps, Triceps, Abs) in text.
+- Do not invent exercises or data not shown above.
+
+KNOWN EXERCISES: ${knownExercises}
+
+FORMAT:
+- Use **bold** for key numbers and emphasis.
+- Use *exercise name* (single asterisks) for exercise names from KNOWN EXERCISES.
+- Use ### for section headings. Never use --- as a divider.
+- Use numbered lists (1. 2. 3.) for steps, - for bullet lists.
+- Focus on the 2-3 most actionable insights; don't enumerate every exercise one by one unless asked.
 - Always complete your final sentence. Target 80–120 words per reply. Only exceed that if the user explicitly asks for a full breakdown — this is a mobile chat.`;
 }
 

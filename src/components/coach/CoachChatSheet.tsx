@@ -8,16 +8,20 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Sparkles, Send, Trash2, Square, Loader2, X } from 'lucide-react';
 import { useCoachChat, type ChatMessage } from '@/hooks/use-coach-chat';
-import type { LogDayContext, RoutineReviewContext } from '@/lib/ai/context-builders';
+import type { LogDayContext, RoutineReviewContext, DashboardContext } from '@/lib/ai/context-builders';
 
-type ChatMode = 'log-day' | 'routine-review';
+type ChatMode = 'log-day' | 'routine-review' | 'dashboard';
+
+type CoachContext = LogDayContext | RoutineReviewContext | DashboardContext;
 
 type CoachChatSheetProps = {
   mode: ChatMode;
-  /** Static context (log-day) or null if using loadContext */
-  context?: LogDayContext | RoutineReviewContext | null;
+  /** Static context (log-day / dashboard) or null if using loadContext */
+  context?: CoachContext | null;
   /** Lazy context loader (routine-review) */
   loadContext?: () => Promise<RoutineReviewContext>;
+  /** Optional starter chips shown in the empty state; tapping sends the text. */
+  suggestedPrompts?: string[];
 };
 
 const MODE_CONFIG = {
@@ -33,11 +37,17 @@ const MODE_CONFIG = {
     placeholder: 'Ej: "Como puedo mejorar mi rutina?" o "Tengo algun desbalance muscular?"',
     emptyText: 'Preguntale al coach sobre tu programacion y rutinas',
   },
+  dashboard: {
+    title: 'Coach Semanal',
+    description: 'Tu panorama de entrenamiento semanal',
+    placeholder: 'Ej: "En que me enfoco esta semana?" o "Estoy listo para un deload?"',
+    emptyText: 'Preguntale al coach sobre tu progreso semanal',
+  },
 };
 
-export function CoachChatSheet({ mode, context, loadContext }: CoachChatSheetProps) {
+export function CoachChatSheet({ mode, context, loadContext, suggestedPrompts }: CoachChatSheetProps) {
   const [open, setOpen] = useState(false);
-  const [resolvedContext, setResolvedContext] = useState<LogDayContext | RoutineReviewContext | null>(
+  const [resolvedContext, setResolvedContext] = useState<CoachContext | null>(
     context ?? null,
   );
   const [isLoadingContext, setIsLoadingContext] = useState(false);
@@ -103,6 +113,14 @@ export function CoachChatSheet({ mode, context, loadContext }: CoachChatSheetPro
     clearChat();
     setInput('');
   }, [clearChat]);
+
+  const handleSuggested = useCallback(
+    (text: string) => {
+      if (!resolvedContext || isStreaming) return;
+      sendMessage(text, resolvedContext);
+    },
+    [resolvedContext, isStreaming, sendMessage],
+  );
 
   const noContext = !resolvedContext && !isLoadingContext;
 
@@ -173,6 +191,20 @@ export function CoachChatSheet({ mode, context, loadContext }: CoachChatSheetPro
                       <p className="text-xs text-muted-foreground/60 mt-2">
                         No hay datos disponibles para el coach.
                       </p>
+                    )}
+                    {resolvedContext && suggestedPrompts && suggestedPrompts.length > 0 && (
+                      <div className="mt-5 flex w-full flex-col gap-2">
+                        {suggestedPrompts.map((prompt, i) => (
+                          <button
+                            key={i}
+                            onClick={() => handleSuggested(prompt)}
+                            disabled={isStreaming}
+                            className="rounded-full border px-3 py-1.5 text-left text-xs text-foreground transition-colors hover:bg-accent disabled:opacity-50"
+                          >
+                            {prompt}
+                          </button>
+                        ))}
+                      </div>
                     )}
                   </div>
                 )}

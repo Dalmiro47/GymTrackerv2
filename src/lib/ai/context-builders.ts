@@ -3,6 +3,7 @@
 
 import type { WorkoutLog, LoggedExercise } from '@/types';
 import type { SetStructure } from '@/types/setStructure';
+import type { ProgressionResult } from '@/lib/progression';
 import { parseISO, startOfISOWeek, formatISO } from 'date-fns';
 import { buildCoachFactsCompact, type CoachFactCompact } from '@/lib/analysis';
 
@@ -46,6 +47,49 @@ export function serializeLogDayContext(
       progressiveOverload: ex.progressiveOverload,
       setStructure: (ex.setStructureOverride ?? ex.setStructure) as string | undefined,
     })),
+  };
+}
+
+// ─── Dashboard Context (weekly progression picture) ─────────────────
+// Reuses the progression results the Dashboard already computes — no new
+// analytics or fetches are introduced here.
+
+export type DashboardProgressionItem = {
+  name: string;
+  muscleGroup: string;
+  status: ProgressionResult['status'];
+  isKey: boolean;
+  currentBest: number;
+  metricKind: ProgressionResult['metricKind'];
+  weeksSincePr: number | null;
+};
+
+export type DashboardDeloadSummary = {
+  weeksSinceLast: number | null;
+  countInWindow: number;
+  windowWeeks: number;
+};
+
+export type DashboardContext = {
+  exercises: DashboardProgressionItem[];
+  deload?: DashboardDeloadSummary;
+};
+
+export function serializeDashboardContext(
+  results: ProgressionResult[],
+  deload?: DashboardDeloadSummary,
+): DashboardContext {
+  return {
+    exercises: results.map((r) => ({
+      name: r.name,
+      muscleGroup: r.muscleGroup,
+      status: r.status,
+      isKey: r.isKey,
+      currentBest: r.currentBest,
+      metricKind: r.metricKind,
+      weeksSincePr: r.weeksSincePr,
+    })),
+    deload,
   };
 }
 
