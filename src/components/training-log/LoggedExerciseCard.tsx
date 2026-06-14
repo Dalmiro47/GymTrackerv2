@@ -1,13 +1,13 @@
 "use client";
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import type { LoggedExercise, LoggedSet, SetStructure } from '@/types';
 import { computeWarmup, inferWarmupTemplate, WarmupInput, type WarmupStep } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { PlusCircle, Trash2, Save, GripVertical, Loader2, Check, Settings2, ArrowLeftRight, Flame, TrendingUp, Dumbbell } from 'lucide-react';
+import { PlusCircle, Trash2, GripVertical, Settings2, ArrowLeftRight, Flame, TrendingUp, Dumbbell, X } from 'lucide-react';
 import { SetInputRow } from './SetInputRow'; 
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -48,7 +48,6 @@ const WarmupPanel: React.FC<{ loggedExercise: LoggedExercise }> = ({ loggedExerc
 
     return (
         <div className="space-y-4">
-            <h4 className="font-medium text-center text-sm px-4">Warm-up Sets</h4>
             <Table>
                 <TableHeader>
                     <TableRow>
@@ -81,6 +80,62 @@ const WarmupPanel: React.FC<{ loggedExercise: LoggedExercise }> = ({ loggedExerc
     );
 };
 
+// Centered modal for warm-up sets — styled to match the AI Coach window so it
+// reads as a distinct dialog rather than a full-width sheet glued to the page.
+const WarmupModal: React.FC<{ loggedExercise: LoggedExercise; onClose: () => void }> = ({ loggedExercise, onClose }) => {
+    // Lock body scroll while open
+    useEffect(() => {
+        document.body.style.overflow = 'hidden';
+        return () => { document.body.style.overflow = ''; };
+    }, []);
+
+    // Close on Escape
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [onClose]);
+
+    if (typeof document === 'undefined') return null;
+
+    return createPortal(
+        <>
+            {/* Backdrop */}
+            <div
+                className="fixed inset-0 z-[49] bg-black/30 backdrop-blur-sm"
+                onClick={onClose}
+            />
+            {/* Floating panel — centered, constrained width like the AI Coach dialog */}
+            <div
+                role="dialog"
+                aria-modal="true"
+                aria-label="Warm-up sets"
+                className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 flex flex-col rounded-2xl border bg-background shadow-2xl"
+                style={{ width: 'min(360px, calc(100vw - 2rem))', maxHeight: 'calc(100dvh - 4rem)' }}
+            >
+                {/* Header */}
+                <div className="flex items-center justify-between border-b px-4 py-3">
+                    <div className="flex items-center gap-2">
+                        <Flame className="h-5 w-5 text-chart-5" />
+                        <div>
+                            <p className="text-sm font-semibold leading-tight">Warm-up Sets</p>
+                            <p className="text-xs text-muted-foreground truncate max-w-[220px]">{loggedExercise.name}</p>
+                        </div>
+                    </div>
+                    <Button variant="ghost" size="icon" onClick={onClose} className="h-8 w-8" aria-label="Close warm-up">
+                        <X className="h-4 w-4" />
+                    </Button>
+                </div>
+                {/* Body */}
+                <div className="overflow-y-auto py-4">
+                    <WarmupPanel loggedExercise={loggedExercise} />
+                </div>
+            </div>
+        </>,
+        document.body,
+    );
+};
+
 function setsShallowEqual(a: LoggedSet[], b: LoggedSet[]) {
   if (a === b) return true;
   if (a.length !== b.length) return false;
@@ -94,7 +149,6 @@ function setsShallowEqual(a: LoggedSet[], b: LoggedSet[]) {
 interface LoggedExerciseCardProps {
   loggedExercise: LoggedExercise;
   onUpdateSets: (sets: LoggedSet[]) => void;
-  onSaveProgress: () => Promise<void>;
   onRemove: () => void;
   onReplace: () => void;
   isSavingParentLog: boolean;
@@ -108,7 +162,6 @@ interface LoggedExerciseCardProps {
 export function LoggedExerciseCard({
   loggedExercise,
   onUpdateSets,
-  onSaveProgress,
   onRemove,
   onReplace,
   isSavingParentLog,
@@ -118,8 +171,7 @@ export function LoggedExerciseCard({
 }: LoggedExerciseCardProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [localSets, setLocalSets] = useState<LoggedSet[]>(loggedExercise.sets);
-  const [isSavingThisExercise, setIsSavingThisExercise] = useState(false);
-  const [justSaved, setJustSaved] = useState(false);
+  const [warmupOpen, setWarmupOpen] = useState(false);
   const [weightDisplays, setWeightDisplays] = useState<string[]>(
     (loggedExercise.sets ?? []).map(s => s.weight == null ? '' : String(s.weight))
   );
@@ -133,7 +185,6 @@ export function LoggedExerciseCard({
   }, [loggedExercise.sets, isEditing]);
   
   const contentRef = useRef<HTMLDivElement | null>(null);
-  const timeoutRef = useRef<number | null>(null);
   const pushUpTimer = useRef<number | null>(null);
 
   const {
@@ -175,7 +226,6 @@ export function LoggedExerciseCard({
   
   useEffect(() => {
     return () => {
-      if (timeoutRef.current) window.clearTimeout(timeoutRef.current);
       if (pushUpTimer.current) window.clearTimeout(pushUpTimer.current);
     };
   }, []);
@@ -253,22 +303,6 @@ export function LoggedExerciseCard({
     onUpdateSets(newSets);
   };
 
-  const handleSaveThisExercise = async () => {
-    onMarkAsInteracted(); 
-    setIsSavingThisExercise(true);
-    setJustSaved(false); 
-    try {
-      await onSaveProgress(); 
-      setJustSaved(true);
-      if (timeoutRef.current) window.clearTimeout(timeoutRef.current);
-      timeoutRef.current = window.setTimeout(() => setJustSaved(false), 2000); 
-    } catch (error) {
-      console.error("Error saving exercise progress from card:", error);
-    } finally {
-      setIsSavingThisExercise(false);
-    }
-  };
-  
   return (
     <div ref={setNodeRef} style={style} data-dragging={isDragging || undefined}>
       <Card 
@@ -302,16 +336,15 @@ export function LoggedExerciseCard({
             </div>
             <div className="flex items-center">
               {loggedExercise.warmupConfig && loggedExercise.warmupConfig.template !== 'NONE' && (
-                  <Popover>
-                      <PopoverTrigger asChild>
-                          <Button variant="ghost" size="icon" className="text-chart-5 hover:text-chart-5/80 h-8 w-8">
-                              <Flame className="h-4 w-4" />
-                          </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-[400px]">
-                          <WarmupPanel loggedExercise={loggedExercise} />
-                      </PopoverContent>
-                  </Popover>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setWarmupOpen(true)}
+                    className="text-chart-5 hover:text-chart-5/80 h-8 w-8"
+                    aria-label={`Warm-up sets for ${loggedExercise.name}`}
+                  >
+                      <Flame className="h-4 w-4" />
+                  </Button>
               )}
               <Button variant="ghost" size="icon" onClick={onReplace} className="text-primary hover:text-primary/80 h-8 w-8" aria-label={`Replace ${loggedExercise.name}`}>
                 <ArrowLeftRight className="h-4 w-4" />
@@ -396,7 +429,7 @@ export function LoggedExerciseCard({
                 size="sm"
                 onClick={addSet}
                 className="border-dashed hover:border-solid hover:bg-muted/50 text-muted-foreground hover:text-foreground"
-                disabled={isSavingThisExercise || isSavingParentLog || isReadOnly}
+                disabled={isSavingParentLog || isReadOnly}
               >
                 <PlusCircle className="mr-2 h-4 w-4" />
                 Add Set Here
@@ -422,23 +455,16 @@ export function LoggedExerciseCard({
                   const nextOverride = (val === base) ? null : val;
                   onUpdateSetStructureOverride(loggedExercise.id, nextOverride);
                 }}
-                disabled={isSavingThisExercise || isSavingParentLog}
+                disabled={isSavingParentLog}
               />
-            </div>
-            <div className="flex flex-col sm:flex-row items-center gap-3 mt-4">
-              <Button
-                onClick={handleSaveThisExercise}
-                disabled={isSavingThisExercise || isSavingParentLog}
-                className="w-full sm:w-auto sm:ml-auto"
-              >
-                {isSavingThisExercise ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> :
-                  justSaved ? <Check className="mr-2 h-4 w-4" /> : <Save className="mr-2 h-4 w-4" />}
-                {isSavingThisExercise ? "Saving..." : justSaved ? "Progress Saved!" : "Save Progress"}
-              </Button>
             </div>
           </div>
         </CardContent>
       </Card>
+
+      {warmupOpen && (
+        <WarmupModal loggedExercise={loggedExercise} onClose={() => setWarmupOpen(false)} />
+      )}
     </div>
   );
 }

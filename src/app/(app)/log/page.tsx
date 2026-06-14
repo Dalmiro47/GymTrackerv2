@@ -12,7 +12,7 @@ import {
   AlertTriangle,
   Info,
 } from "lucide-react";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar"; 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -120,7 +120,6 @@ function TrainingLogPageContent() {
     reorderExercisesInLog,
     updateExerciseInLog,
     saveCurrentLog,
-    saveSingleExercise,
     updateOverallLogNotes,
     deleteCurrentLog,
     markExerciseAsInteracted,
@@ -258,38 +257,7 @@ function TrainingLogPageContent() {
 
   return (
     <div className="space-y-6">
-      {/* Header row */}
-      <div className="flex items-center justify-between mb-4">
-        <PageHeader title="Training Log" description="Record your daily workouts and track progress."/>
-        
-        {/* Desktop actions (hidden on mobile) */}
-        <div className="hidden md:flex gap-2">
-          <Button
-            variant="outline"
-            onClick={() => setIsDeleteConfirmOpen(true)}
-            disabled={isDeletingLog || isLoadingLog || !canDeleteLog || isSavingLog}
-            className="gap-2 text-destructive hover:bg-destructive/10 hover:text-destructive"
-            title="Delete today's log"
-          >
-            <Trash2 className="h-4 w-4" />
-            Delete Day’s Log
-          </Button>
-
-          <Button
-            onClick={async () => await saveCurrentLog()}
-            disabled={isSavingLog || isLoadingLog || isDeletingLog}
-            className="gap-2"
-            title="Save today’s log"
-          >
-             {isSavingLog ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Save className="mr-2 h-4 w-4" />
-              )}
-            Save Day’s Log
-          </Button>
-        </div>
-      </div>
+      <PageHeader title="Training Log" description="Record your daily workouts and track progress."/>
 
       <Card>
         <CardHeader>
@@ -459,7 +427,6 @@ function TrainingLogPageContent() {
                             <LoggedExerciseCard
                               loggedExercise={loggedEx}
                               onUpdateSets={(sets) => updateExerciseInLog({ ...loggedEx, sets })}
-                              onSaveProgress={() => saveSingleExercise(loggedEx.id)}
                               onRemove={() => removeExerciseFromLog(loggedEx.id)}
                               onReplace={() => handleOpenReplaceDialog(loggedEx.id, loggedEx.muscleGroup)}
                               isSavingParentLog={isSavingLog || isDeletingLog}
@@ -535,22 +502,6 @@ function TrainingLogPageContent() {
           </div>
 
         </CardContent>
-        <CardFooter className="hidden sm:flex justify-end gap-2 pt-6 border-t">
-          <Button
-              variant="outline"
-              className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-              onClick={() => setIsDeleteConfirmOpen(true)}
-              disabled={isDeletingLog || isLoadingLog || !canDeleteLog || isSavingLog}
-          >
-            {isDeletingLog ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
-            Delete Day&apos;s Log
-          </Button>
-
-          <Button onClick={async () => await saveCurrentLog()} disabled={isSavingLog || isLoadingLog || isDeletingLog}>
-              {isSavingLog ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-              Save Day&apos;s Log
-          </Button>
-        </CardFooter>
       </Card>
 
       <AddExerciseDialog
@@ -575,12 +526,14 @@ function TrainingLogPageContent() {
         initialMuscleGroup={exerciseToReplace?.muscleGroup}
       />
       
-      {/* Spacer so content isn't hidden behind mobile action bar */}
-      <div className="h-20 md:hidden" />
+      {/* Spacer so content isn't hidden behind the sticky action bar */}
+      <div className="h-20" />
 
-      {/* Mobile sticky action bar */}
-      <div className="md:hidden fixed bottom-0 inset-x-0 z-40 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="container px-4 py-3 grid grid-cols-2 gap-2 pb-[env(safe-area-inset-bottom)]">
+      {/* Sticky action bar — single save approach across all viewports.
+          On desktop, offset the left edge to the content column so the bar
+          aligns with the page (not stretched under the dark sidebar). */}
+      <div className="fixed bottom-0 inset-x-0 md:left-[var(--sidebar-width)] z-40 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div className="container mx-auto max-w-2xl px-4 py-3 grid grid-cols-2 gap-2 pb-[env(safe-area-inset-bottom)]">
           <Button
             variant="outline"
             className="h-12 text-base gap-2 text-destructive hover:bg-destructive/10 hover:text-destructive"
@@ -602,7 +555,7 @@ function TrainingLogPageContent() {
         </div>
       </div>
 
-      {/* Shared delete-log confirmation (triggered from all three delete buttons) */}
+      {/* Delete-log confirmation (triggered from the sticky action bar) */}
       <AlertDialog open={isDeleteConfirmOpen} onOpenChange={setIsDeleteConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>

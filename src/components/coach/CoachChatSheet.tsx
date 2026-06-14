@@ -111,7 +111,7 @@ export function CoachChatSheet({ mode, context, loadContext }: CoachChatSheetPro
       {/* Floating trigger button — bottom-28 on mobile to clear the log page action bar + safe area */}
       <button
         onClick={() => setOpen((v) => !v)}
-        className="fixed bottom-28 right-4 md:bottom-6 md:right-6 z-50 flex items-center gap-2 bg-foreground text-background px-4 py-2.5 rounded-full shadow-lg hover:opacity-90 transition-opacity font-medium text-sm"
+        className="fixed bottom-28 right-4 md:bottom-24 md:right-6 z-50 flex items-center gap-2 bg-foreground text-background px-4 py-2.5 rounded-full shadow-lg hover:opacity-90 transition-opacity font-medium text-sm"
       >
         <Sparkles className="h-4 w-4" />
         AI Coach

@@ -6,11 +6,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Calendar as ShadCNCalendar } from "@/components/ui/calendar"; // ShadCN Calendar
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
-import { getWorkoutLog, getMonthLogFlags } from '@/services/trainingLogService';
+import { getWorkoutLog, getMonthLogFlags, getDeloadCountSince } from '@/services/trainingLogService';
 import type { WorkoutLog, LoggedSet } from '@/types';
-import { format, parseISO, startOfMonth, getMonth, getYear, isValid, startOfWeek, isWithinInterval } from 'date-fns';
+import { format, parseISO, startOfMonth, getMonth, getYear, isValid, startOfWeek, isWithinInterval, subMonths } from 'date-fns';
 import { Loader2, CalendarIcon, ListChecks, ExternalLink, PlusCircle, Flame, CalendarCheck2, BatteryLow } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { cn } from '@/lib/utils';
 import Link from 'next/link';
 
 function getMonthlySummaryMessage(
@@ -53,6 +54,9 @@ export function WorkoutCalendarSection() {
   const [loggedDayStrings, setLoggedDayStrings] = useState<string[]>([]);
   const [deloadDayStrings, setDeloadDayStrings] = useState<string[]>([]);
   const [isLoadingLoggedDays, setIsLoadingLoggedDays] = useState(true);
+  // Rolling last-3-months deload count (null while loading) — a standing
+  // recovery indicator, independent of the month being browsed.
+  const [deloadCount3mo, setDeloadCount3mo] = useState<number | null>(null);
   // Stable per-mount "today" so it doesn't invalidate memos/props every render
   const today = useMemo(() => new Date(), []);
 
@@ -82,6 +86,20 @@ export function WorkoutCalendarSection() {
   useEffect(() => {
     fetchMonthDates();
   }, [fetchMonthDates]);
+
+  // Rolling last-3-months deload count (independent of the displayed month)
+  useEffect(() => {
+    if (!user?.id) {
+      setDeloadCount3mo(0);
+      return;
+    }
+    let cancelled = false;
+    setDeloadCount3mo(null);
+    getDeloadCountSince(user.id, subMonths(today, 3))
+      .then(count => { if (!cancelled) setDeloadCount3mo(count); })
+      .catch(() => { if (!cancelled) setDeloadCount3mo(0); });
+    return () => { cancelled = true; };
+  }, [user?.id, today]);
 
   // Fetch details for the selected day (run when selectedDate changes)
   useEffect(() => {
@@ -130,15 +148,7 @@ export function WorkoutCalendarSection() {
     [logsInCurrentDisplayedMonth, displayedMonth, today]
   );
 
-  // Compact stats derived from data already loaded for the displayed month
-  const deloadsInDisplayedMonth = useMemo(() => {
-    return deloadDayStrings.filter(dateStr => {
-      const d = parseISO(dateStr);
-      return !isNaN(d.getTime()) &&
-        d.getFullYear() === displayedMonth.getFullYear() &&
-        d.getMonth() === displayedMonth.getMonth();
-    }).length;
-  }, [deloadDayStrings, displayedMonth]);
+  const noRecentDeload = deloadCount3mo === 0;
 
   const sessionsThisWeek = useMemo(() => {
     const weekStart = startOfWeek(today, { weekStartsOn: 1 });
@@ -172,15 +182,29 @@ export function WorkoutCalendarSection() {
           </p>
           <p className="mt-1 text-[11px] text-muted-foreground truncate">since Monday</p>
         </div>
-        <div className="rounded-lg border bg-card px-3 py-2.5 sm:px-4 sm:py-3">
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <div className={cn(
+          "rounded-lg border bg-card px-3 py-2.5 sm:px-4 sm:py-3",
+          noRecentDeload && "border-destructive/50"
+        )}>
+          <div className={cn(
+            "flex items-center gap-1.5 text-xs text-muted-foreground",
+            noRecentDeload && "text-destructive"
+          )}>
             <BatteryLow className="h-3.5 w-3.5" />
             <span className="truncate">Deloads</span>
           </div>
-          <p className="mt-1 text-2xl font-bold tabular-nums leading-none">
-            {isLoadingLoggedDays ? '–' : deloadsInDisplayedMonth}
+          <p className={cn(
+            "mt-1 text-2xl font-bold tabular-nums leading-none",
+            noRecentDeload && "text-destructive"
+          )}>
+            {deloadCount3mo === null ? '–' : deloadCount3mo}
           </p>
-          <p className="mt-1 text-[11px] text-muted-foreground truncate">{format(displayedMonth, 'MMMM')}</p>
+          <p className={cn(
+            "mt-1 text-[11px] truncate",
+            noRecentDeload ? "text-destructive font-medium" : "text-muted-foreground"
+          )}>
+            {noRecentDeload ? "none in 3 months" : "last 3 months"}
+          </p>
         </div>
       </div>
 
