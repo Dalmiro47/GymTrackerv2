@@ -4,14 +4,14 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { format } from 'date-fns';
 import { getAuth } from 'firebase/auth';
 import { app } from '@/lib/firebaseConfig';
-import type { LogDayContext, RoutineReviewContext } from '@/lib/ai/context-builders';
+import type { LogDayContext, RoutineReviewContext, DashboardContext } from '@/lib/ai/context-builders';
 
 export type ChatMessage = {
   role: 'user' | 'assistant';
   content: string;
 };
 
-type ChatMode = 'log-day' | 'routine-review';
+type ChatMode = 'log-day' | 'routine-review' | 'dashboard';
 
 // Local date (not UTC) so the chat rolls over at local midnight, same as logs
 const today = () => format(new Date(), 'yyyy-MM-dd');
@@ -83,7 +83,7 @@ export function useCoachChat(mode: ChatMode) {
   );
 
   const sendMessage = useCallback(
-    async (userText: string, context: LogDayContext | RoutineReviewContext) => {
+    async (userText: string, context: LogDayContext | RoutineReviewContext | DashboardContext) => {
       if (!userText.trim() || isStreaming) return;
 
       setError(null);

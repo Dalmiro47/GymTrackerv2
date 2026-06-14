@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
 import { createLLMProvider, type ChatMessage } from '@/lib/ai/llm-provider';
-import { buildLogDaySystemPrompt, buildRoutineReviewSystemPrompt } from '@/lib/ai/chat-prompts';
-import type { LogDayContext, RoutineReviewContext } from '@/lib/ai/context-builders';
+import { buildLogDaySystemPrompt, buildRoutineReviewSystemPrompt, buildDashboardSystemPrompt } from '@/lib/ai/chat-prompts';
+import type { LogDayContext, RoutineReviewContext, DashboardContext } from '@/lib/ai/context-builders';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-type ChatMode = 'log-day' | 'routine-review';
+type ChatMode = 'log-day' | 'routine-review' | 'dashboard';
 
 const MAX_HISTORY_MESSAGES = 20;
 
@@ -126,7 +126,7 @@ export async function POST(req: Request) {
     const { mode, messages, context } = body as {
       mode: ChatMode;
       messages: Array<{ role: 'user' | 'assistant'; content: string }>;
-      context: LogDayContext | RoutineReviewContext;
+      context: LogDayContext | RoutineReviewContext | DashboardContext;
     };
 
     if (!mode || !messages?.length || !context) {
@@ -139,7 +139,9 @@ export async function POST(req: Request) {
     const systemPrompt =
       mode === 'log-day'
         ? buildLogDaySystemPrompt(context as LogDayContext)
-        : buildRoutineReviewSystemPrompt(context as RoutineReviewContext);
+        : mode === 'dashboard'
+          ? buildDashboardSystemPrompt(context as DashboardContext)
+          : buildRoutineReviewSystemPrompt(context as RoutineReviewContext);
 
     const trimmedHistory = messages.slice(-MAX_HISTORY_MESSAGES);
     const fullMessages: ChatMessage[] = [

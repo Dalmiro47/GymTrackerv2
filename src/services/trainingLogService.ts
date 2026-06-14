@@ -233,6 +233,35 @@ export const getDeloadCountSince = async (
   }
 };
 
+/**
+ * Fetches full workout logs on/after `startDate` (e.g. the last ~8 weeks),
+ * oldest first, for client-side trend analysis (see lib/progression.ts).
+ * Reuses the date-only index already used by getMonthLogFlags /
+ * getDeloadCountSince — no new composite index required.
+ */
+export const getLogsSince = async (
+  userId: string,
+  startDate: Date
+): Promise<WorkoutLog[]> => {
+  if (!userId) return [];
+
+  const logsCollectionRef = collection(db, getUserWorkoutLogsCollectionPath(userId));
+  const start = fmt(startDate, 'yyyy-MM-dd');
+
+  try {
+    const q = query(
+      logsCollectionRef,
+      where('date', '>=', start),
+      orderBy('date', 'asc')
+    );
+    const snap = await getDocs(q);
+    return snap.docs.map(docSnap => docSnap.data() as WorkoutLog);
+  } catch (e) {
+    console.error('[SERVICE] getLogsSince error:', e);
+    return [];
+  }
+};
+
 export type PerformanceEntryInput = {
   exerciseId: string;
   sets: LoggedSet[];
