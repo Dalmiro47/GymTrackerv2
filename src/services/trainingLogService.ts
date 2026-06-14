@@ -200,6 +200,39 @@ export const getMonthLogFlags = async (
   }
 };
 
+/**
+ * Counts deload days on/after `startDate` (e.g. the last 3 months).
+ * Filters `isDeload` in code rather than in the query so it reuses the
+ * date-only index already used by getMonthLogFlags (no new composite index).
+ */
+export const getDeloadCountSince = async (
+  userId: string,
+  startDate: Date
+): Promise<number> => {
+  if (!userId) return 0;
+
+  const logsCollectionRef = collection(db, getUserWorkoutLogsCollectionPath(userId));
+  const start = fmt(startDate, 'yyyy-MM-dd');
+
+  try {
+    const q = query(
+      logsCollectionRef,
+      where('date', '>=', start),
+      orderBy('date', 'asc')
+    );
+    const snap = await getDocs(q);
+
+    let count = 0;
+    snap.forEach(docSnap => {
+      if ((docSnap.data() as WorkoutLog)?.isDeload === true) count++;
+    });
+    return count;
+  } catch (e) {
+    console.error('[SERVICE] getDeloadCountSince error:', e);
+    return 0;
+  }
+};
+
 export type PerformanceEntryInput = {
   exerciseId: string;
   sets: LoggedSet[];

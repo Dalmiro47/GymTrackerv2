@@ -2,14 +2,14 @@
 claude --dangerously-skip-permissions 
 
 ## Pull Request to Github 
-git switch -c ref/ui-redesign
+git switch -c ref/training-log
 
 ## Do ALL THE CHANGES 
 
 ## Pull Request to Github 
 git add -A 
-git commit -m "ref(claude): Refactor UI with unified design token system, consistent accent color, and per-page layout cleanup across all views." 
-git push -u origin ref/ui-redesign
+git commit -m "ref(claude): save button and warm up dialog" 
+git push -u origin ref/training-log
 
 ## Make local main match GitHub
 
@@ -24,5 +24,5 @@ git rev-parse HEAD
 git rev-parse origin/main 
  
 ## After merge, delete the branch
-git branch -D ref/ui-redesign
+git branch -D ref/training-log
  
