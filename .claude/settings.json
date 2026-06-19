@@ -1,6 +1,6 @@
 {
   "statusLine": {
     "type": "command",
-    "command": "bash /workspaces/GymTrackerv2/.claude/statusline-command.sh"
+    "command": "node .claude/statusline-command.js"
   }
 }

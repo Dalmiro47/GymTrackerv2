@@ -19,6 +19,8 @@ import {
 } from '@/components/ui/dialog';
 import { AvailableExercisesSelector } from './AvailableExercisesSelector';
 import { SelectedRoutineExercisesList } from './SelectedRoutineExercisesList';
+import { ReplaceExerciseDialog } from '@/components/training-log/ReplaceExerciseDialog';
+import { replaceRoutineExerciseAt } from '@/lib/routineEditing';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -62,6 +64,8 @@ export function AddEditRoutineDialog({
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [selectedExerciseObjects, setSelectedExerciseObjects] = useState<RoutineExercise[]>([]);
   const [insertionIndex, setInsertionIndex] = useState<number | null>(null);
+  const [replaceIndex, setReplaceIndex] = useState<number | null>(null);
+  const [isReplaceOpen, setIsReplaceOpen] = useState(false);
   
   const exerciseIdMap = useMemo(
     () => new Map(allUserExercises.map(ex => [ex.id, ex])),
@@ -76,6 +80,8 @@ export function AddEditRoutineDialog({
       setSelectedExerciseObjects([]);
       setIsPickerOpen(false);
       setInsertionIndex(null);
+      setReplaceIndex(null);
+      setIsReplaceOpen(false);
       return;
     }
   
@@ -93,7 +99,9 @@ export function AddEditRoutineDialog({
     setSelectedExerciseObjects(hydratedExercises);
     setIsPickerOpen(false);
     setInsertionIndex(null);
-  
+    setReplaceIndex(null);
+    setIsReplaceOpen(false);
+
   }, [routineToEdit, reset, isOpen, isLoadingExercises, exerciseIdMap]);
 
 
@@ -166,9 +174,34 @@ export function AddEditRoutineDialog({
       setIsPickerOpen(true);
   }
 
+  const handleOpenReplace = (index: number) => {
+    setReplaceIndex(index);
+    setIsReplaceOpen(true);
+  };
+
+  // Swap the exercise in place: same slot, same set-type (mirrors Training Log).
+  const handleReplaceExercise = (newExercise: Exercise) => {
+    if (replaceIndex === null) return;
+    setSelectedExerciseObjects(prev => replaceRoutineExerciseAt(prev, replaceIndex, newExercise));
+    setIsReplaceOpen(false);
+    setReplaceIndex(null);
+  };
+
   const selectedExerciseIds = selectedExerciseObjects.map(ex => ex.id);
 
+  // Scope the replace picker to the replaced exercise's category, and exclude every
+  // exercise already in the routine — including the one being replaced — so the list
+  // is single-select and free of misleading already-added entries.
+  const exerciseBeingReplaced =
+    replaceIndex !== null ? selectedExerciseObjects[replaceIndex] : null;
+  const replaceCandidates = useMemo(() => {
+    if (replaceIndex === null) return allUserExercises;
+    const usedIds = new Set(selectedExerciseObjects.map(ex => ex.id));
+    return allUserExercises.filter(ex => !usedIds.has(ex.id));
+  }, [allUserExercises, selectedExerciseObjects, replaceIndex]);
+
   return (
+    <>
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogContent
         className="max-w-4xl sm:w-[95vw] flex flex-col h-[85dvh] sm:h-[85vh] p-0 gap-0 overflow-hidden"
@@ -249,6 +282,7 @@ export function AddEditRoutineDialog({
                         <SelectedRoutineExercisesList
                             selectedExercises={selectedExerciseObjects}
                             onRemoveExercise={(exerciseId) => handleExerciseSelectionChange(exerciseId, false)}
+                            onReplaceExercise={handleOpenReplace}
                             onReorderExercises={handleReorderExercises}
                             onUpdateSetStructure={handleUpdateSetStructure}
                             onInsertExercise={openPickerAtIndex}
@@ -301,5 +335,18 @@ export function AddEditRoutineDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    <ReplaceExerciseDialog
+      isOpen={isReplaceOpen}
+      setIsOpen={(open) => {
+        setIsReplaceOpen(open);
+        if (!open) setReplaceIndex(null);
+      }}
+      availableExercises={replaceCandidates}
+      isLoadingExercises={isLoadingExercises}
+      onReplaceExercise={handleReplaceExercise}
+      initialMuscleGroup={exerciseBeingReplaced?.muscleGroup}
+    />
+    </>
   );
 }

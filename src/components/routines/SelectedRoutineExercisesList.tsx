@@ -3,7 +3,7 @@
 import type { RoutineExercise, SetStructure } from '@/types';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Trash2, GripVertical, AlertTriangle, Dumbbell, ChevronDown, Plus, PlusCircle } from 'lucide-react';
+import { Trash2, GripVertical, AlertTriangle, Dumbbell, ChevronDown, Plus, PlusCircle, ArrowLeftRight } from 'lucide-react';
 import React from 'react';
 import {
   DndContext,
@@ -44,18 +44,20 @@ interface SortableExerciseItemProps {
   exercise: RoutineExercise;
   index: number;
   onRemoveExercise: (exerciseId: string) => void;
+  onReplaceExercise: (index: number) => void;
   onUpdateSetStructure: (exerciseId: string, structure: SetStructure) => void;
   onInsertExercise: (index: number) => void;
-  isLinkedToNext: boolean; 
+  isLinkedToNext: boolean;
 }
 
-function SortableExerciseItem({ 
-    exercise, 
-    index, 
-    onRemoveExercise, 
-    onUpdateSetStructure, 
+function SortableExerciseItem({
+    exercise,
+    index,
+    onRemoveExercise,
+    onReplaceExercise,
+    onUpdateSetStructure,
     onInsertExercise,
-    isLinkedToNext 
+    isLinkedToNext
 }: SortableExerciseItemProps) {
   const {
     attributes,
@@ -137,11 +139,11 @@ function SortableExerciseItem({
             </div>
 
             {/* CONTROLS SECTION */}
-            <div className="flex items-center justify-end gap-4 shrink-0">
-                
+            <div className="flex items-center justify-end gap-2 sm:gap-4 shrink-0">
+
                 {/* Set Picker */}
                 {!exercise.isMissing && (
-                    <div className="relative w-[130px] border rounded-md bg-background shadow-sm overflow-hidden group/picker">
+                    <div className="relative w-[116px] sm:w-[130px] border rounded-md bg-background shadow-sm overflow-hidden group/picker">
                       <SetStructurePicker
                           value={exercise.setStructure ?? 'normal'}
                           onChange={(value) => onUpdateSetStructure(exercise.id, value)}
@@ -154,7 +156,19 @@ function SortableExerciseItem({
                 )}
 
                 {/* Separator Line */}
-                <div className="h-6 w-px bg-border" />
+                <div className="hidden sm:block h-6 w-px bg-border" />
+
+                {/* Replace Button */}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => onReplaceExercise(index)}
+                  aria-label={`Replace ${exercise.name}`}
+                  className="text-muted-foreground/50 hover:text-primary hover:bg-primary/10 h-8 w-8 transition-colors rounded-full"
+                >
+                  <ArrowLeftRight className="h-4 w-4" />
+                </Button>
 
                 {/* Delete Button */}
                 <Button
@@ -201,6 +215,7 @@ function SortableExerciseItem({
 interface SelectedRoutineExercisesListProps {
   selectedExercises: RoutineExercise[];
   onRemoveExercise: (exerciseId: string) => void;
+  onReplaceExercise: (index: number) => void;
   onReorderExercises: (reorderedExercises: RoutineExercise[]) => void;
   onUpdateSetStructure: (exerciseId: string, structure: SetStructure) => void;
   onInsertExercise: (index: number) => void;
@@ -209,6 +224,7 @@ interface SelectedRoutineExercisesListProps {
 export function SelectedRoutineExercisesList({
   selectedExercises,
   onRemoveExercise,
+  onReplaceExercise,
   onReorderExercises,
   onUpdateSetStructure,
   onInsertExercise,
@@ -308,6 +324,7 @@ export function SelectedRoutineExercisesList({
                               index={index}
                               exercise={exercise}
                               onRemoveExercise={onRemoveExercise}
+                              onReplaceExercise={onReplaceExercise}
                               onUpdateSetStructure={onUpdateSetStructure}
                               onInsertExercise={onInsertExercise}
                               isLinkedToNext={shouldLink}
