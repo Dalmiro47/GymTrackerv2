@@ -9,6 +9,7 @@ import { MUSCLE_GROUPS_LIST, type MuscleGroup } from '@/lib/constants';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { dedupeExercisesByName } from '@/lib/routineEditing';
 
 interface AvailableExercisesSelectorProps {
   allExercises: Exercise[];
@@ -35,17 +36,24 @@ export function AvailableExercisesSelector({
     setSearchTerm('');
   }, [initialMuscleGroup]);
 
+  // The library can contain two exercises sharing a name; rendering both makes the
+  // picker untrustworthy. Dedupe once, then derive counts/filtering from the result.
+  const uniqueExercises = useMemo(
+    () => dedupeExercisesByName(allExercises),
+    [allExercises]
+  );
+
   const exerciseCounts = useMemo(() => {
     const counts: Record<string, number> = {};
-    allExercises.forEach(ex => {
+    uniqueExercises.forEach(ex => {
       const mg = ex.muscleGroup;
       counts[mg] = (counts[mg] || 0) + 1;
     });
     return counts;
-  }, [allExercises]);
+  }, [uniqueExercises]);
 
   const filteredExercises = useMemo(() => {
-    let temp = [...allExercises];
+    let temp = [...uniqueExercises];
     
     if (activeMuscleGroup === null && searchTerm.trim() !== '') {
        return temp.filter(ex => ex.name.toLowerCase().includes(searchTerm.toLowerCase().trim()));
@@ -60,7 +68,7 @@ export function AvailableExercisesSelector({
       temp = temp.filter(ex => ex.name.toLowerCase().includes(q));
     }
     return temp;
-  }, [allExercises, searchTerm, activeMuscleGroup]);
+  }, [uniqueExercises, searchTerm, activeMuscleGroup]);
 
   // VIEW 1: Muscle Group Grid
   if (activeMuscleGroup === null && searchTerm === '') {
@@ -87,7 +95,7 @@ export function AvailableExercisesSelector({
                 </div>
                 <div>
                     <span className="font-semibold block">All Exercises</span>
-                    <span className="text-xs text-muted-foreground">{allExercises.length} items</span>
+                    <span className="text-xs text-muted-foreground">{uniqueExercises.length} items</span>
                 </div>
             </button>
 

@@ -54,3 +54,4 @@ node_modules/
 
 # Personal workflow scratchpad
 gym-tracker-PR.md
+.playwright-mcp/
