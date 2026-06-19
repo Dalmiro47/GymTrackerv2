@@ -48,6 +48,35 @@ Capture the current state of this project as a milestone thought in Open Brain M
 
    If a README is now inaccurate: make a **surgical edit** to the specific lines only — match the existing heading/table/voice and change nothing else. Do not restructure or add new sections unless the change genuinely introduces an undocumented surface. In your summary to the user, list each README touched (or state "READMEs: no drift"). If nothing qualifies, skip this step entirely.
 
+0c. **Skill maintenance check** — after the README audit, scan THIS session's actual changes against
+   this repo's `.claude/skills/`. Glance at what's there first, then consider three moves. The bar is
+   high and most sessions warrant none — that is correct. Evidence is this session's diff, not a full audit.
+
+   If `.claude/skills/` doesn't exist yet, UPDATE and DELETE are automatically N/A — but **CREATE still
+   applies**: a session can justify this repo's first skill. Don't add an action item merely to create the
+   empty directory; it's created when the first skill is authored. Report `Skills: none yet` when no
+   candidate surfaces.
+
+   **CREATE** — a recurring, non-obvious procedure surfaced this session that no existing skill covers
+   and that you'd otherwise re-derive next time (e.g. a test-and-deploy loop, an ingest-and-verify
+   sequence). → Flag a candidate: name it, suggest a trigger (e.g. `/release-verify`), note it'd live
+   in this repo's `.claude/skills/`. Do NOT create it here.
+
+   **UPDATE** — this session's changes made an existing skill inaccurate or misleading (it references a
+   renamed command, a changed flag/default, a removed step). → If it's pure factual drift, make a
+   **surgical edit** to the specific lines only, matching the skill's existing voice. If the fix changes
+   the procedure's logic or triggers, propose the change instead of editing.
+
+   **DELETE** — a skill now encodes a workflow this session removed or fully superseded. → **Propose only,
+   never delete.** State which skill and why it looks obsolete, and leave the decision to the user.
+
+   Does NOT qualify (skip): one-off fixes, preferences, anything already a CLAUDE.md rule or Open Brain
+   thought, or a skill that's merely unused this session.
+
+   In your summary, list any skill created/updated/proposed-for-deletion (or "Skills: no change").
+   Optionally fold one next-step into the capture's `action_items`. Do NOT fire a second capture. If
+   nothing qualifies, skip this step entirely.
+
 1. Gather context in **ONE** Bash call (chain with `&&`, do not split into separate calls):
 
 ```
@@ -97,5 +126,7 @@ Capture the current state of this project as a milestone thought in Open Brain M
 - If nothing meaningful changed, skip the capture
 
 - **README edits are surgical and evidence-based**: only edit a README when this session's actual diff makes it inaccurate, incomplete, or misleading to a reader. Never invent capabilities, never restructure, touch the minimum lines. The README audit (Step 0b) documents reader-facing surfaces; the Open Brain capture documents the session — keep them separate.
+
+- **Skill edits are surgical and evidence-based**: only touch a skill when this session's actual diff makes it inaccurate; propose (never execute) skill creation and deletion. The skill maintenance check (Step 0c) covers reusable procedures in `.claude/skills/`; keep it driven by the session diff, not a full-corpus audit.
 
 - **Anonymize personal names**: replace "First Last" with "First L." in `content`, `people`, and `action_items`. No full last names anywhere in `secret` thoughts. Examples: "Christina Rodriguez" → "Christina R.", "John Smith" → "John S.". Company and product names (e.g. Intersnack, Comarch, Transporeon) are not affected — only personal names.
