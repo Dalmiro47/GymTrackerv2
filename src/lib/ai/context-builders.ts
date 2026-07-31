@@ -6,6 +6,8 @@ import type { SetStructure } from '@/types/setStructure';
 import type { ProgressionResult } from '@/lib/progression';
 import { parseISO, startOfISOWeek, formatISO } from 'date-fns';
 import { buildCoachFactsCompact, type CoachFactCompact } from '@/lib/analysis';
+import { buildRoutineChangeLog, type RoutineChangeLog } from '@/lib/routineHistory';
+import type { RoutineVersion } from '@/types/routineHistory';
 
 // ─── Log-Day Context (current workout) ──────────────────────────────
 
@@ -110,6 +112,8 @@ export type RoutineReviewContext = {
   weeklySummaries: WeeklySummary[];
   profile: { goal?: string; daysPerWeekTarget?: number };
   facts: CoachFactCompact[];
+  /** Recorded routine changes, newest first. Optional — absent until history exists. */
+  changeLog?: RoutineChangeLog;
 };
 
 type RoutineLike = {
@@ -130,6 +134,8 @@ export function buildRoutineReviewContext(
   routines: RoutineLike[],
   logs: WorkoutLog[],
   profile: ProfileLike,
+  /** Recorded routine versions. Omit (or pass []) to leave the change log out. */
+  routineVersions: RoutineVersion[] = [],
 ): RoutineReviewContext {
   // 1. Compact routine summaries
   const routineSummaries = routines.map((r) => ({
@@ -228,11 +234,17 @@ export function buildRoutineReviewContext(
     { weekly: buildWeeklyVolumeFlat(logs) },
   );
 
+  // 4. Compact routine change log (capped; see buildRoutineChangeLog)
+  const changeLog = routineVersions.length > 0
+    ? buildRoutineChangeLog(routineVersions)
+    : undefined;
+
   return {
     routines: routineSummaries,
     weeklySummaries,
     profile: { goal: profile.goal, daysPerWeekTarget: profile.daysPerWeekTarget },
     facts,
+    ...(changeLog && changeLog.entries.length > 0 ? { changeLog } : {}),
   };
 }
 

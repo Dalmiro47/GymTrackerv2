@@ -2,7 +2,7 @@
 import type { Routine } from '@/types';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Edit3, Trash2, GripVertical } from 'lucide-react';
+import { Edit3, Trash2, GripVertical, History } from 'lucide-react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { cn } from '@/lib/utils';
@@ -11,9 +11,10 @@ interface RoutineCardProps {
   routine: Routine;
   onEdit: (routine: Routine) => void;
   onDelete: (routineId: string) => void;
+  onViewHistory: (routine: Routine) => void;
 }
 
-export function RoutineCard({ routine, onEdit, onDelete }: RoutineCardProps) {
+export function RoutineCard({ routine, onEdit, onDelete, onViewHistory }: RoutineCardProps) {
   const {
     attributes,
     listeners,
@@ -76,6 +77,9 @@ export function RoutineCard({ routine, onEdit, onDelete }: RoutineCardProps) {
         )}
       </CardContent>
       <CardFooter className="flex justify-end gap-2 border-t pt-3 pb-3">
+        <Button variant="ghost" size="sm" onClick={() => onViewHistory(routine)} aria-label={`History for ${routine.name}`}>
+          <History className="h-4 w-4" />
+        </Button>
         <Button variant="outline" size="sm" onClick={() => onEdit(routine)} aria-label={`Edit ${routine.name}`}>
           <Edit3 className="h-4 w-4" />
         </Button>

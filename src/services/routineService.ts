@@ -17,7 +17,9 @@ import {
   limit, // Added limit import
   serverTimestamp
 } from 'firebase/firestore';
-import { slugify } from '@/lib/utils'; 
+import { slugify } from '@/lib/utils';
+import { recordRoutineVersion } from '@/services/routineHistoryService';
+import type { RoutineChangeSource } from '@/types/routineHistory';
 
 const getUserRoutinesCollectionPath = (userId: string) => `users/${userId}/routines`;
 
@@ -71,6 +73,9 @@ export const addRoutine = async (userId: string, routineData: Omit<RoutineData, 
 
     await setDoc(routineDocRef, dataToSave);
 
+    // History is best-effort and never blocks the routine write.
+    await recordRoutineVersion(userId, routineIdSlug, dataToSave, 'created');
+
     return { id: routineIdSlug, ...dataToSave } as Routine;
   } catch (error: any) {
     console.error("Detailed error adding routine to Firestore: ", error);
@@ -115,13 +120,33 @@ export const getRoutineById = async (userId: string, routineId: string): Promise
 };
 
 // Update an existing routine for a user
-export const updateRoutine = async (userId: string, routineId: string, routineData: Partial<Omit<RoutineData, 'order'>>): Promise<void> => {
+export const updateRoutine = async (
+  userId: string,
+  routineId: string,
+  routineData: Partial<Omit<RoutineData, 'order'>>,
+  /** Labels the history entry. Pass 'exercise-cascade' for library-driven rewrites. */
+  historySource: RoutineChangeSource = 'routine-editor',
+): Promise<void> => {
   if (!userId) throw new Error("User ID is required to update a routine.");
   if (!routineId) throw new Error("Routine ID is required to update a routine.");
   try {
     const routineDocRef = doc(db, getUserRoutinesCollectionPath(userId), routineId);
-    
-    let dataToUpdate: Partial<Omit<RoutineData, 'order'>> & { updatedAt: Timestamp } = { 
+
+    // The payload is a Partial, so the post-update state can only be reconstructed
+    // by merging onto the current one. The pre-state doubles as the history baseline
+    // for routines that predate this feature.
+    //
+    // Deliberately non-fatal: history must never turn a working save into a failed
+    // one. If this read fails we simply skip recording a version.
+    let beforeData: RoutineData | null = null;
+    try {
+      const beforeSnap = await getDoc(routineDocRef);
+      beforeData = beforeSnap.exists() ? (beforeSnap.data() as RoutineData) : null;
+    } catch {
+      beforeData = null;
+    }
+
+    let dataToUpdate: Partial<Omit<RoutineData, 'order'>> & { updatedAt: Timestamp } = {
         ...routineData, 
         updatedAt: serverTimestamp() as Timestamp 
     };
@@ -139,6 +164,13 @@ export const updateRoutine = async (userId: string, routineId: string, routineDa
     }
     // Note: The 'order' field is managed by updateRoutinesOrder, not here.
     await updateDoc(routineDocRef, dataToUpdate);
+
+    if (beforeData) {
+      const afterData = { ...beforeData, ...dataToUpdate };
+      await recordRoutineVersion(userId, routineId, afterData, 'updated', historySource, {
+        previousState: beforeData,
+      });
+    }
   } catch (error: any) {
     console.error("Error updating routine in Firestore: ", error);
     throw new Error(`Failed to update routine. Firestore error: ${error.message || 'Unknown error'}`);
@@ -151,6 +183,19 @@ export const deleteRoutine = async (userId: string, routineId: string): Promise<
   if (!routineId) throw new Error("Routine ID is required to delete a routine.");
   try {
     const routineDocRef = doc(db, getUserRoutinesCollectionPath(userId), routineId);
+
+    // Record BEFORE deleting — post-delete the state is unrecoverable. History
+    // lives in a separate flat collection, so it deliberately survives the routine.
+    // Non-fatal, like the update path: a failed audit row must not block the delete.
+    try {
+      const beforeSnap = await getDoc(routineDocRef);
+      if (beforeSnap.exists()) {
+        await recordRoutineVersion(userId, routineId, beforeSnap.data() as RoutineData, 'deleted');
+      }
+    } catch (historyError: any) {
+      console.warn(`Could not record deletion of routine "${routineId}":`, historyError?.message);
+    }
+
     await deleteDoc(routineDocRef);
     // Note: After deleting, you might want to re-order remaining routines. 
     // This can be complex (e.g., if you delete from the middle).
@@ -163,6 +208,9 @@ export const deleteRoutine = async (userId: string, routineId: string): Promise<
 };
 
 // New function to update the order of all routines
+// Deliberately NOT versioned in routine history: this changes only where a card
+// sits on the routines page, not the training plan itself. Snapshotting it would
+// add an empty-diff entry to every routine on every drag.
 export const updateRoutinesOrder = async (userId: string, orderedRoutineIds: string[]): Promise<void> => {
   if (!userId) throw new Error("User ID is required to update routine orders.");
   if (!Array.isArray(orderedRoutineIds)) throw new Error("Ordered routine IDs must be an array.");

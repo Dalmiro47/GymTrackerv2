@@ -27,6 +27,9 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { RoutineCard } from '@/components/routines/RoutineCard';
 import { AddEditRoutineDialog } from '@/components/routines/AddEditRoutineDialog';
+import { RoutineHistorySheet } from '@/components/routines/RoutineHistorySheet';
+import { getAllRoutineHistory } from '@/services/routineHistoryService';
+import type { RoutineVersion } from '@/types/routineHistory';
 import { getExercises as fetchAllUserExercises } from '@/services/exerciseService';
 import { 
   addRoutine, 
@@ -76,6 +79,8 @@ export default function RoutinesPage() {
   const [isOrderSaving, setIsOrderSaving] = useState(false);
   const [routineToEdit, setRoutineToEdit] = useState<Routine | null>(null);
   const [routineToDeleteId, setRoutineToDeleteId] = useState<string | null>(null);
+  const [routineForHistory, setRoutineForHistory] = useState<Routine | null>(null);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
 
   const fetchUserRoutines = useCallback(async (currentUserId: string) => {
     setIsLoading(true);
@@ -130,6 +135,11 @@ export default function RoutinesPage() {
   const handleOpenEditDialog = (routine: Routine) => {
     setRoutineToEdit(routine);
     setIsDialogOpen(true);
+  };
+
+  const handleOpenHistory = (routine: Routine) => {
+    setRoutineForHistory(routine);
+    setIsHistoryOpen(true);
   };
 
   const handleSaveRoutine = async (data: Omit<RoutineData, 'order'>, id?: string) => {
@@ -210,10 +220,20 @@ export default function RoutinesPage() {
     const profileSnap = await getDoc(doc(db, 'users', user.id, 'profile', 'profile'));
     const profile = profileSnap.exists() ? profileSnap.data() : {};
 
-    return buildRoutineReviewContext(routines, logs, {
-      goal: profile.goal,
-      daysPerWeekTarget: profile.daysPerWeekTarget,
-    });
+    // Recorded routine changes. Best-effort: the Coach is still useful without them.
+    let routineVersions: RoutineVersion[] = [];
+    try {
+      routineVersions = await getAllRoutineHistory(user.id);
+    } catch (err: any) {
+      console.warn('Could not load routine history for coach context:', err?.message);
+    }
+
+    return buildRoutineReviewContext(
+      routines,
+      logs,
+      { goal: profile.goal, daysPerWeekTarget: profile.daysPerWeekTarget },
+      routineVersions,
+    );
   }, [user?.id, routines]);
 
   async function handleDragEndRoutines(event: DragEndEvent) {
@@ -310,6 +330,7 @@ export default function RoutinesPage() {
                   routine={routine}
                   onEdit={handleOpenEditDialog}
                   onDelete={openDeleteConfirmation}
+                  onViewHistory={handleOpenHistory}
                 />
               ))}
             </div>
@@ -349,6 +370,13 @@ export default function RoutinesPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <RoutineHistorySheet
+        userId={user?.id}
+        routine={routineForHistory}
+        isOpen={isHistoryOpen}
+        setIsOpen={setIsHistoryOpen}
+      />
 
       {/* Floating AI Coach */}
       <CoachChatSheet mode="routine-review" loadContext={loadCoachContext} />
