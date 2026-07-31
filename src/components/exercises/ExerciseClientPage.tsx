@@ -234,7 +234,7 @@ export function ExerciseClientPage() {
                 const updatedExercises = r.exercises.map(e =>
                     e.id === exerciseToEdit.id ? { ...e, ...exercisePayload } : e
                 );
-                return updateRoutine(user.id!, r.id, { exercises: updatedExercises });
+                return updateRoutine(user.id!, r.id, { exercises: updatedExercises }, 'exercise-cascade');
             }));
             toast({
                 title: "Routines Synced",
@@ -302,7 +302,7 @@ export function ExerciseClientPage() {
               description: routine.description ?? '',
               order: routine.order,
               exercises: routine.exercises.filter(e => e.id !== exerciseToDeleteId),
-            }))
+            }), 'exercise-cascade')
           )
         );
         toast({ title: "Routines Updated", description: `${exerciseName} removed from ${affectedRoutines.length} routine(s).` });

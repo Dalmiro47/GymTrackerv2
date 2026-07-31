@@ -63,7 +63,10 @@ users/{userId}/
   routines/{id}           # Workout routines
   workoutLogs/{YYYY-MM-DD} # Daily logs
   performanceEntries/{exerciseId} # PRs & last performance
+  routineHistory/{routineId_epochMs} # Routine change snapshots (flat; outlives deleted routines)
 ```
+
+`firestore.rules` grants access via a single non-recursive `match /users/{userId}/{collection}/{docId}`. Any deeper path (e.g. `users/{uid}/routines/{rid}/versions/{vid}`) falls through to the deny-all default and fails at runtime with permission-denied — new collections must be flat siblings, or the rules need a deploy (a gated destructive op).
 
 ### AI Coach
 

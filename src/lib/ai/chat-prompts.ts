@@ -181,11 +181,34 @@ export function buildRoutineReviewSystemPrompt(context: RoutineReviewContext): s
     .flatMap((r) => r.exercises.map((ex) => ex.name))
     .join(', ');
 
+  // Routine change history — grouped by routine, newest first. Rendered only when
+  // changes have actually been recorded, so an empty history adds zero tokens.
+  let changeHistoryBlock = '';
+  if (context.changeLog && context.changeLog.entries.length > 0) {
+    const byRoutine = new Map<string, string[]>();
+    for (const entry of context.changeLog.entries) {
+      const lines = byRoutine.get(entry.routineName) ?? [];
+      lines.push(`- ${entry.date}: ${entry.summary}`);
+      byRoutine.set(entry.routineName, lines);
+    }
+    const grouped = [...byRoutine.entries()]
+      .map(([name, lines]) => `## ${name}\n${lines.join('\n')}`)
+      .join('\n');
+    const omitted = context.changeLog.omittedCount > 0
+      ? `\n(${context.changeLog.omittedCount} older change(s) not shown)`
+      : '';
+
+    changeHistoryBlock = `
+ROUTINE CHANGE HISTORY (newest first; only what changed, not full snapshots):
+${grouped}${omitted}
+`;
+  }
+
   return `You are "Coach de Programacion", an AI training program analyst embedded in a gym tracking app.
 
 ROUTINES:
 ${routineLines}
-
+${changeHistoryBlock}
 TRAINING HISTORY (recent weeks):
 ${summaryLines}
 
@@ -217,6 +240,9 @@ RULES:
 - Use full muscle group names (Chest, Back, Shoulders, Legs, Biceps, Triceps, Abs) in text.
 - When suggesting routine changes, specify which routine and which exercises to modify.
 - Do not invent data not shown above.
+- ROUTINE CHANGE HISTORY is COMPLETE for the dates it covers. If a change is not listed, it did not happen — never infer, invent or estimate one. Never state a change date that is not in the list.
+- Routine changes only started being recorded recently, so the history may not reach as far back as the training data. If asked about a period earlier than the oldest listed change, say the history does not go back that far.
+- Changes and results are CORRELATIONAL, never causal: say "since you swapped X, Y has moved" — never "the swap caused Y".
 
 KNOWN EXERCISES: ${knownExercises}
 

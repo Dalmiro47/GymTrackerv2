@@ -2,14 +2,14 @@
 claude --dangerously-skip-permissions 
 
 ## Pull Request to Github 
-git switch -c chore/groq-model-migration
+git switch -c feat/routine-editor-replace-parity
 
 ## Do ALL THE CHANGES 
 
 ## Pull Request to Github 
 git add -A 
-git commit -m "chore(ai): migrate deprecated Groq llama references to gpt-oss" 
-git push -u origin chore/groq-model-migration
+git commit -m "feat(routines): add in-place exercise replace and dedup shared picker" 
+git push -u origin feat/routine-editor-replace-parity
 
 ## Make local main match GitHub
 
@@ -24,5 +24,5 @@ git rev-parse HEAD
 git rev-parse origin/main 
  
 ## After merge, delete the branch
-git branch -D chore/groq-model-migration
+git branch -D feat/routine-editor-replace-parity
  
