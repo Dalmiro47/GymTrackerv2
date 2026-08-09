@@ -9,7 +9,7 @@ import { MUSCLE_GROUPS_LIST, type MuscleGroup } from '@/lib/constants';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { dedupeExercisesByName } from '@/lib/routineEditing';
+import { dedupeExercisesByNameAndMuscle } from '@/lib/routineEditing';
 
 interface AvailableExercisesSelectorProps {
   allExercises: Exercise[];
@@ -36,10 +36,12 @@ export function AvailableExercisesSelector({
     setSearchTerm('');
   }, [initialMuscleGroup]);
 
-  // The library can contain two exercises sharing a name; rendering both makes the
-  // picker untrustworthy. Dedupe once, then derive counts/filtering from the result.
+  // The library can contain the same exercise twice; rendering both makes the picker
+  // untrustworthy. Dedupe once, then derive counts/filtering from the result. The key
+  // includes the muscle group so a shared name across groups (e.g. "Dips" for Chest and
+  // for Triceps) stays visible as two distinct entries.
   const uniqueExercises = useMemo(
-    () => dedupeExercisesByName(allExercises),
+    () => dedupeExercisesByNameAndMuscle(allExercises),
     [allExercises]
   );
 

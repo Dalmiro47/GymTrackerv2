@@ -4,7 +4,7 @@ import * as path from 'path';
 import {
   replaceRoutineExerciseAt,
   removeRoutineExerciseAt,
-  dedupeExercisesByName,
+  dedupeExercisesByNameAndMuscle,
 } from '../src/lib/routineEditing';
 
 /**
@@ -63,25 +63,39 @@ test.describe('Routine editor replace parity', () => {
     expect(addEdit).toContain('initialMuscleGroup={exerciseBeingReplaced?.muscleGroup}');
   });
 
-  // (c) The picker renders NO duplicate exercise names.
-  test('picker list has no duplicate names', () => {
+  // (c) The picker collapses true duplicates (same name AND same muscle group).
+  test('picker list has no duplicate name+muscle-group entries', () => {
     const withDupes = [
       ex('a', 'Neutral-Grip Lat Pull down', 'Back'),
       ex('b', 'Bench Press', 'Chest'),
-      ex('c', 'Neutral-Grip Lat Pull down', 'Back'), // duplicate name, different id
+      ex('c', 'Neutral-Grip Lat Pull down', 'Back'), // true duplicate, different id
       ex('d', 'Bench Press', 'Chest'),
     ];
 
-    const rendered = dedupeExercisesByName(withDupes as any);
-    const names = rendered.map(e => e.name);
-    const uniqueNames = Array.from(new Set(names.map(n => n.trim().toLowerCase())));
+    const rendered = dedupeExercisesByNameAndMuscle(withDupes as any);
+    const keys = rendered.map(e => `${e.name.trim().toLowerCase()}::${e.muscleGroup.toLowerCase()}`);
 
-    expect(names.length).toBe(uniqueNames.length); // list is unique
+    expect(keys.length).toBe(new Set(keys).size); // list is unique
     expect(rendered.length).toBe(2);
 
     // And the shared picker actually renders the deduped list.
     const selector = read('components', 'routines', 'AvailableExercisesSelector.tsx');
-    expect(selector).toContain('dedupeExercisesByName');
+    expect(selector).toContain('dedupeExercisesByNameAndMuscle');
+  });
+
+  // (c2) A shared name across DIFFERENT muscle groups is two distinct exercises and
+  //      both must stay visible — e.g. "Dips" logged for Chest and for Triceps.
+  test('same name under different muscle groups is not collapsed', () => {
+    const sharedName = [
+      ex('dips-chest', 'Dips', 'Chest'),
+      ex('dips-triceps', 'Dips', 'Triceps'),
+      ex('dips-chest-dupe', 'dips ', 'Chest'), // true duplicate of the chest one
+    ];
+
+    const rendered = dedupeExercisesByNameAndMuscle(sharedName as any);
+
+    expect(rendered.length).toBe(2);
+    expect(rendered.map(e => e.id)).toEqual(['dips-chest', 'dips-triceps']);
   });
 
   // (d) Removing an exercise reduces count by exactly 1 and preserves the order
