@@ -103,6 +103,7 @@ All domain types are in `src/types/index.ts` — `Exercise`, `Routine`, `Workout
 - Constraints are hard guardrails, not problems to solve
 - Historical bugs mentioned as context = things to avoid, always
 - Deload invariant: in `useTrainingLog`, `currentLog` is *derived* (`useMemo`) from `originalLogState` — never store the deload-transformed view in state or write it back to the baseline; doing so compounded weight reductions and corrupted saved logs (fixed 2026-06)
+- Exercise identity = name + muscleGroup, never name alone. `dedupeExercisesByNameAndMuscle` feeds the shared picker (routines + Training Log's Add Exercise); keying on name alone silently hid "Dips" (Triceps) behind "Dips" (Chest) — the user only noticed by renaming one (fixed 2026-08)
 - Minimum viable plan: match the stated UX outcome with the minimum change needed
 - Do not add scope (refactors, extra configurability) unless explicitly asked
 - When proposing UX changes, separate effects/polish (welcome) from structural/layout changes (require explicit approval)

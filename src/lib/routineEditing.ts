@@ -44,16 +44,20 @@ export function removeRoutineExerciseAt(
 }
 
 /**
- * Deduplicate exercises by name (case-insensitive, trimmed), keeping the first
- * occurrence. The library can contain two exercises sharing a name (a user-created
- * duplicate of a seeded default, or cross-version seed remnants); rendering both
- * makes the picker untrustworthy.
+ * Deduplicate exercises by name + muscle group (case-insensitive, trimmed), keeping
+ * the first occurrence. The library can contain the same exercise twice (a user-created
+ * duplicate of a seeded default, or cross-version seed remnants); rendering both makes
+ * the picker untrustworthy.
+ *
+ * The muscle group is part of the key on purpose: a shared name across different muscle
+ * groups is a legitimate, distinct exercise (e.g. "Dips" logged for Chest and for
+ * Triceps). Keying on name alone hid one of them from the picker entirely.
  */
-export function dedupeExercisesByName<T extends Exercise>(exercises: T[]): T[] {
+export function dedupeExercisesByNameAndMuscle<T extends Exercise>(exercises: T[]): T[] {
   const seen = new Set<string>();
   const result: T[] = [];
   for (const ex of exercises) {
-    const key = ex.name.trim().toLowerCase();
+    const key = `${ex.name.trim().toLowerCase()}::${String(ex.muscleGroup ?? '').trim().toLowerCase()}`;
     if (seen.has(key)) continue;
     seen.add(key);
     result.push(ex);
