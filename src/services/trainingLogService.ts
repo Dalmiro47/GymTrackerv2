@@ -32,9 +32,16 @@ import { parseISO, startOfMonth, endOfMonth, format as fmt } from 'date-fns';
 import { stripUndefinedDeep } from '@/lib/sanitize';
 import { validWorkingSets, pickBestSet, isBetterPR } from '@/lib/pr';
 import { snapToHalf } from '@/lib/rounding';
+import { cachedFetch, invalidateCache } from '@/lib/sessionCache';
 
 const getUserWorkoutLogsCollectionPath = (userId: string) => `users/${userId}/workoutLogs`;
 const getUserPerformanceEntriesCollectionPath = (userId: string) => `users/${userId}/performanceEntries`;
+
+// Every cached read derived from workoutLogs (and the perf snapshots built on
+// them) shares this prefix, so one prefix invalidation on any log write keeps
+// them all consistent.
+const logsCachePrefix = (userId: string) => `wl:${userId}`;
+const perfCacheKey = (userId: string, exerciseId: string) => `${logsCachePrefix(userId)}:perf:${exerciseId}`;
 
 const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(min, n));
 
@@ -107,7 +114,8 @@ export const saveWorkoutLog = async (userId: string, date: string, workoutLogPay
   const logDocRef = doc(db, getUserWorkoutLogsCollectionPath(userId), date);
   try {
     const sanitizedPayload = stripUndefinedDeep(payloadForFirestore);
-    await setDoc(logDocRef, sanitizedPayload, { merge: true }); 
+    await setDoc(logDocRef, sanitizedPayload, { merge: true });
+    invalidateCache(logsCachePrefix(userId));
   } catch (error: any) {
     console.error(`[SERVICE] Error saving workout log for ${date}, user ${userId}:`, error);
     throw new Error(`Failed to save workout log. ${error.message}`);
@@ -122,24 +130,26 @@ export const getWorkoutLog = async (userId: string, date: string): Promise<Worko
     throw new Error("Date is required to fetch a workout log.");
   }
   const logDocRef = doc(db, getUserWorkoutLogsCollectionPath(userId), date);
-  try {
-    const docSnap = await getDoc(logDocRef);
-    if (docSnap.exists()) {
-      const logData = docSnap.data() as WorkoutLog;
-      // Normalize exercises for backward compatibility (and UI)
-      const exercisesNormalized = (logData.exercises || []).map(ex => ({
-        ...ex,
-        isProvisional: ex.isProvisional ?? false,
-        setStructure: ex.setStructure ?? 'normal',
-        setStructureOverride: ex.setStructureOverride ?? null,
-      }));
-      return { ...logData, exercises: exercisesNormalized };
+  return cachedFetch(`${logsCachePrefix(userId)}:log:${date}`, async () => {
+    try {
+      const docSnap = await getDoc(logDocRef);
+      if (docSnap.exists()) {
+        const logData = docSnap.data() as WorkoutLog;
+        // Normalize exercises for backward compatibility (and UI)
+        const exercisesNormalized = (logData.exercises || []).map(ex => ({
+          ...ex,
+          isProvisional: ex.isProvisional ?? false,
+          setStructure: ex.setStructure ?? 'normal',
+          setStructureOverride: ex.setStructureOverride ?? null,
+        }));
+        return { ...logData, exercises: exercisesNormalized };
+      }
+      return null;
+    } catch (error: any) {
+      console.error(`[SERVICE] Error fetching workout log for userId: ${userId}, date: ${date}:`, error);
+      throw new Error(`Failed to fetch workout log. ${error.message}`);
     }
-    return null;
-  } catch (error: any) {
-    console.error(`[SERVICE] Error fetching workout log for userId: ${userId}, date: ${date}:`, error);
-    throw new Error(`Failed to fetch workout log. ${error.message}`);
-  }
+  });
 };
 
 
@@ -150,6 +160,7 @@ export const deleteWorkoutLog = async (userId: string, date: string): Promise<vo
   const logDocRef = doc(db, getUserWorkoutLogsCollectionPath(userId), date);
   try {
     await deleteFirestoreDoc(logDocRef);
+    invalidateCache(logsCachePrefix(userId));
   } catch (error: any) {
     console.error(`[SERVICE] Error deleting workout log for ${date}, user ${userId}:`, error);
     throw new Error(`Failed to delete workout log. ${error.message}`);
@@ -171,33 +182,35 @@ export const getMonthLogFlags = async (
   const start = fmt(startOfMonth(month), 'yyyy-MM-dd');
   const end = fmt(endOfMonth(month), 'yyyy-MM-dd');
 
-  try {
-    const q = query(
-      logsCollectionRef,
-      where('date', '>=', start),
-      where('date', '<=', end),
-      orderBy('date', 'asc')
-    );
-    const snap = await getDocs(q);
+  return cachedFetch(`${logsCachePrefix(userId)}:month:${start}`, async () => {
+    try {
+      const q = query(
+        logsCollectionRef,
+        where('date', '>=', start),
+        where('date', '<=', end),
+        orderBy('date', 'asc')
+      );
+      const snap = await getDocs(q);
 
-    const logged: string[] = [];
-    const deload: string[] = [];
+      const logged: string[] = [];
+      const deload: string[] = [];
 
-    snap.forEach(docSnap => {
-      const id = docSnap.id; // "yyyy-MM-dd"
-      const data = docSnap.data() as WorkoutLog;
-      if (data?.isDeload === true) {
-        deload.push(id);
-      } else {
-        logged.push(id);
-      }
-    });
+      snap.forEach(docSnap => {
+        const id = docSnap.id; // "yyyy-MM-dd"
+        const data = docSnap.data() as WorkoutLog;
+        if (data?.isDeload === true) {
+          deload.push(id);
+        } else {
+          logged.push(id);
+        }
+      });
 
-    return { logged, deload };
-  } catch (e) {
-    console.error('[SERVICE] getMonthLogFlags error:', e);
-    return { logged: [], deload: [] };
-  }
+      return { logged, deload };
+    } catch (e) {
+      console.error('[SERVICE] getMonthLogFlags error:', e);
+      return { logged: [], deload: [] };
+    }
+  });
 };
 
 /**
@@ -214,23 +227,25 @@ export const getDeloadCountSince = async (
   const logsCollectionRef = collection(db, getUserWorkoutLogsCollectionPath(userId));
   const start = fmt(startDate, 'yyyy-MM-dd');
 
-  try {
-    const q = query(
-      logsCollectionRef,
-      where('date', '>=', start),
-      orderBy('date', 'asc')
-    );
-    const snap = await getDocs(q);
+  return cachedFetch(`${logsCachePrefix(userId)}:deloadCount:${start}`, async () => {
+    try {
+      const q = query(
+        logsCollectionRef,
+        where('date', '>=', start),
+        orderBy('date', 'asc')
+      );
+      const snap = await getDocs(q);
 
-    let count = 0;
-    snap.forEach(docSnap => {
-      if ((docSnap.data() as WorkoutLog)?.isDeload === true) count++;
-    });
-    return count;
-  } catch (e) {
-    console.error('[SERVICE] getDeloadCountSince error:', e);
-    return 0;
-  }
+      let count = 0;
+      snap.forEach(docSnap => {
+        if ((docSnap.data() as WorkoutLog)?.isDeload === true) count++;
+      });
+      return count;
+    } catch (e) {
+      console.error('[SERVICE] getDeloadCountSince error:', e);
+      return 0;
+    }
+  });
 };
 
 /**
@@ -248,18 +263,20 @@ export const getLogsSince = async (
   const logsCollectionRef = collection(db, getUserWorkoutLogsCollectionPath(userId));
   const start = fmt(startDate, 'yyyy-MM-dd');
 
-  try {
-    const q = query(
-      logsCollectionRef,
-      where('date', '>=', start),
-      orderBy('date', 'asc')
-    );
-    const snap = await getDocs(q);
-    return snap.docs.map(docSnap => docSnap.data() as WorkoutLog);
-  } catch (e) {
-    console.error('[SERVICE] getLogsSince error:', e);
-    return [];
-  }
+  return cachedFetch(`${logsCachePrefix(userId)}:since:${start}`, async () => {
+    try {
+      const q = query(
+        logsCollectionRef,
+        where('date', '>=', start),
+        orderBy('date', 'asc')
+      );
+      const snap = await getDocs(q);
+      return snap.docs.map(docSnap => docSnap.data() as WorkoutLog);
+    } catch (e) {
+      console.error('[SERVICE] getLogsSince error:', e);
+      return [];
+    }
+  });
 };
 
 export type PerformanceEntryInput = {
@@ -310,6 +327,7 @@ export const saveExercisePerformanceEntries = async (
     const batch = writeBatch(db);
     prepared.forEach(({ ref, payload }) => batch.set(ref, payload, { merge: true }));
     await batch.commit();
+    entries.forEach(({ exerciseId }) => invalidateCache(perfCacheKey(userId, exerciseId)));
   } catch (error: any) {
     console.error(`[SERVICE] saveExercisePerformanceEntries: Error saving performance entries:`, error);
     throw new Error(`Failed to save performance entries. ${error.message}`);
@@ -349,11 +367,8 @@ export const getLastLoggedPerformance = async (userId: string, exerciseId: strin
 export const getLastNonDeloadPerformance = async (userId: string, exerciseId: string): Promise<ExercisePerformanceEntry | null> => {
     if (!userId || !exerciseId) return null;
 
+    return cachedFetch(perfCacheKey(userId, exerciseId), async () => {
     try {
-        // First, get the overall performance entry which holds the definitive PR
-        const overallPerformanceEntry = await getLastLoggedPerformance(userId, exerciseId);
-
-        // Next, find the sets from the most recent non-deload day to use for pre-filling
         const logsColRef = collection(db, getUserWorkoutLogsCollectionPath(userId));
         const q = query(
             logsColRef,
@@ -361,7 +376,14 @@ export const getLastNonDeloadPerformance = async (userId: string, exerciseId: st
             orderBy("date", "desc"),
             limit(10) // Fetch a few recent logs to find a non-deload one
         );
-        const logsSnap = await getDocs(q);
+
+        // The overall performance entry (definitive PR) and the recent-logs
+        // query (last non-deload sets for pre-filling) are independent reads —
+        // issue them together instead of back to back.
+        const [overallPerformanceEntry, logsSnap] = await Promise.all([
+            getLastLoggedPerformance(userId, exerciseId),
+            getDocs(q),
+        ]);
         const lastNonDeloadLogDoc = logsSnap.docs.find(doc => doc.data()?.isDeload !== true);
 
         let lastSets: PerformanceSet[] = [];
@@ -397,6 +419,7 @@ export const getLastNonDeloadPerformance = async (userId: string, exerciseId: st
         // Fallback to the simplest fetch in case of query errors
         return await getLastLoggedPerformance(userId, exerciseId);
     }
+    });
 };
 
 
@@ -406,6 +429,7 @@ export const deleteAllPerformanceEntriesForExercise = async (userId: string, exe
     const performanceEntryDocRef = doc(db, getUserPerformanceEntriesCollectionPath(userId), exerciseId);
     try {
         await deleteFirestoreDoc(performanceEntryDocRef);
+        invalidateCache(perfCacheKey(userId, exerciseId));
     } catch (error: any) {
         console.error(`Error deleting performance entry for exercise ${exerciseId}:`, error);
     }
@@ -426,7 +450,10 @@ export const updatePerformanceEntryOnLogDelete = async (
   if (!perfSnap.exists()) {
     return;
   }
-  
+
+  // Every branch below rewrites or deletes the entry — drop the cached
+  // snapshot after whichever one runs (finally covers all exit points).
+  try {
   const logsCol = collection(db, getUserWorkoutLogsCollectionPath(userId));
   // Only the next most recent log is needed — bound the read instead of
   // fetching every log that ever contained this exercise.
@@ -497,7 +524,10 @@ export const updatePerformanceEntryOnLogDelete = async (
           personalRecord: deleteField() 
       });
     } else {
-        await setDoc(perfRef, finalData); 
+        await setDoc(perfRef, finalData);
     }
+  }
+  } finally {
+    invalidateCache(perfCacheKey(userId, exerciseId));
   }
 };

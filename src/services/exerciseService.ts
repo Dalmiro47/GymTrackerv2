@@ -15,13 +15,20 @@ import {
   updateDoc,
   arrayRemove,
 } from 'firebase/firestore';
-import { deleteAllPerformanceEntriesForExercise } from './trainingLogService'; 
+import { deleteAllPerformanceEntriesForExercise } from './trainingLogService';
 import { stripUndefinedDeep } from '@/lib/sanitize';
 import { buildExerciseDocId } from '@/lib/ids';
 import { defaultExercises } from '@/lib/defaultExercises';
+import { cachedFetch, invalidateCache } from '@/lib/sessionCache';
 
 const getUserExercisesCollectionPath = (userId: string) => `users/${userId}/exercises`;
+const exercisesCacheKey = (userId: string) => `exercises:${userId}`;
 const CURRENT_SEED_VERSION = 2;
+
+// Seeding is idempotent self-healing against server state; once it has run in
+// this session there is nothing new to heal (deleted defaults are tombstoned
+// and must NOT be re-added), so page revisits skip its full-collection read.
+const seededUserIds = new Set<string>();
 
 export type SeedResult = { addedCount: number; bumpedSeedVersion: boolean };
 
@@ -35,8 +42,14 @@ export type SeedResult = { addedCount: number; bumpedSeedVersion: boolean };
  * 5. Create only the default exercises that are missing and not tombstoned.
  * 6. Update the `seedVersion` on the user's profile if necessary.
  */
-export async function ensureExercisesSeeded(userId: string): Promise<SeedResult> {
+export async function ensureExercisesSeeded(
+  userId: string,
+  options?: { force?: boolean }
+): Promise<SeedResult> {
   if (!userId) throw new Error("User ID is required for seeding.");
+  if (!options?.force && seededUserIds.has(userId)) {
+    return { addedCount: 0, bumpedSeedVersion: false };
+  }
 
   const profileRef = doc(db, 'users', userId, 'profile', 'profile');
   const exercisesCol = collection(db, 'users', userId, 'exercises');
@@ -58,6 +71,7 @@ export async function ensureExercisesSeeded(userId: string): Promise<SeedResult>
     const bumpedSeedVersion = prevSeedVersion < CURRENT_SEED_VERSION;
 
     if (missing.length === 0 && !bumpedSeedVersion) {
+      seededUserIds.add(userId);
       return { addedCount: 0, bumpedSeedVersion: false };
     }
 
@@ -74,6 +88,10 @@ export async function ensureExercisesSeeded(userId: string): Promise<SeedResult>
     }
 
     await batch.commit();
+    seededUserIds.add(userId);
+    if (missing.length > 0) {
+      invalidateCache(exercisesCacheKey(userId));
+    }
     return { addedCount: missing.length, bumpedSeedVersion };
 
   } catch (error: any) {
@@ -134,6 +152,7 @@ export async function addExercise(userId: string, data: ExerciseData): Promise<E
       const payload = stripUndefinedDeep(raw);
 
       await setDoc(ref, payload);
+      invalidateCache(exercisesCacheKey(userId));
       return { id: candidateId, ...(payload as ExerciseData) };
     }
     candidateId = `${baseId}-${suffix++}`;
@@ -142,19 +161,21 @@ export async function addExercise(userId: string, data: ExerciseData): Promise<E
 
 export const getExercises = async (userId: string): Promise<Exercise[]> => {
   if (!userId) throw new Error("User ID is required to get exercises.");
-  try {
-    const userExercisesColRef = collection(db, getUserExercisesCollectionPath(userId));
-    const q = query(userExercisesColRef, orderBy('name'));
-    const querySnapshot = await getDocs(q);
-    const exercises: Exercise[] = [];
-    querySnapshot.forEach((doc) => {
-      exercises.push({ id: doc.id, ...(doc.data() as ExerciseData) });
-    });
-    return exercises;
-  } catch (error: any) {
-    console.error("Error fetching exercises from Firestore: ", error);
-    throw new Error("Failed to fetch exercises.");
-  }
+  return cachedFetch(exercisesCacheKey(userId), async () => {
+    try {
+      const userExercisesColRef = collection(db, getUserExercisesCollectionPath(userId));
+      const q = query(userExercisesColRef, orderBy('name'));
+      const querySnapshot = await getDocs(q);
+      const exercises: Exercise[] = [];
+      querySnapshot.forEach((doc) => {
+        exercises.push({ id: doc.id, ...(doc.data() as ExerciseData) });
+      });
+      return exercises;
+    } catch (error: any) {
+      console.error("Error fetching exercises from Firestore: ", error);
+      throw new Error("Failed to fetch exercises.");
+    }
+  });
 };
 
 export const updateExercise = async (userId: string, exerciseId: string, exerciseData: Partial<ExerciseData>): Promise<void> => {
@@ -170,6 +191,7 @@ export const updateExercise = async (userId: string, exerciseId: string, exercis
     });
     
     await setDoc(exerciseDocRef, dataToUpdate, { merge: true });
+    invalidateCache(exercisesCacheKey(userId));
   } catch (error: any) {
     console.error("Error updating exercise in Firestore: ", error);
     throw new Error("Failed to update exercise.");
@@ -182,6 +204,7 @@ export const deleteExercise = async (userId: string, exerciseId: string): Promis
   
   const exerciseDocRef = doc(db, getUserExercisesCollectionPath(userId), exerciseId);
   await deleteDoc(exerciseDocRef);
+  invalidateCache(exercisesCacheKey(userId));
   await deleteAllPerformanceEntriesForExercise(userId, exerciseId);
 
   const isDefault = defaultExercises.some(ex => ex.id === exerciseId);
@@ -225,7 +248,8 @@ export async function restoreHiddenDefaults(
     deletedDefaultIds: arrayRemove(...exerciseIds)
   });
 
-  const result = await ensureExercisesSeeded(userId);
+  // force: the session-skip must not swallow re-seeding the restored defaults.
+  const result = await ensureExercisesSeeded(userId, { force: true });
   return result;
 }
 
