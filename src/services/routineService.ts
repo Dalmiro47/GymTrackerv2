@@ -20,8 +20,10 @@ import {
 import { slugify } from '@/lib/utils';
 import { recordRoutineVersion } from '@/services/routineHistoryService';
 import type { RoutineChangeSource } from '@/types/routineHistory';
+import { cachedFetch, invalidateCache } from '@/lib/sessionCache';
 
 const getUserRoutinesCollectionPath = (userId: string) => `users/${userId}/routines`;
+const routinesCacheKey = (userId: string) => `routines:${userId}`;
 
 // Add a new routine for a user
 export const addRoutine = async (userId: string, routineData: Omit<RoutineData, 'order'>): Promise<Routine> => {
@@ -72,6 +74,7 @@ export const addRoutine = async (userId: string, routineData: Omit<RoutineData, 
     const routineDocRef = doc(userRoutinesColRef, routineIdSlug);
 
     await setDoc(routineDocRef, dataToSave);
+    invalidateCache(routinesCacheKey(userId));
 
     // History is best-effort and never blocks the routine write.
     await recordRoutineVersion(userId, routineIdSlug, dataToSave, 'created');
@@ -86,20 +89,22 @@ export const addRoutine = async (userId: string, routineData: Omit<RoutineData, 
 // Get all routines for a user, ordered by 'order'
 export const getRoutines = async (userId: string): Promise<Routine[]> => {
   if (!userId) throw new Error("User ID is required to get routines.");
-  try {
-    const userRoutinesColRef = collection(db, getUserRoutinesCollectionPath(userId));
-    // Query to order routines by the 'order' field
-    const q = query(userRoutinesColRef, orderBy("order", "asc"));
-    const querySnapshot = await getDocs(q); 
-    const routines: Routine[] = [];
-    querySnapshot.forEach((doc) => {
-      routines.push({ id: doc.id, ...(doc.data() as RoutineData) });
-    });
-    return routines;
-  } catch (error: any) {
-    console.error("Error fetching routines from Firestore: ", error);
-    throw new Error(`Failed to fetch routines. Firestore error: ${error.message || 'Unknown error'}. Ensure 'order' field index is created in Firestore for users/{userId}/routines.`);
-  }
+  return cachedFetch(routinesCacheKey(userId), async () => {
+    try {
+      const userRoutinesColRef = collection(db, getUserRoutinesCollectionPath(userId));
+      // Query to order routines by the 'order' field
+      const q = query(userRoutinesColRef, orderBy("order", "asc"));
+      const querySnapshot = await getDocs(q);
+      const routines: Routine[] = [];
+      querySnapshot.forEach((doc) => {
+        routines.push({ id: doc.id, ...(doc.data() as RoutineData) });
+      });
+      return routines;
+    } catch (error: any) {
+      console.error("Error fetching routines from Firestore: ", error);
+      throw new Error(`Failed to fetch routines. Firestore error: ${error.message || 'Unknown error'}. Ensure 'order' field index is created in Firestore for users/{userId}/routines.`);
+    }
+  });
 };
 
 // Get a single routine by ID
@@ -164,6 +169,7 @@ export const updateRoutine = async (
     }
     // Note: The 'order' field is managed by updateRoutinesOrder, not here.
     await updateDoc(routineDocRef, dataToUpdate);
+    invalidateCache(routinesCacheKey(userId));
 
     if (beforeData) {
       const afterData = { ...beforeData, ...dataToUpdate };
@@ -197,7 +203,8 @@ export const deleteRoutine = async (userId: string, routineId: string): Promise<
     }
 
     await deleteDoc(routineDocRef);
-    // Note: After deleting, you might want to re-order remaining routines. 
+    invalidateCache(routinesCacheKey(userId));
+    // Note: After deleting, you might want to re-order remaining routines.
     // This can be complex (e.g., if you delete from the middle).
     // For now, it will leave gaps in 'order' numbers, which getRoutines handles fine.
     // A more robust solution might re-run updateRoutinesOrder on the remaining items.
@@ -225,6 +232,7 @@ export const updateRoutinesOrder = async (userId: string, orderedRoutineIds: str
 
   try {
     await batch.commit();
+    invalidateCache(routinesCacheKey(userId));
   } catch (error: any) {
     console.error("Error updating routines order in Firestore:", error);
     throw new Error(`Failed to update routines order. Firestore error: ${error.message || 'Unknown error'}`);
