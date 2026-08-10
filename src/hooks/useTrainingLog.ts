@@ -372,6 +372,17 @@ export const useTrainingLog = (initialDate: Date) => {
 
   const addExerciseToLog = async (exercise: Exercise, index?: number) => {
     if (!user?.id) return;
+
+    // One exercise per day, same rule as routines. The picker already marks logged
+    // exercises as "Added"; this guards the other entry points.
+    if (originalLogState?.exercises.some(ex => ex.exerciseId === exercise.id)) {
+      toast({
+        title: "Already in today's log",
+        description: `${exercise.name} is already logged for this day. Add sets to the existing entry instead.`,
+      });
+      return;
+    }
+
     const dateOfLog = format(selectedDate, 'yyyy-MM-dd');
 
     const performanceEntry = await fetchExercisePerformanceData(exercise.id);
