@@ -18,6 +18,8 @@ interface AddExerciseDialogProps {
   availableExercises: Exercise[];
   isLoadingExercises: boolean;
   onAddExercise: (exercise: Exercise) => void;
+  /** Exercise IDs already in today's log — shown as "Added" and not selectable. */
+  loggedExerciseIds?: string[];
 }
 
 export function AddExerciseDialog({
@@ -26,10 +28,12 @@ export function AddExerciseDialog({
   availableExercises,
   isLoadingExercises,
   onAddExercise,
+  loggedExerciseIds = [],
 }: AddExerciseDialogProps) {
 
   // Adapter: The selector gives us an ID and boolean. We need to find the object and pass it up.
   const handleSelectionChange = (exerciseId: string) => {
+    if (loggedExerciseIds.includes(exerciseId)) return;
     const exercise = availableExercises.find(ex => ex.id === exerciseId);
     if (exercise) {
       onAddExercise(exercise);
@@ -45,7 +49,7 @@ export function AddExerciseDialog({
       >
         <DialogHeader className="p-6 pb-2 shrink-0">
           <DialogTitle className="font-headline">Add Exercise</DialogTitle>
-          <DialogDescription>Select an exercise to add to your workout log.</DialogDescription>
+          <DialogDescription>Select an exercise to add to your workout log. Exercises already logged today are marked as added.</DialogDescription>
         </DialogHeader>
 
         <div className="flex-grow overflow-hidden p-6 pt-2">
@@ -55,6 +59,7 @@ export function AddExerciseDialog({
                 isLoadingExercises={isLoadingExercises}
                 onSelectionChange={handleSelectionChange}
                 mode="single"
+                disabledExerciseIds={loggedExerciseIds}
             />
         </div>
 

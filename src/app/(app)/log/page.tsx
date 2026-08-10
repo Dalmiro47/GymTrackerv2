@@ -193,7 +193,12 @@ function TrainingLogPageContent() {
     updateOverallLogNotes(e.target.value);
   };
 
+  // Row ids (LoggedExercise.id) — for dnd-kit sorting only.
   const loggedExerciseIds = useMemo(() => currentLog?.exercises.map(ex => ex.id) || [], [currentLog]);
+  // Library ids (Exercise.id) — the identity used to keep an exercise from being logged
+  // twice on the same day. Never mix the two: LoggedExercise.id is a composite row id and
+  // will never match a library exercise id.
+  const loggedExerciseDefIds = useMemo(() => currentLog?.exercises.map(ex => ex.exerciseId) || [], [currentLog]);
 
   const handleDeleteConfirmed = async () => {
     await deleteCurrentLog();
@@ -509,6 +514,7 @@ function TrainingLogPageContent() {
         setIsOpen={setIsAddExerciseDialogOpen}
         availableExercises={availableExercises}
         isLoadingExercises={isLoadingExercises}
+        loggedExerciseIds={loggedExerciseDefIds}
         onAddExercise={(exercise) => {
           if (exerciseInsertionIndex !== null) {
             addExerciseToLog(exercise, exerciseInsertionIndex);
@@ -520,7 +526,7 @@ function TrainingLogPageContent() {
       <ReplaceExerciseDialog
         isOpen={isReplaceExerciseDialogOpen}
         setIsOpen={setIsReplaceExerciseDialogOpen}
-        availableExercises={availableExercises.filter(ex => !loggedExerciseIds.includes(ex.id))}
+        availableExercises={availableExercises.filter(ex => !loggedExerciseDefIds.includes(ex.id))}
         isLoadingExercises={isLoadingExercises}
         onReplaceExercise={handleReplaceExercise}
         initialMuscleGroup={exerciseToReplace?.muscleGroup}

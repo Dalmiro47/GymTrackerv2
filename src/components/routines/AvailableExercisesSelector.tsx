@@ -16,8 +16,10 @@ interface AvailableExercisesSelectorProps {
   selectedExerciseIds: string[];
   onSelectionChange: (exerciseId: string, isSelected: boolean) => void;
   isLoadingExercises: boolean;
-  mode?: 'multi' | 'single'; 
-  initialMuscleGroup?: MuscleGroup | null; 
+  mode?: 'multi' | 'single';
+  initialMuscleGroup?: MuscleGroup | null;
+  /** Exercises that are already in the target (e.g. logged today). Shown, but not selectable. */
+  disabledExerciseIds?: string[];
 }
 
 export function AvailableExercisesSelector({
@@ -27,6 +29,7 @@ export function AvailableExercisesSelector({
   isLoadingExercises,
   mode = 'multi',
   initialMuscleGroup = null,
+  disabledExerciseIds = [],
 }: AvailableExercisesSelectorProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeMuscleGroup, setActiveMuscleGroup] = useState<MuscleGroup | 'All' | null>(initialMuscleGroup);
@@ -72,21 +75,46 @@ export function AvailableExercisesSelector({
     return temp;
   }, [uniqueExercises, searchTerm, activeMuscleGroup]);
 
-  // VIEW 1: Muscle Group Grid
-  if (activeMuscleGroup === null && searchTerm === '') {
-    return (
-      <div className="flex flex-col h-full gap-4">
-        <div className="relative">
+  // The muscle-group grid and the filtered list are two views of ONE tree — never two
+  // separate `return`s. Typing the first character flips grid -> list; if each view owned
+  // its own <Input>, React would unmount the focused field and mobile keyboards would
+  // close after every first keystroke. The search box below is rendered once, always.
+  const isGridView = activeMuscleGroup === null && searchTerm === '';
+
+  return (
+    <div className={cn("flex flex-col h-full", isGridView ? "gap-4" : "gap-3")}>
+      <div className="flex items-center gap-2">
+        {!isGridView && (
+          <Button
+              variant="ghost"
+              size="sm"
+              className="h-9 px-2 -ml-2 text-muted-foreground shrink-0"
+              onClick={() => {
+                  setActiveMuscleGroup(null);
+                  setSearchTerm('');
+              }}
+          >
+              <ArrowLeft className="h-4 w-4 mr-1" />
+              Categories
+          </Button>
+        )}
+        <div className="relative flex-grow">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="Search all exercises..."
+            placeholder={
+              isGridView || activeMuscleGroup === null || activeMuscleGroup === 'All'
+                ? 'Search all exercises...'
+                : `Search ${activeMuscleGroup} exercises...`
+            }
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-9"
+            className={cn("pl-9", !isGridView && "h-9")}
           />
         </div>
-        
-        <ScrollArea className="flex-grow -mx-6 px-6"> 
+      </div>
+
+      {isGridView ? (
+        <ScrollArea className="flex-grow -mx-6 px-6">
           <div className="grid grid-cols-2 gap-3 pb-4">
             <button
                 onClick={() => setActiveMuscleGroup('All')}
@@ -103,7 +131,7 @@ export function AvailableExercisesSelector({
 
             {MUSCLE_GROUPS_LIST.map(mg => {
               const count = exerciseCounts[mg] || 0;
-              if (count === 0) return null; 
+              if (count === 0) return null;
               return (
                 <button
                   key={mg}
@@ -117,54 +145,29 @@ export function AvailableExercisesSelector({
             })}
           </div>
         </ScrollArea>
-      </div>
-    );
-  }
-
-  // VIEW 2: Exercise List (Filtered)
-  return (
-    <div className="flex flex-col h-full gap-3">
-      <div className="flex items-center gap-2">
-        <Button 
-            variant="ghost" 
-            size="sm" 
-            className="h-9 px-2 -ml-2 text-muted-foreground"
-            onClick={() => {
-                setActiveMuscleGroup(null);
-                setSearchTerm('');
-            }}
-        >
-            <ArrowLeft className="h-4 w-4 mr-1" />
-            Categories
-        </Button>
-        <div className="relative flex-grow">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder={`Search ${activeMuscleGroup === 'All' ? '' : activeMuscleGroup} exercises...`}
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-9 h-9"
-          />
-        </div>
-      </div>
-
+      ) : (
       <div className="flex-grow border rounded-md bg-background overflow-hidden relative">
          <ScrollArea className="h-full w-full p-2">
             {filteredExercises.length > 0 ? (
               <div className="grid grid-cols-1 gap-2">
                 {filteredExercises.map(exercise => {
                   const isSelected = selectedExerciseIds.includes(exercise.id);
-                  
+                  const isDisabled = disabledExerciseIds.includes(exercise.id);
+
                   return (
                     <div
                       key={exercise.id}
+                      aria-disabled={isDisabled || undefined}
                       className={cn(
-                        "flex items-center justify-between p-3 rounded-lg border transition-all cursor-pointer",
-                        mode === 'multi' && isSelected 
-                            ? "bg-primary/5 border-primary shadow-sm" 
-                            : "hover:bg-muted/50 border-transparent bg-muted/10"
+                        "flex items-center justify-between p-3 rounded-lg border transition-all",
+                        isDisabled
+                            ? "opacity-50 cursor-not-allowed border-transparent bg-muted/10"
+                            : mode === 'multi' && isSelected
+                                ? "cursor-pointer bg-primary/5 border-primary shadow-sm"
+                                : "cursor-pointer hover:bg-muted/50 border-transparent bg-muted/10"
                       )}
                       onClick={() => {
+                          if (isDisabled) return;
                           if (mode === 'single') {
                               onSelectionChange(exercise.id, true);
                           } else {
@@ -178,8 +181,13 @@ export function AvailableExercisesSelector({
                         </p>
                         <p className="text-xs text-muted-foreground">{exercise.muscleGroup}</p>
                       </div>
-                      
-                      {mode === 'multi' ? (
+
+                      {isDisabled ? (
+                          <Badge variant="secondary" className="shrink-0 gap-1 font-normal">
+                              <Check className="h-3 w-3" />
+                              Added
+                          </Badge>
+                      ) : mode === 'multi' ? (
                           isSelected ? (
                               <div className="h-6 w-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center shrink-0 animate-in zoom-in-50 duration-200">
                                   <Check className="h-3.5 w-3.5" />
@@ -203,6 +211,7 @@ export function AvailableExercisesSelector({
             )}
          </ScrollArea>
       </div>
+      )}
     </div>
   );
 }
