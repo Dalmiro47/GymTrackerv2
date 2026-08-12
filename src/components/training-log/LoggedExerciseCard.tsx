@@ -7,7 +7,8 @@ import { computeWarmup, inferWarmupTemplate, WarmupInput, type WarmupStep } from
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { PlusCircle, Trash2, GripVertical, Settings2, ArrowLeftRight, Flame, TrendingUp, Dumbbell, X } from 'lucide-react';
+import { PlusCircle, Trash2, GripVertical, Settings2, ArrowLeftRight, Flame, TrendingUp, Dumbbell, X, ArrowUpCircle, ArrowDownCircle } from 'lucide-react';
+import { parseRepRange, isRepGoalReached, isBelowRepRange } from '@/lib/repGoal';
 import { SetInputRow } from './SetInputRow'; 
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -207,7 +208,38 @@ export function LoggedExerciseCard({
   }, [effectiveSetStructure]);
 
   const borderColor = SET_STRUCTURE_COLORS[localStructure]?.border ?? 'hsl(var(--border))';
-  
+
+  // Progressive-overload cue: every set at the top of the exercise's rep range
+  // means it's time to add weight; every set under the bottom means the load is
+  // too heavy. Reads `localSets` so it reacts as you type. Suppressed in Deload
+  // Mode — the shown values are a derived, reduced view.
+  const repRange = useMemo(
+    () => parseRepRange(loggedExercise.progressiveOverload),
+    [loggedExercise.progressiveOverload]
+  );
+  const rawCue = useMemo<'above' | 'below' | null>(() => {
+    if (isReadOnly || !repRange) return null;
+    if (isRepGoalReached(localSets, repRange)) return 'above';
+    if (isBelowRepRange(localSets, repRange)) return 'below';
+    return null;
+  }, [isReadOnly, localSets, repRange]);
+
+  // The under-range cue fires on a single set, which puts it in the path of every
+  // keystroke — typing "12" into an 8–12 range passes through "1". Let it settle
+  // before showing, but drop it immediately once it no longer applies. ("above"
+  // needs every set at the top, so it can't trigger mid-typing and isn't delayed.)
+  const [belowCueSettled, setBelowCueSettled] = useState(false);
+  useEffect(() => {
+    if (rawCue !== 'below') {
+      setBelowCueSettled(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setBelowCueSettled(true), 600);
+    return () => window.clearTimeout(timer);
+  }, [rawCue]);
+
+  const repCue = rawCue === 'below' && !belowCueSettled ? null : rawCue;
+
   const style = useMemo<React.CSSProperties>(() => ({
     transform: CSS.Transform.toString(transform),
     transition,
@@ -313,6 +345,8 @@ export function LoggedExerciseCard({
           "shadow-sm transition-all rounded-lg border",
           "border-[var(--card-border-color)]",
           localStructure !== 'normal' && "border-2",
+          // No rep-cue ring here on purpose: this border is the set-structure
+          // channel. The cue lives in the sets band inside CardContent.
           isDragging && "ring-2 ring-primary"
         )}
       >
@@ -366,7 +400,14 @@ export function LoggedExerciseCard({
                 </span>
             )}
             {loggedExercise.progressiveOverload && (
-              <span className="inline-flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground leading-tight">
+              <span
+                className={cn(
+                  "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] leading-tight",
+                  repCue === 'above' && "border border-success/30 bg-success/10 font-medium text-success",
+                  repCue === 'below' && "border border-chart-4/30 bg-chart-4/10 font-medium text-chart-4",
+                  !repCue && "bg-muted text-muted-foreground"
+                )}
+              >
                 <TrendingUp aria-hidden="true" className="h-3 w-3" />
                 {loggedExercise.progressiveOverload}
               </span>
@@ -390,36 +431,81 @@ export function LoggedExerciseCard({
             setIsEditing(!!(active && contentRef.current?.contains(active)));
           }}
         >
-          {/* column headers */}
-          <div className="grid grid-cols-[2rem_1fr_auto_1fr_auto_2.25rem] items-center gap-2 text-xs font-medium text-muted-foreground">
-            <span className="w-full text-center">Set</span>
-            <span className="w-full text-center">Reps</span>
-            <span className="invisible select-none w-full text-center" aria-hidden>x</span>
-            <span className="w-full text-center">Weight</span>
-            <span className="invisible select-none w-full text-center" aria-hidden>kg</span>
-            <span className="invisible" aria-hidden />
-          </div>
+          {/* Rep-cue band. The card's outer border belongs to the set-structure
+              palette, so the cue can't use it — a second ring there reads as two
+              competing outlines. Instead the sets section itself becomes the
+              highlight: a full-bleed tinted band with only top/bottom edges, so
+              nothing ever runs parallel to the structure border.
+              Always rendered (only its colors toggle) so the set inputs are never
+              remounted mid-typing, and its padding never shifts the layout. */}
+          <div
+            className={cn(
+              "-mx-4 px-4 py-3 space-y-3 border-y border-transparent transition-colors duration-300",
+              repCue === 'above' && "border-success/25 bg-success/5",
+              repCue === 'below' && "border-chart-4/25 bg-chart-4/5"
+            )}
+          >
+            {repCue && repRange && (
+              <p
+                role="status"
+                className={cn(
+                  "flex items-start gap-2 text-xs leading-snug",
+                  repCue === 'above' ? "text-success" : "text-chart-4"
+                )}
+              >
+                {repCue === 'above' ? (
+                  <ArrowUpCircle aria-hidden="true" className="h-4 w-4 shrink-0 mt-px" />
+                ) : (
+                  <ArrowDownCircle aria-hidden="true" className="h-4 w-4 shrink-0 mt-px" />
+                )}
+                <span>
+                  {repCue === 'above' ? (
+                    <>
+                      <span className="font-semibold">Rep goal reached.</span>{' '}
+                      Every set is at {repRange.max}+ reps — increase the weight to keep overloading.
+                    </>
+                  ) : (
+                    <>
+                      <span className="font-semibold">Below your rep range.</span>{' '}
+                      At least one set is under {repRange.min} reps — lower the weight, or update the
+                      range on the exercise if this load is right.
+                    </>
+                  )}
+                </span>
+              </p>
+            )}
 
-          {localSets.map((set, index) => (
-            <SetInputRow
-              key={set.id}
-              set={set}
-              index={index}
-              onSetChange={handleSetChange}
-              onRemoveSet={() => removeSet(set.id)}
-              isProvisional={set.isProvisional}
-              onInteract={onMarkAsInteracted}
-              disabled={isReadOnly}
-              weightDisplay={weightDisplays[index] ?? ''}
-              setWeightDisplay={(val) =>
-                setWeightDisplays(prev => {
-                  const next = [...prev];
-                  next[index] = val;
-                  return next;
-                })
-              }
-            />
-          ))}
+            {/* column headers */}
+            <div className="grid grid-cols-[2rem_1fr_auto_1fr_auto_2.25rem] items-center gap-2 text-xs font-medium text-muted-foreground">
+              <span className="w-full text-center">Set</span>
+              <span className="w-full text-center">Reps</span>
+              <span className="invisible select-none w-full text-center" aria-hidden>x</span>
+              <span className="w-full text-center">Weight</span>
+              <span className="invisible select-none w-full text-center" aria-hidden>kg</span>
+              <span className="invisible" aria-hidden />
+            </div>
+
+            {localSets.map((set, index) => (
+              <SetInputRow
+                key={set.id}
+                set={set}
+                index={index}
+                onSetChange={handleSetChange}
+                onRemoveSet={() => removeSet(set.id)}
+                isProvisional={set.isProvisional}
+                onInteract={onMarkAsInteracted}
+                disabled={isReadOnly}
+                weightDisplay={weightDisplays[index] ?? ''}
+                setWeightDisplay={(val) =>
+                  setWeightDisplays(prev => {
+                    const next = [...prev];
+                    next[index] = val;
+                    return next;
+                  })
+                }
+              />
+            ))}
+          </div>
 
           <div className="pt-2">
             <Separator className="mb-4 border-dashed" />
