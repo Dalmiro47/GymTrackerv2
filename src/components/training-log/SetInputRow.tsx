@@ -5,7 +5,7 @@ import React, { useState, useEffect } from 'react';
 import type { LoggedSet } from '@/types';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Trash2 } from 'lucide-react';
+import { Trash2, ArrowUpCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatWeightHalf, snapToHalf } from '@/lib/rounding';
 
@@ -20,10 +20,13 @@ interface SetInputRowProps {
   disabled?: boolean;
   weightDisplay: string;
   setWeightDisplay: (value: string) => void;
+  /** Reps to aim for next session on THIS set — the one set the card picked to
+   *  progress. Display-only: it never touches `set.reps`. */
+  repTarget?: number | null;
 }
 
-export function SetInputRow({ set, index, onSetChange, onRemoveSet, isProvisional, onInteract, disabled, weightDisplay, setWeightDisplay }: SetInputRowProps) {
-  
+export function SetInputRow({ set, index, onSetChange, onRemoveSet, isProvisional, onInteract, disabled, weightDisplay, setWeightDisplay, repTarget }: SetInputRowProps) {
+
   const change = (field: 'reps'|'weight', v: string) => {
     onSetChange(index, field, v); // allow '' to go through -> becomes null in parent
     onInteract();
@@ -73,7 +76,10 @@ export function SetInputRow({ set, index, onSetChange, onRemoveSet, isProvisiona
         }}
         className={cn(
           "h-10 text-sm font-medium tabular-nums text-center placeholder:text-center placeholder:font-normal",
-          isProvisional && "bg-muted/40 dark:bg-muted/20 placeholder:text-muted-foreground/70 opacity-80"
+          isProvisional && "bg-muted/40 dark:bg-muted/20 placeholder:text-muted-foreground/70 opacity-80",
+          // Marks the one set to push next. A tint on the box itself, not a ring
+          // on the card — the card border is the set-structure channel.
+          repTarget != null && "border-primary/50 bg-primary/5 text-primary"
         )}
       />
 
@@ -176,6 +182,19 @@ export function SetInputRow({ set, index, onSetChange, onRemoveSet, isProvisiona
         className="text-muted-foreground hover:text-destructive h-9 w-9">
         <Trash2 className="h-4 w-4" />
       </Button>
+
+      {/* Goal for this set. Placed as a second grid line starting at the reps
+          column, so it lines up with the box it refers to without a magic
+          padding value — and it wraps UNDER the inputs rather than between
+          them, so it can never reflow the box being typed in. */}
+      {repTarget != null && (
+        <p className="col-start-2 col-span-5 flex items-center gap-1 text-[11px] font-medium leading-tight text-primary">
+          <ArrowUpCircle aria-hidden="true" className="h-3 w-3 shrink-0" />
+          <span>
+            Goal: <span className="tabular-nums font-semibold">{repTarget}</span> reps next session
+          </span>
+        </p>
+      )}
     </div>
   );
 }

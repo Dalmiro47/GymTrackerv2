@@ -8,7 +8,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { PlusCircle, Trash2, GripVertical, Settings2, ArrowLeftRight, Flame, TrendingUp, Dumbbell, X, ArrowUpCircle, ArrowDownCircle } from 'lucide-react';
-import { parseRepRange, isRepGoalReached, isBelowRepRange } from '@/lib/repGoal';
+import { parseRepRange, isRepGoalReached, isBelowRepRange, getNextRepTarget, suggestWeightBump, type NextRepTarget } from '@/lib/repGoal';
+import { formatWeightHalf } from '@/lib/rounding';
 import { SetInputRow } from './SetInputRow'; 
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -240,6 +241,33 @@ export function LoggedExerciseCard({
 
   const repCue = rawCue === 'below' && !belowCueSettled ? null : rawCue;
 
+  // "What do I do next?" for the in-range case the two cues above leave open.
+  // Only one of the three ever shows: the target yields to an active cue.
+  const rawNextTarget = useMemo<NextRepTarget | null>(() => {
+    if (isReadOnly || rawCue) return null;
+    return getNextRepTarget(localSets, repRange);
+  }, [isReadOnly, rawCue, localSets, repRange]);
+
+  // Every keystroke re-targets (9 → 1 → 10 walks through three different answers),
+  // and this one renders inside a set row, so an un-delayed version would shuffle
+  // the rows as you type. Show a settled snapshot instead: it appears once typing
+  // stops and disappears at once when it no longer applies.
+  // Only meaningful for the "above" cue, so it isn't computed for the others.
+  const weightBump = useMemo(
+    () => (repCue === 'above' ? suggestWeightBump(localSets) : null),
+    [repCue, localSets]
+  );
+
+  const [nextTarget, setNextTarget] = useState<NextRepTarget | null>(null);
+  useEffect(() => {
+    if (!rawNextTarget) {
+      setNextTarget(null);
+      return;
+    }
+    const timer = window.setTimeout(() => setNextTarget(rawNextTarget), 600);
+    return () => window.clearTimeout(timer);
+  }, [rawNextTarget]);
+
   const style = useMemo<React.CSSProperties>(() => ({
     transform: CSS.Transform.toString(transform),
     transition,
@@ -462,7 +490,19 @@ export function LoggedExerciseCard({
                   {repCue === 'above' ? (
                     <>
                       <span className="font-semibold">Rep goal reached.</span>{' '}
-                      Every set is at {repRange.max}+ reps — increase the weight to keep overloading.
+                      Every set is at {repRange.max}+ reps —{' '}
+                      {weightBump ? (
+                        <>
+                          go up to{' '}
+                          <span className="font-semibold tabular-nums">
+                            {formatWeightHalf(weightBump.next)}kg
+                          </span>{' '}
+                          <span className="tabular-nums">(+{formatWeightHalf(weightBump.step)}kg)</span>{' '}
+                          and rebuild the reps from the bottom of the range.
+                        </>
+                      ) : (
+                        <>increase the weight to keep overloading.</>
+                      )}
                     </>
                   ) : (
                     <>
@@ -503,6 +543,9 @@ export function LoggedExerciseCard({
                     return next;
                   })
                 }
+                /* Advisory only: the note renders under this row's reps box and
+                   never writes into it, so the logged entry stays as it is. */
+                repTarget={nextTarget?.setIndex === index ? nextTarget.target : null}
               />
             ))}
           </div>
