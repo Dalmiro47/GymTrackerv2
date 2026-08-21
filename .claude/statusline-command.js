@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Claude Code status line: user | branch | model | $cost | ctx% | 5H | 7D
+// Claude Code status line: user | branch | model | effort | $cost | ctx% | 5H | 7D
 // Pure Node (no jq dependency — jq is not installed on this Windows machine).
 
 const os = require('os');
@@ -27,6 +27,7 @@ const C = {
   cyan: '\x1b[0;36m',
   yellow: '\x1b[0;33m',
   magenta: '\x1b[0;35m',
+  brightMagenta: '\x1b[0;95m',
   green: '\x1b[0;32m',
   red: '\x1b[0;31m',
   blue: '\x1b[0;34m',
@@ -59,6 +60,9 @@ try {
 // ---- model ----
 const model = get(data, 'model.display_name') || '';
 
+// ---- reasoning effort (only present on models that support it) ----
+const effort = get(data, 'effort.level');
+
 // ---- cost (prefer actual billing cost; fall back to token-based estimate) ----
 let cost = get(data, 'cost.total_cost_usd');
 if (typeof cost !== 'number') {
@@ -79,6 +83,7 @@ const parts = [];
 if (user) parts.push(paint(C.cyan, user));
 if (branch) parts.push(paint(C.yellow, branch));
 if (model) parts.push(paint(C.magenta, model));
+if (typeof effort === 'string' && effort) parts.push(paint(C.brightMagenta, `eff:${effort}`));
 parts.push(paint(C.green, `$${cost.toFixed(4)}`));
 if (typeof ctxPct === 'number') parts.push(paint(C.blue, `ctx:${ctxPct.toFixed(0)}%`));
 if (typeof fivePct === 'number') parts.push(paint(C.red, `5H:${fivePct.toFixed(0)}%`));

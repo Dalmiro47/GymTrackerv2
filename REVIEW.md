@@ -12,7 +12,7 @@ Next.js 15 App Router PWA with Firebase as the sole backend. Protected routes li
 
 State is hook-based: `useTrainingLog` (818 lines) is the core of the app — it owns the day's log, a `originalLogState` baseline vs. a derived deload-transformed `currentLog`, routine auto-fill from `performanceEntries`, PR tracking, and all save/delete flows. The log page composes it with dnd-kit reordering, per-exercise cards (`LoggedExerciseCard` → `SetInputRow` with controlled weight-display strings), and warm-up computation (`lib/utils.ts`).
 
-The AI Coach is the only API route (`/api/coach/chat`): the client (`use-coach-chat` + `CoachChatSheet`) serializes page data via `lib/ai/context-builders`, the route builds a system prompt (`chat-prompts`) and **streams** SSE from Groq (`qwen/qwen3-32b`) through a `<think>`-stripping TransformStream, with a hand-rolled markdown renderer on the client. UI is shadcn/Radix + Tailwind; PWA (workbox) is enabled in production builds only.
+The AI Coach is the only API route (`/api/coach/chat`): the client (`use-coach-chat` + `CoachChatSheet`) serializes page data via `lib/ai/context-builders`, the route builds a system prompt (`chat-prompts`) and **streams** SSE from Groq (`qwen/qwen3.6-27b`) through a `<think>`-stripping TransformStream, with a hand-rolled markdown renderer on the client. UI is shadcn/Radix + Tailwind; PWA (workbox) is enabled in production builds only.
 
 ---
 

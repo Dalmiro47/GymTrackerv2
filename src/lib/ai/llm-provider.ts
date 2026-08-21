@@ -29,7 +29,11 @@ export interface LLMProvider {
 // ─── Groq Implementation ────────────────────────────────────────────
 
 const GROQ_BASE_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const DEFAULT_MODEL = 'qwen/qwen3-32b';
+const DEFAULT_MODEL = 'qwen/qwen3.6-27b';
+// qwen3.6 reasons far more verbosely than qwen3-32b did: with thinking on it
+// routinely spends the whole `max_completion_tokens` budget before writing the
+// answer, so replies arrive truncated. Groq only accepts 'none' | 'default'.
+const REASONING_EFFORT = 'none';
 
 export class GroqProvider implements LLMProvider {
   private apiKey: string;
@@ -49,6 +53,7 @@ export class GroqProvider implements LLMProvider {
       messages,
       temperature: opts?.temperature ?? 0.3,
       max_completion_tokens: opts?.maxTokens ?? 1024,
+      reasoning_effort: REASONING_EFFORT,
       stream: false,
     };
 
@@ -92,6 +97,7 @@ export class GroqProvider implements LLMProvider {
       messages,
       temperature: opts?.temperature ?? 0.4,
       max_completion_tokens: opts?.maxTokens ?? 1024,
+      reasoning_effort: REASONING_EFFORT,
       stream: true,
     };
 
