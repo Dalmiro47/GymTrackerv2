@@ -2,14 +2,14 @@
 claude --dangerously-skip-permissions 
 
 ## Pull Request to Github 
-git switch -c feat/routine-editor-replace-parity
+git switch -c ref/reps-goal1
 
 ## Do ALL THE CHANGES 
 
 ## Pull Request to Github 
 git add -A 
-git commit -m "feat(routines): add in-place exercise replace and dedup shared picker" 
-git push -u origin feat/routine-editor-replace-parity
+git commit -m "ref: add a ui improvement to show when I hit the rep goal and I should do an increase overload" 
+git push -u origin ref/reps-goal1
 
 ## Make local main match GitHub
 
@@ -24,5 +24,5 @@ git rev-parse HEAD
 git rev-parse origin/main 
  
 ## After merge, delete the branch
-git branch -D feat/routine-editor-replace-parity
+git branch -D ref/reps-goal1
  

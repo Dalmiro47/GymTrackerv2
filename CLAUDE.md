@@ -70,13 +70,13 @@ users/{userId}/
 
 ### AI Coach
 
-The Coach is a contextual chat embedded in `/log` (workout coaching) and `/routines` (program analysis). It uses Groq (model: `qwen/qwen3-32b`) via a vendor-agnostic LLM provider interface.
+The Coach is a contextual chat embedded in `/log` (workout coaching) and `/routines` (program analysis). It uses Groq (model: `qwen/qwen3.6-27b`, with `reasoning_effort: 'none'`) via a vendor-agnostic LLM provider interface.
 
 **Key files:**
 - `src/lib/ai/llm-provider.ts` — `LLMProvider` interface + `GroqProvider` (OpenAI-compatible REST)
 - `src/lib/ai/context-builders.ts` — Serializes page data into compact context (log-day + routine-review)
 - `src/lib/ai/chat-prompts.ts` — System prompt builders with goal-based volume targets, progressive overload logic, and KNOWN EXERCISES injection
-- `src/app/api/coach/chat/route.ts` — **SSE streaming** endpoint: `POST` → `text/event-stream` of `data: {"v":"<delta>"}` chunks. Uses `provider.chatStream()`; `filterThinkingStream` strips qwen3 `<think>…</think>` tokens before forwarding (with a `flush()` for short replies). Requires a Firebase ID token (`Authorization: Bearer <token>`), verified via the Identity Toolkit REST API. `maxTokens: 1500`.
+- `src/app/api/coach/chat/route.ts` — **SSE streaming** endpoint: `POST` → `text/event-stream` of `data: {"v":"<delta>"}` chunks. Uses `provider.chatStream()`; `filterThinkingStream` strips qwen3 `<think>…</think>` tokens before forwarding (with a `flush()` for short replies); kept as a safety net now that reasoning is disabled. Requires a Firebase ID token (`Authorization: Bearer <token>`), verified via the Identity Toolkit REST API. `maxTokens: 1500`.
 - `src/hooks/use-coach-chat.ts` — Client-side chat state. Reads the SSE stream and appends deltas to the assistant bubble; sends the user's Firebase ID token; history sanitized via `extractTextFromContent()` before being sent to the API. Chat history persists in localStorage per local day.
 - `src/components/coach/CoachChatSheet.tsx` — Shared Sheet UI. `SegmentRenderer` renders markdown (bold, italic, headings `#`–`######`, bullet/numbered lists, strips `---`). Raw markdown never shown to user.
 
@@ -108,6 +108,7 @@ All domain types are in `src/types/index.ts` — `Exercise`, `Routine`, `Workout
 - Firestore reads in `src/services/` are memoized via `src/lib/sessionCache.ts` (per-user keys, 5-min TTL, promise-deduped). Any NEW write path in these services must call `invalidateCache` with the matching prefix (`exercises:{uid}`, `routines:{uid}`, `wl:{uid}`) or pages will silently serve stale data (added 2026-08)
 - `AvailableExercisesSelector` renders the muscle-group grid and the filtered list from ONE tree with ONE search `<Input>`. Splitting them into two `return`s (or two components) remounts the input on the first keystroke, dropping focus and closing the mobile keyboard — invisible on desktop and to Playwright (fixed 2026-08)
 - `LoggedExerciseCard`'s card border is the set-structure channel (`SET_STRUCTURE_COLORS` / `--ss-*` tokens). Per-card *state* cues must not add a ring there — a rep-goal ring shipped as two competing outlines on superset cards. State lives in a full-bleed band inside `CardContent` instead, always mounted with only its colors toggling, so a cue that flips mid-typing can't remount the set inputs (fixed 2026-08)
+- Groq reasoning models spend `max_completion_tokens` on hidden `<think>` tokens BEFORE writing the answer, so leaving reasoning on silently truncates replies mid-sentence (`finish_reason: length`) instead of erroring. `qwen/qwen3.6-27b` burned the full 1500-token budget on a one-line question; `reasoning_effort: 'none'` (Groq accepts only `none` | `default`) is required in `llm-provider.ts` for any budget this small (fixed 2026-08)
 - Minimum viable plan: match the stated UX outcome with the minimum change needed
 - Do not add scope (refactors, extra configurability) unless explicitly asked
 - When proposing UX changes, separate effects/polish (welcome) from structural/layout changes (require explicit approval)
