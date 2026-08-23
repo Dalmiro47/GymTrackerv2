@@ -11,17 +11,24 @@ import {
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/contexts/AuthContext";
-import { LogOut, User as UserIcon, Loader2, Download } from "lucide-react";
+import { useTheme, type ThemePreference } from "@/contexts/ThemeContext";
+import { LogOut, User as UserIcon, Loader2, Download, Sun, Moon, Monitor } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { ExportLogsDialog } from "./ExportLogsDialog";
 
 export function UserNav() {
   const { user, logout, isLoading: authIsLoading } = useAuth();
   const router = useRouter();
+  const { theme, setTheme } = useTheme();
   const [isLoggingOut, setIsLoggingOut] = React.useState(false);
   const [isExportDialogOpen, setIsExportDialogOpen] = React.useState(false);
 
@@ -91,6 +98,19 @@ export function UserNav() {
             <Download className="mr-2 h-4 w-4" />
             <span>Export Data</span>
           </DropdownMenuItem>
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger>
+              {theme === 'dark' ? <Moon className="mr-2 h-4 w-4" /> : theme === 'light' ? <Sun className="mr-2 h-4 w-4" /> : <Monitor className="mr-2 h-4 w-4" />}
+              <span>Theme</span>
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent>
+              <DropdownMenuRadioGroup value={theme} onValueChange={(v) => setTheme(v as ThemePreference)}>
+                <DropdownMenuRadioItem value="light"><Sun className="mr-2 h-4 w-4" />Light</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="dark"><Moon className="mr-2 h-4 w-4" />Dark</DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="system"><Monitor className="mr-2 h-4 w-4" />System</DropdownMenuRadioItem>
+              </DropdownMenuRadioGroup>
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={handleLogout} disabled={isLoggingOut}>

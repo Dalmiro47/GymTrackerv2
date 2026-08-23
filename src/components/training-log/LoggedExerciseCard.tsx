@@ -7,7 +7,8 @@ import { computeWarmup, inferWarmupTemplate, WarmupInput, type WarmupStep } from
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { PlusCircle, Trash2, GripVertical, Settings2, ArrowLeftRight, Flame, TrendingUp, Dumbbell, X, ArrowUpCircle, ArrowDownCircle } from 'lucide-react';
+import { PlusCircle, Trash2, GripVertical, Settings2, ArrowLeftRight, Flame, TrendingUp, Dumbbell, X, ArrowUpCircle, ArrowDownCircle, History } from 'lucide-react';
+import { differenceInCalendarDays } from 'date-fns';
 import { parseRepRange, isRepGoalReached, isBelowRepRange, getNextRepTarget, suggestWeightBump, type NextRepTarget } from '@/lib/repGoal';
 import { formatWeightHalf } from '@/lib/rounding';
 import { SetInputRow } from './SetInputRow'; 
@@ -154,7 +155,6 @@ interface LoggedExerciseCardProps {
   onRemove: () => void;
   onReplace: () => void;
   isSavingParentLog: boolean;
-  onMarkAsInteracted: () => void;
   onUpdateSetStructureOverride: (exerciseId: string, override: SetStructure | null) => void;
   /** Deload Mode shows a derived (reduced) view — set values must not be edited
    *  there, or the reduced numbers would be written back into the baseline. */
@@ -167,7 +167,6 @@ export function LoggedExerciseCard({
   onRemove,
   onReplace,
   isSavingParentLog,
-  onMarkAsInteracted,
   onUpdateSetStructureOverride,
   isReadOnly = false,
 }: LoggedExerciseCardProps) {
@@ -209,6 +208,19 @@ export function LoggedExerciseCard({
   }, [effectiveSetStructure]);
 
   const borderColor = SET_STRUCTURE_COLORS[localStructure]?.border ?? 'hsl(var(--border))';
+
+  // "Last session" chip: shown only while the card is still the untouched pre-fill
+  // (planned, not done). Disappears as soon as any set is edited.
+  const lastTimeLabel = useMemo(() => {
+    const pf = loggedExercise.prefill;
+    if (!loggedExercise.isProvisional || !pf || pf.lastPerformedDate == null) return null;
+    if (!pf.sets.some(s => s.reps != null || s.weight != null)) return null;
+    // The sets themselves are already visible in the inputs below — the chip
+    // only needs to say "this is pre-filled" and from when, so it stays short.
+    const days = differenceInCalendarDays(new Date(), new Date(pf.lastPerformedDate));
+    const when = days <= 0 ? 'today' : days === 1 ? 'yesterday' : days < 14 ? `${days}d ago` : `${Math.round(days / 7)}w ago`;
+    return `Last session · ${when}`;
+  }, [loggedExercise.prefill, loggedExercise.isProvisional]);
 
   // Progressive-overload cue: every set at the top of the exercise's rep range
   // means it's time to add weight; every set under the bottom means the load is
@@ -323,7 +335,6 @@ export function LoggedExerciseCard({
     value: string
   ) => {
     if (isReadOnly) return;
-    onMarkAsInteracted();
   
     // Ignore transient "12." values for weight just in case
     if (field === 'weight' && value.endsWith('.')) {
@@ -357,7 +368,6 @@ export function LoggedExerciseCard({
 
   const addSet = () => {
     if (isReadOnly) return;
-    onMarkAsInteracted();
     const newSet: LoggedSet = {
         id: `set-${Date.now()}-${localSets.length + 1}`,
         reps: null,
@@ -372,7 +382,6 @@ export function LoggedExerciseCard({
 
   const removeSet = (setId: string) => {
     if (isReadOnly) return;
-    onMarkAsInteracted();
     const removedIndex = localSets.findIndex(s => s.id === setId);
     const newSets = localSets.filter(s => s.id !== setId);
     setLocalSets(newSets);
@@ -441,6 +450,12 @@ export function LoggedExerciseCard({
               <Dumbbell aria-hidden="true" className="h-3 w-3" />
               <span className="tabular-nums">{loggedExercise.personalRecordDisplay || 'PR: N/A'}</span>
             </span>
+            {lastTimeLabel && (
+              <span className="inline-flex items-center gap-1 rounded-md border border-dashed border-border bg-muted/60 px-1.5 py-0.5 text-[11px] text-muted-foreground leading-tight" title="Sets pre-filled from your last session. Edit a set to log it as done.">
+                <History aria-hidden="true" className="h-3 w-3" />
+                <span className="tabular-nums">{lastTimeLabel}</span>
+              </span>
+            )}
             {loggedExercise.exerciseSetup && (
                 <span className="inline-flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground leading-tight">
                     <Settings2 aria-hidden="true" className="h-3 w-3" />
@@ -555,7 +570,6 @@ export function LoggedExerciseCard({
                 onSetChange={handleSetChange}
                 onRemoveSet={() => removeSet(set.id)}
                 isProvisional={set.isProvisional}
-                onInteract={onMarkAsInteracted}
                 disabled={isReadOnly}
                 weightDisplay={weightDisplays[index] ?? ''}
                 setWeightDisplay={(val) =>
@@ -600,8 +614,7 @@ export function LoggedExerciseCard({
                 className="h-10 w-44 sm:w-56"
                 value={localStructure}
                 onChange={(val) => {
-                  onMarkAsInteracted();
-                  setLocalStructure(val);
+                                setLocalStructure(val);
                   const base = loggedExercise.setStructure ?? 'normal';
                   const nextOverride = (val === base) ? null : val;
                   onUpdateSetStructureOverride(loggedExercise.id, nextOverride);

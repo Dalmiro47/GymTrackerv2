@@ -4,7 +4,7 @@
 import { friendlyErrorMessage } from '@/lib/errorMessages';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import type { Routine, RoutineData, Exercise, WorkoutLog } from '@/types';
+import type { Routine, RoutineData, Exercise } from '@/types';
 import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
 import { PlusCircle, Loader2, ListChecks, GripVertical, Save } from 'lucide-react';
@@ -59,9 +59,11 @@ import {
 import { useIsMobile } from '@/hooks/use-mobile';
 import { CoachChatSheet } from '@/components/coach/CoachChatSheet';
 import { buildRoutineReviewContext, type RoutineReviewContext } from '@/lib/ai/context-builders';
-import { collection, query, where, orderBy, getDocs, doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebaseConfig';
-import { subDays, format } from 'date-fns';
+import { subDays } from 'date-fns';
+import { getLogsSince } from '@/services/trainingLogService';
+import { confirmDiscardUnsavedChanges } from '@/lib/unsavedChanges';
 
 
 export default function RoutinesPage() {
@@ -92,7 +94,7 @@ export default function RoutinesPage() {
       console.error("Failed to fetch routines:", error);
       toast({
         title: "Error Fetching Routines",
-        description: friendlyErrorMessage(error, 'No pudimos cargar tus rutinas. Inténtalo de nuevo.'),
+        description: friendlyErrorMessage(error, "Couldn't load your routines. Please try again."),
         variant: "destructive",
       });
     } finally {
@@ -108,7 +110,7 @@ export default function RoutinesPage() {
     } catch (error: any) {
       toast({
         title: "Error",
-        description: friendlyErrorMessage(error, 'No pudimos cargar tus ejercicios. Inténtalo de nuevo.'),
+        description: friendlyErrorMessage(error, "Couldn't load your exercises. Please try again."),
         variant: "destructive",
       });
     } finally {
@@ -163,7 +165,7 @@ export default function RoutinesPage() {
     } catch (error: any) {
       toast({
         title: "Save Error",
-        description: friendlyErrorMessage(error, 'No pudimos guardar la rutina. Inténtalo de nuevo.'),
+        description: friendlyErrorMessage(error, "Couldn't save the routine. Please try again."),
         variant: "destructive",
       });
     } finally {
@@ -188,7 +190,7 @@ export default function RoutinesPage() {
       const updatedRoutines = await getRoutines(user.id);
       setRoutines(updatedRoutines);
     } catch (error: any) {
-      toast({ title: "Delete Error", description: friendlyErrorMessage(error, 'No pudimos eliminar la rutina. Inténtalo de nuevo.'), variant: "destructive" });
+      toast({ title: "Delete Error", description: friendlyErrorMessage(error, "Couldn't delete the routine. Please try again."), variant: "destructive" });
     } finally {
       setRoutineToDeleteId(null);
       setIsLoading(false);
@@ -210,12 +212,8 @@ export default function RoutinesPage() {
   const loadCoachContext = useCallback(async (): Promise<RoutineReviewContext> => {
     if (!user?.id) throw new Error('User not authenticated');
 
-    // Fetch last 90 days of workout logs
-    const since = format(subDays(new Date(), 90), 'yyyy-MM-dd');
-    const logsRef = collection(db, 'users', user.id, 'workoutLogs');
-    const logsQuery = query(logsRef, where('date', '>=', since), orderBy('date', 'desc'));
-    const logsSnap = await getDocs(logsQuery);
-    const logs = logsSnap.docs.map((d) => ({ id: d.id, ...d.data() } as WorkoutLog));
+    // Fetch last 90 days of workout logs (cached service read)
+    const logs = await getLogsSince(user.id, subDays(new Date(), 90));
 
     // Fetch profile
     const profileSnap = await getDoc(doc(db, 'users', user.id, 'profile', 'profile'));
@@ -253,7 +251,7 @@ export default function RoutinesPage() {
       } catch (error: any) {
         toast({
           title: "Error Saving Order",
-          description: friendlyErrorMessage(error, 'No pudimos guardar el nuevo orden. Inténtalo de nuevo.'),
+          description: friendlyErrorMessage(error, "Couldn't save the new order. Please try again."),
           variant: "destructive",
         });
         fetchUserRoutines(user.id);
@@ -277,7 +275,7 @@ export default function RoutinesPage() {
     return (
       <div className="flex flex-col justify-center items-center h-64">
         <p className="text-lg font-semibold mb-4">Please log in to manage your routines.</p>
-        <Button onClick={() => router.push('/login')}>Go to Login</Button>
+        <Button onClick={() => { if (confirmDiscardUnsavedChanges()) router.push('/login'); }}>Go to Login</Button>
       </div>
     );
   }

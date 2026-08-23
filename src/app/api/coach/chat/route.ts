@@ -117,7 +117,7 @@ export async function POST(req: Request) {
     const isAuthenticated = await verifyFirebaseIdToken(req);
     if (!isAuthenticated) {
       return NextResponse.json(
-        { error: 'No autorizado. Inicia sesión para hablar con el coach.' },
+        { error: 'Not signed in. Sign in to talk to the coach.' },
         { status: 401 },
       );
     }
@@ -171,13 +171,21 @@ export async function POST(req: Request) {
 
     if (message.includes('MISSING_GROQ_API_KEY')) {
       return NextResponse.json(
-        { error: 'El servicio de AI no está configurado. Contacta al administrador.' },
+        { error: "The AI service isn't configured. Contact the administrator." },
         { status: 503 },
       );
     }
 
+    // Upstream detail stays in the server log above — never forward raw provider text to the client.
+    if (message.includes('GROQ_HTTP_429')) {
+      return NextResponse.json(
+        { error: 'The coach is busy, try again in a moment.' },
+        { status: 429 },
+      );
+    }
+
     return NextResponse.json(
-      { error: `No se pudo conectar con el coach. ${message}` },
+      { error: "Couldn't reach the coach." },
       { status: 500 },
     );
   }

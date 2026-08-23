@@ -9,6 +9,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { getWorkoutLog, getMonthLogFlags, getLogsSince } from '@/services/trainingLogService';
 import { summarizeDeloads, countSessionsInWeek } from '@/lib/deload';
 import { useToast } from '@/hooks/use-toast';
+import { useToday } from '@/hooks/use-today';
 import { friendlyErrorMessage } from '@/lib/errorMessages';
 import type { WorkoutLog, LoggedSet } from '@/types';
 import { format, parseISO, startOfMonth, getMonth, getYear, isValid, subMonths } from 'date-fns';
@@ -65,8 +66,8 @@ export function WorkoutCalendarSection() {
   // doesn't skew it. null while loading.
   const [sessionsThisWeek, setSessionsThisWeek] = useState<number | null>(null);
   const { toast } = useToast();
-  // Stable per-mount "today" so it doesn't invalidate memos/props every render
-  const today = useMemo(() => new Date(), []);
+  // Stable "today" that only changes identity when the local day rolls over
+  const today = useToday();
 
   // Fetch the month’s underlines whenever month/user changes
   const fetchMonthDates = useCallback(async () => {
@@ -85,7 +86,7 @@ export function WorkoutCalendarSection() {
       console.error('Failed to load month dates:', err);
       setLoggedDayStrings([]);
       setDeloadDayStrings([]);
-      toast({ title: 'Error al cargar', description: friendlyErrorMessage(err, 'No pudimos cargar el calendario. Inténtalo de nuevo.'), variant: 'destructive' });
+      toast({ title: 'Load error', description: friendlyErrorMessage(err, "Couldn't load the calendar. Please try again."), variant: 'destructive' });
     } finally {
       setIsLoadingLoggedDays(false);
     }
@@ -117,7 +118,7 @@ export function WorkoutCalendarSection() {
       .catch(err => {
         if (cancelled) return;
         console.error('Failed to load 3-month window:', err);
-        toast({ title: 'Error al cargar', description: friendlyErrorMessage(err, 'No pudimos cargar tus estadísticas. Inténtalo de nuevo.'), variant: 'destructive' });
+        toast({ title: 'Load error', description: friendlyErrorMessage(err, "Couldn't load your stats. Please try again."), variant: 'destructive' });
       });
     return () => { cancelled = true; };
   }, [user?.id, today, toast]);
@@ -137,12 +138,13 @@ export function WorkoutCalendarSection() {
       } catch (e) {
         console.error('Error fetching selected log:', e);
         setSelectedLog(null);
+        toast({ title: 'Load error', description: friendlyErrorMessage(e, "Couldn't load that day's workout. Please try again."), variant: 'destructive' });
       } finally {
         setIsLoadingLogDetails(false);
       }
     };
     load();
-  }, [selectedDate, user?.id]);
+  }, [selectedDate, user?.id, toast]);
 
   const daysWithLogs = useMemo(() => loggedDayStrings.map(d => parseISO(d)).filter(d => !isNaN(d.getTime())), [loggedDayStrings]);
   const daysWithDeload = useMemo(() => deloadDayStrings.map(d => parseISO(d)).filter(d => !isNaN(d.getTime())), [deloadDayStrings]);

@@ -163,8 +163,8 @@ export function AddEditRoutineDialog({
   const onSubmit = async (data: RoutineFormData) => {
     if (selectedExerciseObjects.some(ex => ex.isMissing)) {
         toast({
-            title: "Ejercicios no encontrados",
-            description: "Esta rutina contiene ejercicios que ya no existen en tu biblioteca. Elimínalos o reemplázalos antes de guardar.",
+            title: "Exercises not found",
+            description: "This routine contains exercises that no longer exist in your library. Remove or replace them before saving.",
             variant: "destructive",
         });
         return;

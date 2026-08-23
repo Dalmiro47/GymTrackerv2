@@ -110,7 +110,7 @@ All domain types are in `src/types/index.ts` — `Exercise`, `Routine`, `Workout
 - `LoggedExerciseCard`'s card border is the set-structure channel (`SET_STRUCTURE_COLORS` / `--ss-*` tokens). Per-card *state* cues must not add a ring there — a rep-goal ring shipped as two competing outlines on superset cards. State lives in a full-bleed band inside `CardContent` instead, always mounted with only its colors toggling, so a cue that flips mid-typing can't remount the set inputs (fixed 2026-08)
 - Groq reasoning models spend `max_completion_tokens` on hidden `<think>` tokens BEFORE writing the answer, so leaving reasoning on silently truncates replies mid-sentence (`finish_reason: length`) instead of erroring. `qwen/qwen3.6-27b` burned the full 1500-token budget on a one-line question; `reasoning_effort: 'none'` (Groq accepts only `none` | `default`) is required in `llm-provider.ts` for any budget this small (fixed 2026-08)
 - Deload persistence: a log saved with `isDeload` stores the *already-reduced* sets plus `deloadApplied: true`; `currentLog` transforms the baseline ONLY when `isDeload && !deloadApplied`. Dropping that guard re-reduces stored sets on every reload (the original compounding bug in a new coat) (added 2026-08)
-- `isProvisional` / `currentPR` / `personalRecordDisplay` are UI-only and flip on mere input focus (`markExerciseAsInteracted`). Any "unsaved changes" check must compare `persistedShape()` in `useTrainingLog`, not the whole log, or clicking between sets reads as dirty (fixed 2026-08)
+- `isProvisional` / `prefill` / `currentPR` / `personalRecordDisplay` are UI-only (stripped in `saveWorkoutLog`). `isProvisional` is DERIVED in `updateExerciseInLog` (`withDerivedProvisional`): true only while an exercise's sets still equal its `prefill` — focus never flips it (a focus-based flip made the coach treat planned exercises as done mid-workout, fixed 2026-08). Coach log-day context splits COMPLETED vs PLANNED on this flag. Any "unsaved changes" check must compare `persistedShape()`, not the whole log
 - `cachedFetch` memoizes *resolved* promises, so a service that catches and returns `[]`/`0` pins that empty result for the 5-min TTL. Services in `trainingLogService` rethrow; callers own the toast (fixed 2026-08)
 - Minimum viable plan: match the stated UX outcome with the minimum change needed
 - Do not add scope (refactors, extra configurability) unless explicitly asked
@@ -136,7 +136,7 @@ All domain types are in `src/types/index.ts` — `Exercise`, `Routine`, `Workout
 Keep this file between 200–300 lines max. Every line must earn its keep.
 
 ### Error Handling
-- Every server call must handle failure with a clear, friendly Spanish message — never a blank screen or unhandled crash
+- Every server call must handle failure with a clear, friendly message in English (the UI language; the AI Coach replies in whatever language the user writes) — never a blank screen or unhandled crash. Use `friendlyErrorMessage()` from `src/lib/errorMessages.ts`; never interpolate `error.message` into a toast
 - Loading states must always be visible to the user during async operations
 
 ### Security

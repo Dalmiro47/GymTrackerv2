@@ -91,7 +91,7 @@ export function ExerciseClientPage() {
       console.error("Failed to fetch exercises:", error);
       toast({
         title: "Error Fetching Exercises",
-        description: friendlyErrorMessage(error, 'No pudimos cargar tus ejercicios. Inténtalo de nuevo.'),
+        description: friendlyErrorMessage(error, "Couldn't load your exercises. Please try again."),
         variant: "destructive",
       });
     }
@@ -274,7 +274,7 @@ export function ExerciseClientPage() {
       console.error("Detailed error adding/updating exercise to Firestore: ", error);
       toast({
         title: "Save Error",
-        description: friendlyErrorMessage(error, `No pudimos guardar ${formData.name}. Inténtalo de nuevo.`),
+        description: friendlyErrorMessage(error, `Couldn't save ${formData.name}. Please try again.`),
         variant: "destructive",
       });
     } finally {
@@ -334,7 +334,7 @@ export function ExerciseClientPage() {
       await fetchHiddenDefaults(user.id);
     } catch (error: any) {
       console.error("Failed to delete exercise and update routines:", error);
-      toast({ title: "Delete Error", description: friendlyErrorMessage(error, `No pudimos eliminar ${exerciseName}. Inténtalo de nuevo.`), variant: "destructive" });
+      toast({ title: "Delete Error", description: friendlyErrorMessage(error, `Couldn't delete ${exerciseName}. Please try again.`), variant: "destructive" });
     } finally {
       setIsBusyDeleting(false);
       closeDeleteDialog();

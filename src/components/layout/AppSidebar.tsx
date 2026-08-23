@@ -39,7 +39,18 @@ export function AppSidebar({ isOpen, setIsOpen }: AppSidebarProps) {
       >
         <div className="sticky top-0 z-10 bg-sidebar border-b border-sidebar-border">
           <div className="h-12 flex items-center px-4 justify-between">
-            <Logo iconSize={18} textSize="text-lg" />
+            <div
+              onClickCapture={(e) => {
+                if (pathname !== '/dashboard' && !confirmDiscardUnsavedChanges()) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  return;
+                }
+                setIsOpen(false);
+              }}
+            >
+              <Logo iconSize={18} textSize="text-lg" />
+            </div>
             <Button variant="ghost" size="icon" className="md:hidden text-sidebar-foreground" onClick={() => setIsOpen(false)} aria-label="Close sidebar">
               <X className="h-6 w-6" />
             </Button>

@@ -53,8 +53,8 @@ export function CoachProfileForm({ initial, title = 'Profile' }: { initial: User
     } catch (error) {
       console.error('[CoachProfileForm] save failed:', error);
       toast({
-        title: 'Error al guardar',
-        description: friendlyErrorMessage(error, 'No pudimos guardar tu perfil. Revisa tu conexión e inténtalo de nuevo.'),
+        title: 'Save error',
+        description: friendlyErrorMessage(error, "Couldn't save your profile. Check your connection and try again."),
         variant: 'destructive',
       });
     } finally {

@@ -253,7 +253,7 @@ export function ProgressionSection() {
         if (!cancelled) {
           setResults([]);
           setDeload(null);
-          toast({ title: 'Error al cargar', description: friendlyErrorMessage(err, 'No pudimos cargar tu progresión. Inténtalo de nuevo.'), variant: 'destructive' });
+          toast({ title: 'Load error', description: friendlyErrorMessage(err, "Couldn't load your progression. Please try again."), variant: 'destructive' });
         }
       })
       .finally(() => {

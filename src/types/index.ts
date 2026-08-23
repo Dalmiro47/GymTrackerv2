@@ -87,7 +87,8 @@ export interface LoggedExercise {
   notes?: string;
   personalRecordDisplay?: string; // e.g., "PR: 1x5 @ 100kg" or "PR: N/A"
   currentPR: { reps: number, weight: number } | null; // Numeric PR for reliable logic
-  isProvisional?: boolean; // True if auto-populated and not yet interacted with/saved
+  isProvisional?: boolean; // UI-only, DERIVED: true while `sets` still equal `prefill.sets` (nothing changed)
+  prefill?: { sets: Array<{ reps: number | null; weight: number | null }>; lastPerformedDate: number | null }; // UI-only: what was auto-filled from the last session
   warmupConfig?: WarmupConfig; // Pass along for warmup calculation
   setStructure?: SetStructure; // Default from the routine
   setStructureOverride?: SetStructure | null; // User override for this specific log

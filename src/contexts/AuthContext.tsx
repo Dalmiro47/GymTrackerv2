@@ -70,8 +70,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (code !== 'auth/popup-closed-by-user' && code !== 'auth/cancelled-popup-request') {
         console.error("Error during Google sign-in:", error);
         toast({
-          title: "Error de inicio de sesión",
-          description: "No se pudo iniciar sesión con Google. Inténtalo de nuevo.",
+          title: "Sign-in error",
+          description: "Couldn't sign in with Google. Please try again.",
           variant: "destructive",
         });
       }
@@ -87,8 +87,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setIsLoading(false);
       console.error("Error during sign-out:", error);
       toast({
-        title: "Error al cerrar sesión",
-        description: "No se pudo cerrar la sesión. Inténtalo de nuevo.",
+        title: "Sign-out error",
+        description: "Couldn't sign out. Please try again.",
         variant: "destructive",
       });
     }
