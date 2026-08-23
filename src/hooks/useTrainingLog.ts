@@ -21,6 +21,8 @@ import { format, startOfMonth } from 'date-fns';
 import { useToast } from './use-toast';
 import { inferWarmupTemplate, roundToGymHalf } from '@/lib/utils';
 import { isBetterPR, formatPR, pickBestSet } from '@/lib/pr';
+import { setUnsavedChanges } from '@/lib/unsavedChanges';
+import { friendlyErrorMessage } from '@/lib/errorMessages';
 
 
 const DEFAULT_DELOAD_PARAMS = {
@@ -35,6 +37,21 @@ const normalizeForPR = (sets: LoggedSet[]) =>
       Number.isFinite(Number(s.reps)) && Number.isFinite(Number(s.weight))
     )
     .map(s => ({ reps: Number(s.reps), weight: Number(s.weight) }));
+
+// The subset of a log that is compared for "unsaved changes" (see isDirty).
+const persistedShape = (log: WorkoutLog) => ({
+  notes: log.notes ?? '',
+  routineId: log.routineId ?? null,
+  routineName: log.routineName ?? null,
+  exercises: log.exercises.map(ex => ({
+    id: ex.id,
+    exerciseId: ex.exerciseId,
+    setStructureOverride: ex.setStructureOverride ?? null,
+    warmupConfig: ex.warmupConfig ?? null,
+    notes: ex.notes ?? '',
+    sets: ex.sets.map(s => ({ reps: s.reps ?? null, weight: s.weight ?? null })),
+  })),
+});
 
 const makeEmptyLog = (id: string): WorkoutLog => ({
   id, date: id, exercises: [], exerciseIds: [], notes: '',
@@ -62,7 +79,12 @@ export const useTrainingLog = (initialDate: Date) => {
   const [isLoadingLoggedDayStrings, setIsLoadingLoggedDayStrings] = useState(true);
 
   const [isDeload, setIsDeload] = useState(false);
+  // True when the loaded baseline already contains deload-transformed sets
+  // (saved with `deloadApplied`). Display must not transform it again.
+  const [deloadApplied, setDeloadApplied] = useState(false);
   const [originalLogState, setOriginalLogState] = useState<WorkoutLog | null>(null);
+  // Last state known to match Firestore. `isDirty` = baseline differs from it.
+  const [savedSnapshot, setSavedSnapshot] = useState<WorkoutLog | null>(null);
   const [displayedMonth, setDisplayedMonth] = React.useState<Date>(
     startOfMonth(selectedDate ?? new Date())
   );
@@ -106,9 +128,14 @@ export const useTrainingLog = (initialDate: Date) => {
 
   const refreshMonthFlags = useCallback(async () => {
     if (!user?.id) return;
-    const { logged, deload } = await getMonthLogFlags(user.id, displayedMonth);
-    setLoggedDayStrings(logged);
-    setDeloadDayStrings(deload);
+    try {
+      const { logged, deload } = await getMonthLogFlags(user.id, displayedMonth);
+      setLoggedDayStrings(logged);
+      setDeloadDayStrings(deload);
+    } catch (e) {
+      // Calendar underlines are cosmetic; never turn a successful save into an error.
+      console.error('[useTrainingLog] refreshMonthFlags failed:', e);
+    }
   }, [user?.id, displayedMonth]);
 
   // One parallel read per unique exercise — replaces N sequential round-trips.
@@ -179,19 +206,28 @@ export const useTrainingLog = (initialDate: Date) => {
                 routineId: fetchedLog.routineId,
                 routineName: fetchedLog.routineName,
                 isDeload: fetchedLog.isDeload ?? false,
+                deloadApplied: fetchedLog.deloadApplied ?? false,
                 deloadParams: fetchedLog.deloadParams,
             };
             setOriginalLogState(log);
+            setSavedSnapshot(log);
             setIsDeload(log.isDeload ?? false);
+            setDeloadApplied(log.deloadApplied ?? false);
 
         } else {
-            setOriginalLogState(makeEmptyLog(dateId));
+            const empty = makeEmptyLog(dateId);
+            setOriginalLogState(empty);
+            setSavedSnapshot(empty);
             setIsDeload(false);
+            setDeloadApplied(false);
         }
 
     } catch (error: any) {
-        toast({ title: "Error Loading Log", description: `Could not load log for ${dateId}. ${error.message}`, variant: "destructive" });
-        setOriginalLogState(makeEmptyLog(dateId));
+        console.error('[useTrainingLog] loadLogForDate failed:', error);
+        toast({ title: "Error al cargar", description: friendlyErrorMessage(error, 'No pudimos cargar el entrenamiento de ese día.'), variant: "destructive" });
+        const empty = makeEmptyLog(dateId);
+        setOriginalLogState(empty);
+        setSavedSnapshot(empty);
     } finally {
         setIsLoadingLog(false);
     }
@@ -202,13 +238,13 @@ export const useTrainingLog = (initialDate: Date) => {
       setIsLoadingRoutines(true);
       fetchUserRoutines(user.id)
         .then(setAvailableRoutines)
-        .catch(error => toast({ title: "Error", description: `Failed to load routines: ${error.message}`, variant: "destructive" }))
+        .catch(error => { console.error('[useTrainingLog] routines load failed:', error); toast({ title: "Error al cargar", description: friendlyErrorMessage(error, 'No pudimos cargar tus rutinas.'), variant: "destructive" }); })
         .finally(() => setIsLoadingRoutines(false));
 
       setIsLoadingExercises(true);
       fetchAllUserExercises(user.id)
         .then(setAvailableExercises)
-        .catch(error => toast({ title: "Error", description: `Failed to load exercises: ${error.message}`, variant: "destructive" }))
+        .catch(error => { console.error('[useTrainingLog] exercises load failed:', error); toast({ title: "Error al cargar", description: friendlyErrorMessage(error, 'No pudimos cargar tus ejercicios.'), variant: "destructive" }); })
         .finally(() => setIsLoadingExercises(false));
       
     } else {
@@ -241,6 +277,21 @@ export const useTrainingLog = (initialDate: Date) => {
     }
     loadLogForDate(selectedDate);
   }, [selectedDate, authIsLoading, isLoadingExercises, loadLogForDate]);
+
+  // Dirty = baseline differs from what Firestore has (deload toggle included).
+  // Only data that actually gets persisted is compared: UI-only markers such as
+  // `isProvisional` (flipped just by focusing an input) and the derived PR
+  // display fields must not make the log look changed.
+  const isDirty = useMemo(() => {
+    if (!originalLogState || !savedSnapshot) return false;
+    if (isDeload !== (savedSnapshot.isDeload ?? false)) return true;
+    return JSON.stringify(persistedShape(originalLogState)) !== JSON.stringify(persistedShape(savedSnapshot));
+  }, [originalLogState, savedSnapshot, isDeload]);
+
+  useEffect(() => {
+    setUnsavedChanges(isDirty);
+    return () => setUnsavedChanges(false);
+  }, [isDirty]);
 
   const applyDeloadTransform = useCallback((log: WorkoutLog | null): WorkoutLog | null => {
     if (!log) return null;
@@ -275,8 +326,9 @@ export const useTrainingLog = (initialDate: Date) => {
   // (transformed) values can't be fed back into the baseline and compound.
   const currentLog = useMemo(() => {
     if (!originalLogState) return null;
-    return isDeload ? applyDeloadTransform(originalLogState) : originalLogState;
-  }, [originalLogState, isDeload, applyDeloadTransform]);
+    // An applied deload is already reduced in the baseline — show it as stored.
+    return isDeload && !deloadApplied ? applyDeloadTransform(originalLogState) : originalLogState;
+  }, [originalLogState, isDeload, deloadApplied, applyDeloadTransform]);
 
   // Stable callback: mutations go through the functional updater so they never
   // read a stale baseline; the displayed log re-derives in the same render.
@@ -313,6 +365,7 @@ export const useTrainingLog = (initialDate: Date) => {
       const clearedLog = makeEmptyLog(dateOfLog);
       setOriginalLogState(clearedLog);
       setIsDeload(false);
+      setDeloadApplied(false);
       return;
     }
 
@@ -573,13 +626,18 @@ export const useTrainingLog = (initialDate: Date) => {
     setIsSavingLog(true);
 
     try {
-      const logToSave = originalLogState ? { ...originalLogState } : { ...currentLog };
+      // Save what the user sees. For a (not yet applied) deload that is the
+      // transformed view; the reduced sets are persisted with `deloadApplied`
+      // so the next load shows them as stored instead of reducing them again.
+      const logToSave: WorkoutLog = { ...currentLog };
 
       if (isDeload) {
         logToSave.isDeload = true;
+        logToSave.deloadApplied = true;
         logToSave.deloadParams = DEFAULT_DELOAD_PARAMS;
       } else {
         logToSave.isDeload = false;
+        logToSave.deloadApplied = false;
         logToSave.deloadParams = undefined;
       }
 
@@ -631,6 +689,8 @@ export const useTrainingLog = (initialDate: Date) => {
           }
           // Update local state from the payload just saved instead of refetching.
           setOriginalLogState(finalLogToSave);
+          setSavedSnapshot(finalLogToSave);
+          setDeloadApplied(finalLogToSave.deloadApplied ?? false);
           await refreshMonthFlags();
           toast({ title: "Log Saved", description: `Workout for ${formattedDateId} saved.` });
       } else {
@@ -641,14 +701,17 @@ export const useTrainingLog = (initialDate: Date) => {
                   updatePerformanceEntryOnLogDelete(user.id!, exInDeletedLog.exerciseId, finalLogToSave.id)
               ));
               await refreshMonthFlags();
+              setSavedSnapshot(finalLogToSave);
               toast({ title: "Log Cleared", description: `Empty log for ${formattedDateId} was cleared.`});
           } else {
+              setSavedSnapshot(finalLogToSave);
               toast({ title: "Log Not Saved", description: "Log is empty."});
           }
       }
 
     } catch (error: any) {
-      toast({ title: "Error Saving Log", description: `Could not save log. ${error.message}`, variant: "destructive" });
+      console.error('[useTrainingLog] saveCurrentLog failed:', error);
+      toast({ title: "Error al guardar", description: friendlyErrorMessage(error, 'No pudimos guardar tu entrenamiento. Revisa tu conexión e inténtalo de nuevo.'), variant: "destructive" });
     } finally {
       setIsSavingLog(false);
     }
@@ -660,7 +723,10 @@ export const useTrainingLog = (initialDate: Date) => {
       return;
     }
   
-    const baseline = originalLogState ?? currentLog;
+    // Persist what is displayed: for a not-yet-applied deload that is the
+    // transformed view (same rule as saveCurrentLog). Local state is left as
+    // is — the baseline stays untransformed and keeps deriving the same view.
+    const baseline = (isDeload && !deloadApplied) ? currentLog : (originalLogState ?? currentLog);
     const selectedExercise = baseline.exercises.find(e => e.id === exerciseLogId);
     if (!selectedExercise) {
         toast({ title: "Error", description: "Could not find the exercise to save.", variant: "destructive" });
@@ -669,12 +735,14 @@ export const useTrainingLog = (initialDate: Date) => {
 
     setIsSavingLog(true);
     try {
-      const logToSave = { ...baseline };
+      const logToSave: WorkoutLog = { ...baseline };
       if (isDeload) {
         logToSave.isDeload = true;
+        logToSave.deloadApplied = true;
         logToSave.deloadParams = DEFAULT_DELOAD_PARAMS;
       } else {
         logToSave.isDeload = false;
+        logToSave.deloadApplied = false;
         logToSave.deloadParams = undefined;
       }
 
@@ -723,7 +791,8 @@ export const useTrainingLog = (initialDate: Date) => {
 
       toast({ title: "Exercise Saved", description: `${selectedExercise?.name ?? "Exercise"} saved.` });
     } catch (error: any) {
-      toast({ title: "Error", description: `Could not save exercise. ${error.message}`, variant: "destructive" });
+      console.error('[useTrainingLog] saveSingleExercise failed:', error);
+      toast({ title: "Error al guardar", description: friendlyErrorMessage(error, 'No pudimos guardar el ejercicio. Inténtalo de nuevo.'), variant: "destructive" });
     } finally {
       setIsSavingLog(false);
     }
@@ -743,12 +812,11 @@ export const useTrainingLog = (initialDate: Date) => {
     }
     setIsDeletingLog(true);
     const logIdToDelete = currentLog.id;
-    
-    const logSnapshotForPrUpdate = await fetchLogService(user.id, logIdToDelete);
-    const exercisesInDeletedLog = logSnapshotForPrUpdate ? [...logSnapshotForPrUpdate.exercises] : [];
-
 
     try {
+      const logSnapshotForPrUpdate = await fetchLogService(user.id, logIdToDelete);
+      const exercisesInDeletedLog = logSnapshotForPrUpdate ? [...logSnapshotForPrUpdate.exercises] : [];
+
       await deleteLogService(user.id, logIdToDelete);
 
       await Promise.all(exercisesInDeletedLog.map(deletedEx =>
@@ -758,13 +826,17 @@ export const useTrainingLog = (initialDate: Date) => {
           })
       ));
 
-      setOriginalLogState(makeEmptyLog(logIdToDelete));
+      const empty = makeEmptyLog(logIdToDelete);
+      setOriginalLogState(empty);
+      setSavedSnapshot(empty);
       setIsDeload(false);
+      setDeloadApplied(false);
 
       toast({ title: "Log Deleted", description: `Workout for ${logIdToDelete} has been deleted.` });
       await refreshMonthFlags();
     } catch (error: any) {
-      toast({ title: "Error Deleting Log", description: `Could not delete log. ${error.message}`, variant: "destructive" });
+      console.error('[useTrainingLog] deleteCurrentLog failed:', error);
+      toast({ title: "Error al eliminar", description: friendlyErrorMessage(error, 'No pudimos eliminar el entrenamiento. Inténtalo de nuevo.'), variant: "destructive" });
       if (user?.id) { 
         await loadLogForDate(selectedDate);
       }
@@ -780,6 +852,7 @@ export const useTrainingLog = (initialDate: Date) => {
     isLoadingLog,
     isSavingLog,
     isDeletingLog,
+    isDirty,
     availableRoutines,
     isLoadingRoutines,
     availableExercises,

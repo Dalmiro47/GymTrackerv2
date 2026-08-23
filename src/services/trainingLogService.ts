@@ -208,7 +208,7 @@ export const getMonthLogFlags = async (
       return { logged, deload };
     } catch (e) {
       console.error('[SERVICE] getMonthLogFlags error:', e);
-      return { logged: [], deload: [] };
+      throw e; // never cache a failure as "no logs"
     }
   });
 };
@@ -243,7 +243,7 @@ export const getDeloadCountSince = async (
       return count;
     } catch (e) {
       console.error('[SERVICE] getDeloadCountSince error:', e);
-      return 0;
+      throw e;
     }
   });
 };
@@ -274,7 +274,7 @@ export const getLogsSince = async (
       return snap.docs.map(docSnap => docSnap.data() as WorkoutLog);
     } catch (e) {
       console.error('[SERVICE] getLogsSince error:', e);
-      return [];
+      throw e;
     }
   });
 };

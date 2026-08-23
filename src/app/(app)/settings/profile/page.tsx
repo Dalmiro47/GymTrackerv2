@@ -7,21 +7,40 @@ import type { UserProfile } from '@/lib/types.gym';
 import { Loader2 } from 'lucide-react';
 import { CoachProfileForm } from '@/components/coach/CoachProfileForm';
 import { PageHeader } from '@/components/PageHeader';
+import { useToast } from '@/hooks/use-toast';
+import { friendlyErrorMessage } from '@/lib/errorMessages';
 
 export default function SettingsProfilePage() {
   const { user, isLoading } = useAuth();
+  const { toast } = useToast();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(true);
 
   useEffect(() => {
     if (!user) return;
+    let ignore = false;
     (async () => {
       setLoadingProfile(true);
-      const snap = await getDoc(doc(db, 'users', user.id, 'profile', 'profile'));
-      setProfile((snap.data() as UserProfile) ?? { goal: 'General Fitness' });
-      setLoadingProfile(false);
+      try {
+        const snap = await getDoc(doc(db, 'users', user.id, 'profile', 'profile'));
+        if (ignore) return;
+        setProfile((snap.data() as UserProfile) ?? { goal: 'General Fitness' });
+      } catch (error) {
+        console.error('[SettingsProfilePage] profile load failed:', error);
+        if (ignore) return;
+        toast({
+          title: 'Error al cargar',
+          description: friendlyErrorMessage(error, 'No pudimos cargar tu perfil. Se muestran valores por defecto.'),
+          variant: 'destructive',
+        });
+        // Fall back to defaults so the page never hangs on the spinner.
+        setProfile({ goal: 'General Fitness' });
+      } finally {
+        if (!ignore) setLoadingProfile(false);
+      }
     })();
-  }, [user]);
+    return () => { ignore = true; };
+  }, [user, toast]);
 
   if (isLoading || loadingProfile || !profile) {
     return (

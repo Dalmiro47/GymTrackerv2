@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { confirmDiscardUnsavedChanges } from '@/lib/unsavedChanges';
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import {
@@ -107,6 +108,7 @@ function TrainingLogPageContent() {
     isLoadingLog,
     isSavingLog,
     isDeletingLog, 
+    isDirty,
     availableRoutines,
     isLoadingRoutines,
     availableExercises, 
@@ -289,7 +291,7 @@ function TrainingLogPageContent() {
                     mode="single"
                     selected={selectedDate}
                     onSelect={(date) => {
-                      if (date) {
+                      if (date && confirmDiscardUnsavedChanges()) {
                         setSelectedDate(date);
                       }
                       setIsCalendarOpen(false); 
@@ -338,7 +340,7 @@ function TrainingLogPageContent() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Select 
               value={routineSelectValue}
-              onValueChange={handleSelectRoutine} 
+              onValueChange={(id) => { if (confirmDiscardUnsavedChanges()) handleSelectRoutine(id); }} 
               disabled={isLoadingRoutines || isLoadingLog || isSavingLog || isDeletingLog}
             >
               <SelectTrigger>
@@ -557,6 +559,9 @@ function TrainingLogPageContent() {
           >
             {isSavingLog ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Save className="h-5 w-5" />}
             Save
+            {isDirty && !isSavingLog && (
+              <span className="ml-1 h-2.5 w-2.5 rounded-full bg-destructive" aria-label="Unsaved changes" title="Unsaved changes" />
+            )}
           </Button>
         </div>
       </div>

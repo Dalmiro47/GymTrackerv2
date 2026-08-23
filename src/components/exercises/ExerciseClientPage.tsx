@@ -1,5 +1,6 @@
 "use client";
 
+import { friendlyErrorMessage } from '@/lib/errorMessages';
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import type { Exercise, ExerciseData, Routine } from '@/types';
@@ -90,7 +91,7 @@ export function ExerciseClientPage() {
       console.error("Failed to fetch exercises:", error);
       toast({
         title: "Error Fetching Exercises",
-        description: `Could not fetch your exercises. ${error.message || 'Please try again later.'}`,
+        description: friendlyErrorMessage(error, 'No pudimos cargar tus ejercicios. Inténtalo de nuevo.'),
         variant: "destructive",
       });
     }
@@ -208,6 +209,23 @@ export function ExerciseClientPage() {
       return;
     }
 
+    // Identity is name + muscleGroup (never name alone): "Dips" (Chest) and
+    // "Dips" (Triceps) may coexist, but two "Dips" (Chest) may not.
+    const identityKey = (name: string, muscle: string) =>
+      `${name.trim().toLowerCase()}::${String(muscle ?? '').trim().toLowerCase()}`;
+    const newKey = identityKey(formData.name, formData.muscleGroup);
+    const duplicate = exercises.find(
+      ex => ex.id !== exerciseToEdit?.id && identityKey(ex.name, ex.muscleGroup) === newKey
+    );
+    if (duplicate) {
+      toast({
+        title: "Ejercicio duplicado",
+        description: `Ya existe "${duplicate.name}" en ${duplicate.muscleGroup}. Usa otro nombre o edita el existente.`,
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsDialogSaving(true);
     try {
       const exercisePayload: ExerciseData = {
@@ -256,7 +274,7 @@ export function ExerciseClientPage() {
       console.error("Detailed error adding/updating exercise to Firestore: ", error);
       toast({
         title: "Save Error",
-        description: `Could not save ${formData.name}. Firestore error: ${error.message || 'Unknown error'}`,
+        description: friendlyErrorMessage(error, `No pudimos guardar ${formData.name}. Inténtalo de nuevo.`),
         variant: "destructive",
       });
     } finally {
@@ -294,6 +312,10 @@ export function ExerciseClientPage() {
     const exerciseName = exercises.find(ex => ex.id === exerciseToDeleteId)?.name || "The exercise";
   
     try {
+      // Delete the exercise first: if this fails nothing else has changed.
+      await deleteExerciseService(user.id, exerciseToDeleteId);
+      toast({ title: "Exercise Deleted", description: `${exerciseName} has been removed from your library.` });
+
       if (affectedRoutines.length > 0) {
         await Promise.all(
           affectedRoutines.map(routine =>
@@ -307,15 +329,12 @@ export function ExerciseClientPage() {
         );
         toast({ title: "Routines Updated", description: `${exerciseName} removed from ${affectedRoutines.length} routine(s).` });
       }
-  
-      await deleteExerciseService(user.id, exerciseToDeleteId);
-      toast({ title: "Exercise Deleted", description: `${exerciseName} has been removed from your library.` });
       
       await fetchUserExercises(user.id);
       await fetchHiddenDefaults(user.id);
     } catch (error: any) {
       console.error("Failed to delete exercise and update routines:", error);
-      toast({ title: "Delete Error", description: `Could not delete ${exerciseName}. ${error.message}`, variant: "destructive" });
+      toast({ title: "Delete Error", description: friendlyErrorMessage(error, `No pudimos eliminar ${exerciseName}. Inténtalo de nuevo.`), variant: "destructive" });
     } finally {
       setIsBusyDeleting(false);
       closeDeleteDialog();
