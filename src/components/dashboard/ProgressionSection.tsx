@@ -7,6 +7,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { CoachChatSheet } from '@/components/coach/CoachChatSheet';
 import { useAuth } from '@/contexts/AuthContext';
 import { getLogsSince } from '@/services/trainingLogService';
+import { useToast } from '@/hooks/use-toast';
+import { friendlyErrorMessage } from '@/lib/errorMessages';
 import {
   computeProgression,
   sortProgression,
@@ -207,6 +209,7 @@ function CollapsibleRows({
 
 export function ProgressionSection() {
   const { user } = useAuth();
+  const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(true);
   const [results, setResults] = useState<ProgressionResult[]>([]);
   const [deload, setDeload] = useState<DashboardDeloadSummary | null>(null);
@@ -250,6 +253,7 @@ export function ProgressionSection() {
         if (!cancelled) {
           setResults([]);
           setDeload(null);
+          toast({ title: 'Error al cargar', description: friendlyErrorMessage(err, 'No pudimos cargar tu progresión. Inténtalo de nuevo.'), variant: 'destructive' });
         }
       })
       .finally(() => {
@@ -258,7 +262,7 @@ export function ProgressionSection() {
     return () => {
       cancelled = true;
     };
-  }, [user?.id]);
+  }, [user?.id, toast]);
 
   const sorted = useMemo(() => sortProgression(results), [results]);
   // Three mutually exclusive buckets. Inactive wins over insufficient so an

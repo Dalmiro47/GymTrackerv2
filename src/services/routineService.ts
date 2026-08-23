@@ -77,7 +77,11 @@ export const addRoutine = async (userId: string, routineData: Omit<RoutineData, 
     invalidateCache(routinesCacheKey(userId));
 
     // History is best-effort and never blocks the routine write.
-    await recordRoutineVersion(userId, routineIdSlug, dataToSave, 'created');
+    try {
+      await recordRoutineVersion(userId, routineIdSlug, dataToSave, 'created');
+    } catch (historyError) {
+      console.warn('[routineService] recordRoutineVersion (created) failed:', historyError);
+    }
 
     return { id: routineIdSlug, ...dataToSave } as Routine;
   } catch (error: any) {
@@ -173,9 +177,13 @@ export const updateRoutine = async (
 
     if (beforeData) {
       const afterData = { ...beforeData, ...dataToUpdate };
-      await recordRoutineVersion(userId, routineId, afterData, 'updated', historySource, {
-        previousState: beforeData,
-      });
+      try {
+        await recordRoutineVersion(userId, routineId, afterData, 'updated', historySource, {
+          previousState: beforeData,
+        });
+      } catch (historyError) {
+        console.warn('[routineService] recordRoutineVersion (updated) failed:', historyError);
+      }
     }
   } catch (error: any) {
     console.error("Error updating routine in Firestore: ", error);

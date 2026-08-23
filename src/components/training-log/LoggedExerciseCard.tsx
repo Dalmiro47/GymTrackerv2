@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import type { LoggedExercise, LoggedSet, SetStructure } from '@/types';
 import { computeWarmup, inferWarmupTemplate, WarmupInput, type WarmupStep } from '@/lib/utils';
@@ -284,15 +284,35 @@ export function LoggedExerciseCard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loggedExercise.sets, isEditing]);
   
-  useEffect(() => {
-    return () => {
-      if (pushUpTimer.current) window.clearTimeout(pushUpTimer.current);
-    };
+  // Latest debounced value not yet pushed to the parent. Flushed on blur (a
+  // tap on Save blurs the input first) and on unmount, so a keystroke within
+  // the 250 ms window is never lost.
+  const pendingPush = useRef<LoggedSet[] | null>(null);
+  const onUpdateSetsRef = useRef(onUpdateSets);
+  onUpdateSetsRef.current = onUpdateSets;
+
+  const flushPush = useCallback(() => {
+    if (pushUpTimer.current) {
+      window.clearTimeout(pushUpTimer.current);
+      pushUpTimer.current = null;
+    }
+    if (pendingPush.current) {
+      const next = pendingPush.current;
+      pendingPush.current = null;
+      onUpdateSetsRef.current(next);
+    }
   }, []);
+
+  useEffect(() => {
+    return () => { flushPush(); };
+  }, [flushPush]);
 
   function pushUp(next: LoggedSet[]) {
     if (pushUpTimer.current) clearTimeout(pushUpTimer.current);
+    pendingPush.current = next;
     pushUpTimer.current = window.setTimeout(() => {
+      pushUpTimer.current = null;
+      pendingPush.current = null;
       onUpdateSets(next);
     }, 250);
   }
@@ -456,7 +476,9 @@ export function LoggedExerciseCard({
           onBlurCapture={(e) => {
             // iOS often gives null relatedTarget — compute from activeElement
             const active = document.activeElement as HTMLElement | null;
-            setIsEditing(!!(active && contentRef.current?.contains(active)));
+            const stillInside = !!(active && contentRef.current?.contains(active));
+            setIsEditing(stillInside);
+            if (!stillInside) flushPush();
           }}
         >
           {/* Rep-cue band. The card's outer border belongs to the set-structure

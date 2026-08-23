@@ -1,6 +1,7 @@
 
 "use client";
 
+import { friendlyErrorMessage } from '@/lib/errorMessages';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import type { Routine, RoutineData, Exercise, WorkoutLog } from '@/types';
@@ -91,7 +92,7 @@ export default function RoutinesPage() {
       console.error("Failed to fetch routines:", error);
       toast({
         title: "Error Fetching Routines",
-        description: `${error.message || 'Please try again later.'}. If this persists, ensure Firestore indexes are set up for 'order' on the routines collection.`,
+        description: friendlyErrorMessage(error, 'No pudimos cargar tus rutinas. Inténtalo de nuevo.'),
         variant: "destructive",
       });
     } finally {
@@ -107,7 +108,7 @@ export default function RoutinesPage() {
     } catch (error: any) {
       toast({
         title: "Error",
-        description: `Could not load your exercises: ${error.message}`,
+        description: friendlyErrorMessage(error, 'No pudimos cargar tus ejercicios. Inténtalo de nuevo.'),
         variant: "destructive",
       });
     } finally {
@@ -162,7 +163,7 @@ export default function RoutinesPage() {
     } catch (error: any) {
       toast({
         title: "Save Error",
-        description: `Could not save routine ${data.name}. ${error.message || 'Unknown error'}`,
+        description: friendlyErrorMessage(error, 'No pudimos guardar la rutina. Inténtalo de nuevo.'),
         variant: "destructive",
       });
     } finally {
@@ -187,7 +188,7 @@ export default function RoutinesPage() {
       const updatedRoutines = await getRoutines(user.id);
       setRoutines(updatedRoutines);
     } catch (error: any) {
-      toast({ title: "Delete Error", description: `Could not delete ${routineName}. ${error.message}`, variant: "destructive" });
+      toast({ title: "Delete Error", description: friendlyErrorMessage(error, 'No pudimos eliminar la rutina. Inténtalo de nuevo.'), variant: "destructive" });
     } finally {
       setRoutineToDeleteId(null);
       setIsLoading(false);
@@ -252,7 +253,7 @@ export default function RoutinesPage() {
       } catch (error: any) {
         toast({
           title: "Error Saving Order",
-          description: `Could not save the new routine order. ${error.message || 'Please try again.'}`,
+          description: friendlyErrorMessage(error, 'No pudimos guardar el nuevo orden. Inténtalo de nuevo.'),
           variant: "destructive",
         });
         fetchUserRoutines(user.id);

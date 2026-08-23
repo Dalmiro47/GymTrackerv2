@@ -105,6 +105,10 @@ export interface WorkoutLog {
   duration?: number; 
   notes?: string; // Overall notes for the workout session
   isDeload?: boolean; // True if this log was a deload session
+  // True once the deload transform (fewer sets, lighter weight) has been
+  // persisted into `exercises[].sets`. Such a log is displayed as stored —
+  // never re-transformed — so reductions cannot compound across reloads.
+  deloadApplied?: boolean;
   deloadParams?: {
     volumeMultiplier: number;
     intensityMultiplier: number;

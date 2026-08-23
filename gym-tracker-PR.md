@@ -2,14 +2,14 @@
 claude --dangerously-skip-permissions 
 
 ## Pull Request to Github 
-git switch -c ref/reps-goal1
+git switch -c fix/coach-ai
 
 ## Do ALL THE CHANGES 
 
 ## Pull Request to Github 
 git add -A 
-git commit -m "ref: add a ui improvement to show when I hit the rep goal and I should do an increase overload" 
-git push -u origin ref/reps-goal1
+git commit -m "fix: fixed coach ai not working" 
+git push -u origin fix/coach-ai
 
 ## Make local main match GitHub
 
@@ -24,5 +24,5 @@ git rev-parse HEAD
 git rev-parse origin/main 
  
 ## After merge, delete the branch
-git branch -D ref/reps-goal1
+git branch -D fix/coach-ai
  

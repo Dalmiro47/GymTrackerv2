@@ -6,9 +6,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Calendar as ShadCNCalendar } from "@/components/ui/calendar"; // ShadCN Calendar
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
-import { getWorkoutLog, getMonthLogFlags, getDeloadCountSince } from '@/services/trainingLogService';
+import { getWorkoutLog, getMonthLogFlags, getLogsSince } from '@/services/trainingLogService';
+import { summarizeDeloads, countSessionsInWeek } from '@/lib/deload';
+import { useToast } from '@/hooks/use-toast';
+import { friendlyErrorMessage } from '@/lib/errorMessages';
 import type { WorkoutLog, LoggedSet } from '@/types';
-import { format, parseISO, startOfMonth, getMonth, getYear, isValid, startOfWeek, isWithinInterval, subMonths } from 'date-fns';
+import { format, parseISO, startOfMonth, getMonth, getYear, isValid, subMonths } from 'date-fns';
 import { Loader2, CalendarIcon, ListChecks, ExternalLink, PlusCircle, Flame, CalendarCheck2, BatteryLow } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
@@ -57,6 +60,11 @@ export function WorkoutCalendarSection() {
   // Rolling last-3-months deload count (null while loading) — a standing
   // recovery indicator, independent of the month being browsed.
   const [deloadCount3mo, setDeloadCount3mo] = useState<number | null>(null);
+  // Sessions logged since Monday, computed from the 3-month window (not the
+  // browsed month) so browsing another month or a week spanning two months
+  // doesn't skew it. null while loading.
+  const [sessionsThisWeek, setSessionsThisWeek] = useState<number | null>(null);
+  const { toast } = useToast();
   // Stable per-mount "today" so it doesn't invalidate memos/props every render
   const today = useMemo(() => new Date(), []);
 
@@ -77,29 +85,42 @@ export function WorkoutCalendarSection() {
       console.error('Failed to load month dates:', err);
       setLoggedDayStrings([]);
       setDeloadDayStrings([]);
+      toast({ title: 'Error al cargar', description: friendlyErrorMessage(err, 'No pudimos cargar el calendario. Inténtalo de nuevo.'), variant: 'destructive' });
     } finally {
       setIsLoadingLoggedDays(false);
     }
-  }, [user?.id, displayedMonth]);
+  }, [user?.id, displayedMonth, toast]);
 
   // Initial + on month change
   useEffect(() => {
     fetchMonthDates();
   }, [fetchMonthDates]);
 
-  // Rolling last-3-months deload count (independent of the displayed month)
+  // Rolling last-3-months window (independent of the displayed month):
+  // deload count = explicit deload days + full weeks with no entries.
   useEffect(() => {
     if (!user?.id) {
-      setDeloadCount3mo(0);
+      setDeloadCount3mo(null);
+      setSessionsThisWeek(null);
       return;
     }
     let cancelled = false;
     setDeloadCount3mo(null);
-    getDeloadCountSince(user.id, subMonths(today, 3))
-      .then(count => { if (!cancelled) setDeloadCount3mo(count); })
-      .catch(() => { if (!cancelled) setDeloadCount3mo(0); });
+    setSessionsThisWeek(null);
+    const start = subMonths(today, 3);
+    getLogsSince(user.id, start)
+      .then(logs => {
+        if (cancelled) return;
+        setDeloadCount3mo(summarizeDeloads(logs, start, today).total);
+        setSessionsThisWeek(countSessionsInWeek(logs, today));
+      })
+      .catch(err => {
+        if (cancelled) return;
+        console.error('Failed to load 3-month window:', err);
+        toast({ title: 'Error al cargar', description: friendlyErrorMessage(err, 'No pudimos cargar tus estadísticas. Inténtalo de nuevo.'), variant: 'destructive' });
+      });
     return () => { cancelled = true; };
-  }, [user?.id, today]);
+  }, [user?.id, today, toast]);
 
   // Fetch details for the selected day (run when selectedDate changes)
   useEffect(() => {
@@ -150,13 +171,6 @@ export function WorkoutCalendarSection() {
 
   const noRecentDeload = deloadCount3mo === 0;
 
-  const sessionsThisWeek = useMemo(() => {
-    const weekStart = startOfWeek(today, { weekStartsOn: 1 });
-    return [...loggedDayStrings, ...deloadDayStrings].filter(dateStr => {
-      const d = parseISO(dateStr);
-      return !isNaN(d.getTime()) && isWithinInterval(d, { start: weekStart, end: today });
-    }).length;
-  }, [loggedDayStrings, deloadDayStrings, today]);
 
   return (
     <div className="space-y-4">
@@ -178,7 +192,7 @@ export function WorkoutCalendarSection() {
             <span className="truncate">This week</span>
           </div>
           <p className="mt-1 text-2xl font-bold tabular-nums leading-none">
-            {isLoadingLoggedDays ? '–' : sessionsThisWeek}
+            {sessionsThisWeek === null ? '–' : sessionsThisWeek}
           </p>
           <p className="mt-1 text-[11px] text-muted-foreground truncate">since Monday</p>
         </div>

@@ -6,6 +6,9 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import type { Exercise, Routine, RoutineData, RoutineExercise, SetStructure } from '@/types';
 import { useToast } from '@/hooks/use-toast';
+
+const exerciseIdentityKey = (ex: { name: string; muscleGroup?: string | null }) =>
+  `${ex.name.trim().toLowerCase()}::${String(ex.muscleGroup ?? '').trim().toLowerCase()}`;
 import { Loader2, Plus, ArrowLeft, Check } from 'lucide-react'; 
 
 import { Button } from '@/components/ui/button';
@@ -71,6 +74,12 @@ export function AddEditRoutineDialog({
     () => new Map(allUserExercises.map(ex => [ex.id, ex])),
     [allUserExercises]
   );
+  // Fallback identity = name + muscleGroup (never name alone). Lets a routine
+  // re-link to a library exercise that was deleted and recreated under a new id.
+  const exerciseKeyMap = useMemo(
+    () => new Map(allUserExercises.map(ex => [exerciseIdentityKey(ex), ex])),
+    [allUserExercises]
+  );
 
   useEffect(() => {
     if (!isOpen) return;
@@ -90,11 +99,18 @@ export function AddEditRoutineDialog({
       description: routineToEdit.description || '',
     });
   
-    if (isLoadingExercises) return;
+    if (isLoadingExercises) {
+      // Never show the previously edited routine's list while this one loads.
+      setSelectedExerciseObjects([]);
+      return;
+    }
   
     const hydratedExercises = routineToEdit.exercises.map(routineEx => {
-      const fullDef = exerciseIdMap.get(routineEx.id);
-      return fullDef ? { ...routineEx, isMissing: false } : { ...routineEx, isMissing: true };
+      const byId = exerciseIdMap.get(routineEx.id);
+      if (byId) return { ...routineEx, isMissing: false };
+      const byKey = exerciseKeyMap.get(exerciseIdentityKey(routineEx));
+      if (byKey) return { ...routineEx, id: byKey.id, isMissing: false };
+      return { ...routineEx, isMissing: true };
     });
     setSelectedExerciseObjects(hydratedExercises);
     setIsPickerOpen(false);
@@ -102,7 +118,7 @@ export function AddEditRoutineDialog({
     setReplaceIndex(null);
     setIsReplaceOpen(false);
 
-  }, [routineToEdit, reset, isOpen, isLoadingExercises, exerciseIdMap]);
+  }, [routineToEdit, reset, isOpen, isLoadingExercises, exerciseIdMap, exerciseKeyMap]);
 
 
   const handleExerciseSelectionChange = (exerciseId: string, isSelected: boolean) => {
@@ -145,6 +161,14 @@ export function AddEditRoutineDialog({
   };
   
   const onSubmit = async (data: RoutineFormData) => {
+    if (selectedExerciseObjects.some(ex => ex.isMissing)) {
+        toast({
+            title: "Ejercicios no encontrados",
+            description: "Esta rutina contiene ejercicios que ya no existen en tu biblioteca. Elimínalos o reemplázalos antes de guardar.",
+            variant: "destructive",
+        });
+        return;
+    }
     const validExercises = selectedExerciseObjects.filter(ex => !ex.isMissing);
 
     if (validExercises.length === 0) {

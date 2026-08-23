@@ -7,6 +7,7 @@ import { navItems } from '@/config/site';
 import { Logo } from '../Logo';
 import { Button } from '@/components/ui/button';
 import { X } from 'lucide-react';
+import { confirmDiscardUnsavedChanges } from '@/lib/unsavedChanges';
 
 interface AppSidebarProps {
   isOpen: boolean;
@@ -49,7 +50,13 @@ export function AppSidebar({ isOpen, setIsOpen }: AppSidebarProps) {
             <Link
               key={item.href}
               href={item.href}
-              onClick={() => setIsOpen(false)}
+              onClick={(e) => {
+                if (pathname !== item.href && !confirmDiscardUnsavedChanges()) {
+                  e.preventDefault();
+                  return;
+                }
+                setIsOpen(false);
+              }}
               className={cn(
                 "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
                 pathname === item.href

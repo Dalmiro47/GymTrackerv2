@@ -1,6 +1,7 @@
 
 "use client";
 
+import { confirmDiscardUnsavedChanges } from '@/lib/unsavedChanges';
 import React from "react"; 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,7 @@ export function UserNav() {
 
 
   const handleLogout = async () => {
+    if (!confirmDiscardUnsavedChanges()) return;
     setIsLoggingOut(true);
     try {
       await logout();
@@ -81,7 +83,7 @@ export function UserNav() {
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuGroup>
-          <DropdownMenuItem onClick={() => router.push('/profile')}>
+          <DropdownMenuItem onClick={() => { if (confirmDiscardUnsavedChanges()) router.push('/profile'); }}>
             <UserIcon className="mr-2 h-4 w-4" />
             <span>Profile</span>
           </DropdownMenuItem>

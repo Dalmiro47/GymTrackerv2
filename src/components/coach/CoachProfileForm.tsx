@@ -11,6 +11,8 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { Loader2, CheckCircle2 } from 'lucide-react';
 import { stripUndefined } from '@/lib/clean';
+import { useToast } from '@/hooks/use-toast';
+import { friendlyErrorMessage } from '@/lib/errorMessages';
 
 const clampSession = (n?: number) =>
   typeof n === 'number' ? Math.min(180, Math.max(20, Math.round(n))) : undefined;
@@ -32,6 +34,8 @@ export function CoachProfileForm({ initial, title = 'Profile' }: { initial: User
     return A !== B;
   }, [baseline, form]);
 
+  const { toast } = useToast();
+
   async function save() {
     if (!user || !isDirty) return;
     try {
@@ -46,6 +50,13 @@ export function CoachProfileForm({ initial, title = 'Profile' }: { initial: User
       setBaseline(form); // reset dirty baseline
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
+    } catch (error) {
+      console.error('[CoachProfileForm] save failed:', error);
+      toast({
+        title: 'Error al guardar',
+        description: friendlyErrorMessage(error, 'No pudimos guardar tu perfil. Revisa tu conexión e inténtalo de nuevo.'),
+        variant: 'destructive',
+      });
     } finally {
       setSaving(false);
     }
