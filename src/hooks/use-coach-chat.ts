@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { format } from 'date-fns';
 import { getAuth } from 'firebase/auth';
 import { app } from '@/lib/firebaseConfig';
+import { useAuth } from '@/contexts/AuthContext';
 import type { LogDayContext, RoutineReviewContext, DashboardContext } from '@/lib/ai/context-builders';
 
 export type ChatMessage = {
@@ -15,7 +16,10 @@ type ChatMode = 'log-day' | 'routine-review' | 'dashboard';
 
 // Local date (not UTC) so the chat rolls over at local midnight, same as logs
 const today = () => format(new Date(), 'yyyy-MM-dd');
-const STORAGE_KEY = (mode: ChatMode) => `coach-chat-${mode}-${today()}`;
+// Keyed per user so a shared device never shows another account's chat; log-day
+// mode keys on the selected log date so each day keeps its own conversation.
+const STORAGE_KEY = (mode: ChatMode, uid: string, date?: string) =>
+  `coach-chat-${uid}-${mode}-${mode === 'log-day' && date ? date : today()}`;
 
 function stripThinking(text: string): string {
   let result = text.replace(/<think>[\s\S]*?<\/think>\n?/g, '');
@@ -37,29 +41,36 @@ function extractTextFromContent(content: string): string {
   return stripThinking(content);
 }
 
-function loadFromStorage(mode: ChatMode): ChatMessage[] {
+function loadFromStorage(key: string): ChatMessage[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY(mode));
+    const raw = localStorage.getItem(key);
     return raw ? (JSON.parse(raw) as ChatMessage[]) : [];
   } catch {
     return [];
   }
 }
 
-function saveToStorage(mode: ChatMode, messages: ChatMessage[]) {
+function saveToStorage(key: string, mode: ChatMode, uid: string, messages: ChatMessage[]) {
   try {
-    localStorage.setItem(STORAGE_KEY(mode), JSON.stringify(messages));
-    // Prune keys from previous days to avoid localStorage bloat
-    const currentKey = STORAGE_KEY(mode);
+    localStorage.setItem(key, JSON.stringify(messages));
+    // Prune this user's other keys for the mode (previous days / other log dates)
+    // plus legacy un-scoped keys, to avoid localStorage bloat
     Object.keys(localStorage)
-      .filter((k) => k.startsWith(`coach-chat-${mode}-`) && k !== currentKey)
+      .filter((k) => (k.startsWith(`coach-chat-${uid}-${mode}-`) || k.startsWith(`coach-chat-${mode}-`)) && k !== key)
       .forEach((k) => localStorage.removeItem(k));
   } catch {
     // localStorage full or unavailable — fail silently
   }
 }
 
-export function useCoachChat(mode: ChatMode) {
+/**
+ * @param logDate  For `log-day` mode: the selected log date (`yyyy-MM-dd`) so the
+ *                 chat is scoped to that day rather than to "today". Ignored otherwise.
+ */
+export function useCoachChat(mode: ChatMode, logDate?: string) {
+  const { user } = useAuth();
+  const uid = user?.id ?? 'anon';
+  const storageKey = STORAGE_KEY(mode, uid, logDate);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -68,18 +79,18 @@ export function useCoachChat(mode: ChatMode) {
   // Load persisted history after mount — reading localStorage during the
   // initial render causes a server/client hydration mismatch.
   useEffect(() => {
-    setMessages(loadFromStorage(mode));
-  }, [mode]);
+    setMessages(loadFromStorage(storageKey));
+  }, [storageKey]);
 
   const persistMessages = useCallback(
     (updater: ChatMessage[] | ((prev: ChatMessage[]) => ChatMessage[])) => {
       setMessages((prev) => {
         const next = typeof updater === 'function' ? updater(prev) : updater;
-        saveToStorage(mode, next);
+        saveToStorage(storageKey, mode, uid, next);
         return next;
       });
     },
-    [mode],
+    [storageKey, mode, uid],
   );
 
   const sendMessage = useCallback(
@@ -166,7 +177,7 @@ export function useCoachChat(mode: ChatMode) {
             const updated = [...prev];
             updated[updated.length - 1] = {
               role: 'assistant',
-              content: 'No se recibio respuesta del coach. Intenta de nuevo.',
+              content: 'No reply from the coach. Please try again.',
             };
             return updated;
           });

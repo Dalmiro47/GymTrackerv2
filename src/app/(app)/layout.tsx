@@ -20,7 +20,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="bg-background min-h-[100dvh]" style={{ ['--sidebar-width' as any]: '16rem' }}>
-      <AppHeader onMenuClick={() => setSidebarOpen((v) => !v)} />
+      <AppHeader onMenuClick={() => setSidebarOpen((v) => !v)} isSidebarOpen={sidebarOpen} />
 
       <div className="flex">
         {/* Desktop sidebar */}
@@ -48,7 +48,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             className="pointer-events-none"
             style={{ height: "var(--appbar-offset)" }}
           />
-          <main className="p-4 md:p-6 lg:p-8">
+          <main className="p-4 pb-24 md:p-6 lg:p-8">
             {children}
           </main>
         </div>

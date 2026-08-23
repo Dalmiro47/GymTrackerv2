@@ -16,7 +16,6 @@ interface SetInputRowProps {
   onSetChange: (index: number, field: keyof Omit<LoggedSet, 'id' | 'isProvisional'>, value: string) => void;
   onRemoveSet: () => void;
   isProvisional?: boolean;
-  onInteract: () => void;
   disabled?: boolean;
   weightDisplay: string;
   setWeightDisplay: (value: string) => void;
@@ -25,11 +24,10 @@ interface SetInputRowProps {
   repTarget?: number | null;
 }
 
-export function SetInputRow({ set, index, onSetChange, onRemoveSet, isProvisional, onInteract, disabled, weightDisplay, setWeightDisplay, repTarget }: SetInputRowProps) {
+export function SetInputRow({ set, index, onSetChange, onRemoveSet, isProvisional, disabled, weightDisplay, setWeightDisplay, repTarget }: SetInputRowProps) {
 
   const change = (field: 'reps'|'weight', v: string) => {
     onSetChange(index, field, v); // allow '' to go through -> becomes null in parent
-    onInteract();
   };
 
   return (
@@ -102,8 +100,7 @@ export function SetInputRow({ set, index, onSetChange, onRemoveSet, isProvisiona
           if (raw === '') {
             setWeightDisplay('');
             onSetChange(index, 'weight', '');
-            onInteract();
-            return;
+                    return;
           }
 
           // Keep digits + at most one decimal separator ('.' or ','); keep the FIRST one
@@ -142,16 +139,14 @@ export function SetInputRow({ set, index, onSetChange, onRemoveSet, isProvisiona
 
             setWeightDisplay(nextDisplay);
             onSetChange(index, 'weight', nextDisplay);
-            onInteract();
-            return;
+                    return;
           }
 
           // Integer only → commit
           const nextDisplay = intPart;
           setWeightDisplay(nextDisplay);
           onSetChange(index, 'weight', nextDisplay);
-          onInteract();
-        }}
+              }}
         onBlur={() => {
           // normalize transient "12." or "12," to "12" on blur
           if (weightDisplay && (weightDisplay.endsWith('.') || weightDisplay.endsWith(','))) {

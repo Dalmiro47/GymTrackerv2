@@ -6,7 +6,7 @@ let dirty = false;
 let listenerAttached = false;
 
 export const UNSAVED_CHANGES_MESSAGE =
-  'Tienes cambios sin guardar en tu entrenamiento. ¿Salir sin guardar?';
+  'You have unsaved changes in your workout. Leave without saving?';
 
 const onBeforeUnload = (e: BeforeUnloadEvent) => {
   if (!dirty) return;

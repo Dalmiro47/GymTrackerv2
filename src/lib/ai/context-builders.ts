@@ -20,6 +20,8 @@ export type LogDayContext = {
   exercises: Array<{
     name: string;
     muscleGroup: string;
+    /** 'done' = user logged/changed sets today; 'planned' = still the auto-filled last-session values, not performed yet */
+    status: 'done' | 'planned';
     sets: Array<{ reps: number | null; weight: number | null }>;
     personalRecord?: { reps: number; weight: number } | null;
     progressiveOverload?: string;
@@ -42,6 +44,7 @@ export function serializeLogDayContext(
     exercises: log.exercises.map((ex: LoggedExercise) => ({
       name: ex.name,
       muscleGroup: ex.muscleGroup,
+      status: ex.isProvisional ? 'planned' : 'done',
       sets: ex.sets
         .filter((s) => s.reps !== null || s.weight !== null)
         .map((s) => ({ reps: s.reps, weight: s.weight })),

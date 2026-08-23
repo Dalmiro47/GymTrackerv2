@@ -12,7 +12,6 @@ import {
   getMonthLogFlags,
   updatePerformanceEntryOnLogDelete,
   getLastNonDeloadPerformance,
-  saveExercisePerformanceEntry,
   saveExercisePerformanceEntries,
 } from '@/services/trainingLogService';
 import { getExercises as fetchAllUserExercises } from '@/services/exerciseService';
@@ -39,6 +38,32 @@ const normalizeForPR = (sets: LoggedSet[]) =>
     .map(s => ({ reps: Number(s.reps), weight: Number(s.weight) }));
 
 // The subset of a log that is compared for "unsaved changes" (see isDirty).
+// An exercise is "provisional" (planned, not yet done) while its sets are still
+// exactly what was pre-filled from the last session. Any reps/weight edit, added
+// or removed set flips it — mere focus does not. Mirrors the `persistedShape`
+// dirty check, but per exercise.
+const setsShape = (sets: Array<{ reps: number | null; weight: number | null }>) =>
+  JSON.stringify(sets.map(s => [s.reps ?? null, s.weight ?? null]));
+
+const withDerivedProvisional = (ex: LoggedExercise): LoggedExercise => {
+  if (!ex.prefill) return { ...ex, isProvisional: false, sets: ex.sets.map(s => ({ ...s, isProvisional: false })) };
+  const untouched = setsShape(ex.sets) === setsShape(ex.prefill.sets);
+  return {
+    ...ex,
+    isProvisional: untouched,
+    sets: ex.sets.map((s, i) => {
+      const p = ex.prefill!.sets[i];
+      const sameSet = untouched || (!!p && (s.reps ?? null) === (p.reps ?? null) && (s.weight ?? null) === (p.weight ?? null));
+      return { ...s, isProvisional: sameSet };
+    }),
+  };
+};
+
+const makePrefill = (performanceEntry: { lastPerformedSets?: Array<{ reps: number | null; weight: number | null }>; lastPerformedDate?: number | null } | null | undefined, sets: LoggedSet[]) => ({
+  sets: sets.map(s => ({ reps: s.reps ?? null, weight: s.weight ?? null })),
+  lastPerformedDate: performanceEntry?.lastPerformedSets?.length ? (performanceEntry.lastPerformedDate ?? null) : null,
+});
+
 const persistedShape = (log: WorkoutLog) => ({
   notes: log.notes ?? '',
   routineId: log.routineId ?? null,
@@ -224,7 +249,7 @@ export const useTrainingLog = (initialDate: Date) => {
 
     } catch (error: any) {
         console.error('[useTrainingLog] loadLogForDate failed:', error);
-        toast({ title: "Error al cargar", description: friendlyErrorMessage(error, 'No pudimos cargar el entrenamiento de ese día.'), variant: "destructive" });
+        toast({ title: "Load error", description: friendlyErrorMessage(error, "Couldn't load that day's workout."), variant: "destructive" });
         const empty = makeEmptyLog(dateId);
         setOriginalLogState(empty);
         setSavedSnapshot(empty);
@@ -238,13 +263,13 @@ export const useTrainingLog = (initialDate: Date) => {
       setIsLoadingRoutines(true);
       fetchUserRoutines(user.id)
         .then(setAvailableRoutines)
-        .catch(error => { console.error('[useTrainingLog] routines load failed:', error); toast({ title: "Error al cargar", description: friendlyErrorMessage(error, 'No pudimos cargar tus rutinas.'), variant: "destructive" }); })
+        .catch(error => { console.error('[useTrainingLog] routines load failed:', error); toast({ title: "Load error", description: friendlyErrorMessage(error, "Couldn't load your routines."), variant: "destructive" }); })
         .finally(() => setIsLoadingRoutines(false));
 
       setIsLoadingExercises(true);
       fetchAllUserExercises(user.id)
         .then(setAvailableExercises)
-        .catch(error => { console.error('[useTrainingLog] exercises load failed:', error); toast({ title: "Error al cargar", description: friendlyErrorMessage(error, 'No pudimos cargar tus ejercicios.'), variant: "destructive" }); })
+        .catch(error => { console.error('[useTrainingLog] exercises load failed:', error); toast({ title: "Load error", description: friendlyErrorMessage(error, "Couldn't load your exercises."), variant: "destructive" }); })
         .finally(() => setIsLoadingExercises(false));
       
     } else {
@@ -342,20 +367,6 @@ export const useTrainingLog = (initialDate: Date) => {
   }, []);
 
 
-  const markExerciseAsInteracted = (exerciseIdToUpdate: string) => {
-    mutateBaseline((base) => {
-      if (!base) return null;
-      return {
-        ...base,
-        exercises: base.exercises.map(ex =>
-          ex.id === exerciseIdToUpdate
-            ? { ...ex, isProvisional: false, sets: ex.sets.map(s => ({ ...s, isProvisional: false })) }
-            : ex
-        ),
-      };
-    });
-  };
-  
 
   const handleSelectRoutine = async (routineId: string) => {
     if (!user?.id) return;
@@ -405,6 +416,7 @@ export const useTrainingLog = (initialDate: Date) => {
                 personalRecordDisplay: formatPR(currentPR),
                 currentPR: currentPR,
                 isProvisional: true, 
+                prefill: makePrefill(performanceEntry, initialSets),
                 warmupConfig: fullExerciseDef ? getWarmupConfig(fullExerciseDef) : undefined,
                 setStructure: routineEx.setStructure ?? 'normal',
                 setStructureOverride: null,
@@ -418,9 +430,12 @@ export const useTrainingLog = (initialDate: Date) => {
         routineName: selectedRoutine.name, 
         exercises: exercisesFromRoutine, 
         exerciseIds: exercisesFromRoutine.map(e => e.exerciseId), 
-        notes: currentNotes 
+        notes: currentNotes
     };
     setOriginalLogState(newLog);
+    // The fresh log has untransformed sets; a stale `deloadApplied` would make
+    // `currentLog` skip the deload transform while the Deload alert still shows.
+    setDeloadApplied(false);
   };
 
   const addExerciseToLog = async (exercise: Exercise, index?: number) => {
@@ -467,6 +482,7 @@ export const useTrainingLog = (initialDate: Date) => {
       personalRecordDisplay: formatPR(currentPR),
       currentPR: currentPR,
       isProvisional: true,
+      prefill: makePrefill(performanceEntry, initialSets),
       warmupConfig: getWarmupConfig(exercise),
       setStructure: 'normal',
       setStructureOverride: null,
@@ -529,6 +545,7 @@ export const useTrainingLog = (initialDate: Date) => {
         personalRecordDisplay: formatPR(currentPR),
         currentPR: currentPR,
         isProvisional: true,
+        prefill: makePrefill(performanceEntry, initialSets),
         warmupConfig: getWarmupConfig(newExercise),
         setStructure: prev.setStructure ?? 'normal',
         setStructureOverride: prev.setStructureOverride ?? null,
@@ -554,11 +571,8 @@ export const useTrainingLog = (initialDate: Date) => {
   };
 
   const updateExerciseInLog = (updated: LoggedExercise) => {
-    const finalUpdated: LoggedExercise = {
-      ...updated,
-      isProvisional: updated.isProvisional,
-      sets: updated.sets.map(s => ({ ...s, isProvisional: s.isProvisional ?? false })),
-    };
+    // `isProvisional` is derived from the prefill, never trusted from the card.
+    const finalUpdated = withDerivedProvisional(updated);
     mutateBaseline((base) => {
       if (!base) return null;
       return {
@@ -580,44 +594,11 @@ export const useTrainingLog = (initialDate: Date) => {
           : ex
       ),
     };
+    // State only: `setStructureOverride` is part of `persistedShape`, so the
+    // change shows as unsaved and is written by the user's explicit Save.
     setOriginalLogState(nextBaseline);
-
-    // Persist in the background, but only for days that already exist on the
-    // backend — otherwise a structure tweak would silently create a log full
-    // of provisional (pre-filled, unperformed) data.
-    const existsOnBackend =
-      loggedDayStrings.includes(nextBaseline.id) || deloadDayStrings.includes(nextBaseline.id);
-    if (user?.id && existsOnBackend) {
-      saveLogService(user.id, nextBaseline.id, nextBaseline).catch((err: unknown) => {
-        console.error("Failed to persist set structure override in background", err);
-      });
-    }
   };
   
-  const applyLocalPRUpdate = useCallback((exerciseId: string, todaysSets: LoggedSet[]) => {
-    const bestToday = pickBestSet(todaysSets);
-    if (!bestToday) return;
-
-    mutateBaseline(base => {
-        if (!base) return null;
-        return {
-            ...base,
-            exercises: base.exercises.map(ex => {
-                if (ex.exerciseId !== exerciseId) return ex;
-                
-                const newIsBetter = isBetterPR(bestToday, ex.currentPR ?? null);
-                const nextPR = newIsBetter ? bestToday : (ex.currentPR ?? null);
-
-                return {
-                  ...ex,
-                  currentPR: nextPR,
-                  personalRecordDisplay: formatPR(nextPR),
-                };
-            })
-        };
-    });
-  }, [mutateBaseline]);
-
   const saveCurrentLog = async () => {
     if (!user?.id || !currentLog) {
       toast({ title: "Error", description: "No user or log data to save.", variant: "destructive" });
@@ -711,88 +692,7 @@ export const useTrainingLog = (initialDate: Date) => {
 
     } catch (error: any) {
       console.error('[useTrainingLog] saveCurrentLog failed:', error);
-      toast({ title: "Error al guardar", description: friendlyErrorMessage(error, 'No pudimos guardar tu entrenamiento. Revisa tu conexión e inténtalo de nuevo.'), variant: "destructive" });
-    } finally {
-      setIsSavingLog(false);
-    }
-  };
-
-  const saveSingleExercise = async (exerciseLogId: string) => {
-    if (!user?.id || !currentLog) {
-      toast({ title: "Error", description: "No user or log data to save.", variant: "destructive" });
-      return;
-    }
-  
-    // Persist what is displayed: for a not-yet-applied deload that is the
-    // transformed view (same rule as saveCurrentLog). Local state is left as
-    // is — the baseline stays untransformed and keeps deriving the same view.
-    const baseline = (isDeload && !deloadApplied) ? currentLog : (originalLogState ?? currentLog);
-    const selectedExercise = baseline.exercises.find(e => e.id === exerciseLogId);
-    if (!selectedExercise) {
-        toast({ title: "Error", description: "Could not find the exercise to save.", variant: "destructive" });
-        return;
-    }
-
-    setIsSavingLog(true);
-    try {
-      const logToSave: WorkoutLog = { ...baseline };
-      if (isDeload) {
-        logToSave.isDeload = true;
-        logToSave.deloadApplied = true;
-        logToSave.deloadParams = DEFAULT_DELOAD_PARAMS;
-      } else {
-        logToSave.isDeload = false;
-        logToSave.deloadApplied = false;
-        logToSave.deloadParams = undefined;
-      }
-
-      // Only persist exercises the user has actually interacted with — untouched
-      // provisional (pre-filled) exercises stay local until saved explicitly.
-      const exercisesToPersist = logToSave.exercises.filter(
-        ex => !ex.isProvisional || ex.id === exerciseLogId
-      );
-
-      const perfById = await fetchPerformanceDataByExerciseId(
-        exercisesToPersist.map(ex => ex.exerciseId)
-      );
-
-      const exercisesForPayload = exercisesToPersist.map((ex) => {
-        const { isProvisional, ...rest } = ex;
-        const perf = perfById.get(rest.exerciseId) ?? null;
-        const currentPR = perf?.personalRecord
-            ? { reps: perf.personalRecord.reps, weight: perf.personalRecord.weight }
-            : null;
-        return {
-          ...rest,
-          personalRecordDisplay: formatPR(currentPR),
-          currentPR: currentPR,
-          sets: rest.sets.map(({ isProvisional: _p, ...s }) => s),
-        };
-      });
-
-      const payload: WorkoutLog = {
-        ...logToSave,
-        exercises: exercisesForPayload,
-        exerciseIds: Array.from(new Set(exercisesForPayload.map(e => e.exerciseId))),
-      };
-
-      await saveLogService(user.id, payload.id, payload);
-      await refreshMonthFlags();
-
-      if (!payload.isDeload) {
-          await saveExercisePerformanceEntry(
-            user.id,
-            selectedExercise.exerciseId,
-            selectedExercise.sets,
-            payload.id
-          );
-          applyLocalPRUpdate(selectedExercise.exerciseId, selectedExercise.sets);
-      }
-
-      toast({ title: "Exercise Saved", description: `${selectedExercise?.name ?? "Exercise"} saved.` });
-    } catch (error: any) {
-      console.error('[useTrainingLog] saveSingleExercise failed:', error);
-      toast({ title: "Error al guardar", description: friendlyErrorMessage(error, 'No pudimos guardar el ejercicio. Inténtalo de nuevo.'), variant: "destructive" });
+      toast({ title: "Save error", description: friendlyErrorMessage(error, "Couldn't save your workout. Check your connection and try again."), variant: "destructive" });
     } finally {
       setIsSavingLog(false);
     }
@@ -836,7 +736,7 @@ export const useTrainingLog = (initialDate: Date) => {
       await refreshMonthFlags();
     } catch (error: any) {
       console.error('[useTrainingLog] deleteCurrentLog failed:', error);
-      toast({ title: "Error al eliminar", description: friendlyErrorMessage(error, 'No pudimos eliminar el entrenamiento. Inténtalo de nuevo.'), variant: "destructive" });
+      toast({ title: "Delete error", description: friendlyErrorMessage(error, "Couldn't delete the workout. Please try again."), variant: "destructive" });
       if (user?.id) { 
         await loadLogForDate(selectedDate);
       }
@@ -868,10 +768,8 @@ export const useTrainingLog = (initialDate: Date) => {
     updateExerciseInLog,
     updateExerciseSetStructureOverride,
     saveCurrentLog,
-    saveSingleExercise,
     updateOverallLogNotes,
     deleteCurrentLog,
-    markExerciseAsInteracted,
     isDeload,
     setIsDeload,
     displayedMonth,

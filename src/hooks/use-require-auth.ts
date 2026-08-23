@@ -10,7 +10,7 @@ export function useRequireAuth(redirectUrl: string = '/login') {
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
-      router.push(redirectUrl);
+      router.replace(redirectUrl);
     }
   }, [isAuthenticated, isLoading, router, redirectUrl]);
 

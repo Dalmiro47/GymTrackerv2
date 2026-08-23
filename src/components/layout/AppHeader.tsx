@@ -6,9 +6,10 @@ import { UserNav } from "./UserNav";
 
 interface AppHeaderProps {
   onMenuClick: () => void;
+  isSidebarOpen: boolean;
 }
 
-export function AppHeader({ onMenuClick }: AppHeaderProps) {
+export function AppHeader({ onMenuClick, isSidebarOpen }: AppHeaderProps) {
   return (
     <header
       className="fixed top-0 right-0 z-40 border-b bg-card/80 backdrop-blur supports-[backdrop-filter]:bg-card/60 shadow-sm
@@ -24,7 +25,7 @@ export function AppHeader({ onMenuClick }: AppHeaderProps) {
             className="md:hidden"
             aria-label="Toggle sidebar"
             aria-controls="primary-sidebar"
-            aria-expanded={false}
+            aria-expanded={isSidebarOpen}
           >
             <Menu className="h-5 w-5" />
           </Button>

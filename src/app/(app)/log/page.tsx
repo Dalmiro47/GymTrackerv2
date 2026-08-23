@@ -54,6 +54,7 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 
 import { useIsMobile } from '@/hooks/use-mobile';
+import { useToday } from '@/hooks/use-today';
 import { Separator } from '@/components/ui/separator';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -124,7 +125,6 @@ function TrainingLogPageContent() {
     saveCurrentLog,
     updateOverallLogNotes,
     deleteCurrentLog,
-    markExerciseAsInteracted,
     replaceExerciseInLog,
     updateExerciseSetStructureOverride,
     isDeload,
@@ -154,8 +154,8 @@ function TrainingLogPageContent() {
   const [showLogNotes, setShowLogNotes] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
-  // Stable per-mount "today" so it doesn't invalidate memos/props every render
-  const today = useMemo(() => new Date(), []);
+  // Stable "today" that only changes identity when the local day rolls over
+  const today = useToday();
 
 
   const daysWithLogs = useMemo(
@@ -437,7 +437,6 @@ function TrainingLogPageContent() {
                               onRemove={() => removeExerciseFromLog(loggedEx.id)}
                               onReplace={() => handleOpenReplaceDialog(loggedEx.id, loggedEx.muscleGroup)}
                               isSavingParentLog={isSavingLog || isDeletingLog}
-                              onMarkAsInteracted={() => markExerciseAsInteracted(loggedEx.id)}
                               onUpdateSetStructureOverride={updateExerciseSetStructureOverride}
                               isReadOnly={isDeload}
                             />
@@ -592,7 +591,7 @@ function TrainingLogPageContent() {
       </AlertDialog>
 
       {/* Floating AI Coach */}
-      <CoachChatSheet mode="log-day" context={logDayContext} />
+      <CoachChatSheet mode="log-day" context={logDayContext} logDate={format(selectedDate, 'yyyy-MM-dd')} />
     </div>
   );
 }

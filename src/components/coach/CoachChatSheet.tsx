@@ -7,6 +7,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Sparkles, Send, Trash2, Square, Loader2, X } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { useCoachChat, type ChatMessage } from '@/hooks/use-coach-chat';
 import type { LogDayContext, RoutineReviewContext, DashboardContext } from '@/lib/ai/context-builders';
 
@@ -22,6 +23,8 @@ type CoachChatSheetProps = {
   loadContext?: () => Promise<RoutineReviewContext>;
   /** Optional starter chips shown in the empty state; tapping sends the text. */
   suggestedPrompts?: string[];
+  /** log-day only: selected log date (`yyyy-MM-dd`) so chat history is scoped to that day */
+  logDate?: string;
 };
 
 const MODE_CONFIG = {
@@ -45,14 +48,14 @@ const MODE_CONFIG = {
   },
 };
 
-export function CoachChatSheet({ mode, context, loadContext, suggestedPrompts }: CoachChatSheetProps) {
+export function CoachChatSheet({ mode, context, loadContext, suggestedPrompts, logDate }: CoachChatSheetProps) {
   const [open, setOpen] = useState(false);
   const [resolvedContext, setResolvedContext] = useState<CoachContext | null>(
     context ?? null,
   );
   const [isLoadingContext, setIsLoadingContext] = useState(false);
   const [input, setInput] = useState('');
-  const { messages, isStreaming, error, sendMessage, clearChat, stopStreaming } = useCoachChat(mode);
+  const { messages, isStreaming, error, sendMessage, clearChat, stopStreaming } = useCoachChat(mode, logDate);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const config = MODE_CONFIG[mode];
@@ -126,13 +129,21 @@ export function CoachChatSheet({ mode, context, loadContext, suggestedPrompts }:
 
   return (
     <>
-      {/* Floating trigger button — bottom-28 on mobile to clear the log page action bar + safe area */}
+      {/* Floating trigger button. Icon-only on mobile so it covers as little
+          of the page as possible (it sits over set rows / badges otherwise).
+          Only the log page has a sticky action bar to clear — elsewhere the
+          button hugs the bottom edge instead of floating 7rem up over content. */}
       <button
         onClick={() => setOpen((v) => !v)}
-        className="fixed bottom-28 right-4 md:bottom-24 md:right-6 z-50 flex items-center gap-2 bg-foreground text-background px-4 py-2.5 rounded-full shadow-lg hover:opacity-90 transition-opacity font-medium text-sm"
+        aria-label="AI Coach"
+        className={cn(
+          "fixed right-4 md:right-6 z-50 flex items-center justify-center gap-2 bg-foreground text-background rounded-full shadow-lg hover:opacity-90 transition-opacity font-medium text-sm",
+          "h-12 w-12 md:h-auto md:w-auto md:px-4 md:py-2.5",
+          mode === 'log-day' ? "bottom-24 md:bottom-24" : "bottom-6 md:bottom-6",
+        )}
       >
-        <Sparkles className="h-4 w-4" />
-        AI Coach
+        <Sparkles className="h-5 w-5 md:h-4 md:w-4" />
+        <span className="hidden md:inline">AI Coach</span>
       </button>
 
       {open && (
@@ -189,7 +200,7 @@ export function CoachChatSheet({ mode, context, loadContext, suggestedPrompts }:
                     <p className="text-sm text-muted-foreground">{config.emptyText}</p>
                     {noContext && (
                       <p className="text-xs text-muted-foreground/60 mt-2">
-                        No hay datos disponibles para el coach.
+                        No data available for the coach.
                       </p>
                     )}
                     {resolvedContext && suggestedPrompts && suggestedPrompts.length > 0 && (
@@ -301,7 +312,7 @@ function stripThinking(text: string): string {
   let result = text.replace(/<think>[\s\S]*?<\/think>\n?/g, '');
   const openIdx = result.indexOf('<think>');
   if (openIdx !== -1) result = result.slice(0, openIdx);
-  return result.trim() || 'No se pudo generar una respuesta. Intenta de nuevo.';
+  return result.trim() || "Couldn't generate a reply. Please try again.";
 }
 
 function SegmentRenderer({ content }: { content: string }) {

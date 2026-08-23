@@ -3,6 +3,7 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { Toaster } from '@/components/ui/toaster';
 import { AuthProvider } from '@/contexts/AuthContext';
+import { ThemeProvider, THEME_INIT_SCRIPT } from '@/contexts/ThemeContext';
 
 export const metadata: Metadata = {
   title: "DDS Gym Tracker",
@@ -23,7 +24,10 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#151824",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#f4f5f9" },
+    { media: "(prefers-color-scheme: dark)", color: "#101219" },
+  ],
   width: 'device-width',
   initialScale: 1,
   viewportFit: 'cover',
@@ -37,6 +41,8 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
+        {/* Sets .dark before first paint so there is no light flash */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link href="https://fonts.googleapis.com/css2?family=PT+Sans:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet" />
@@ -49,10 +55,12 @@ export default function RootLayout({
           ['--appbar-offset' as any]: 'calc(var(--appbar-height) + env(safe-area-inset-top))',
         }}
       >
-        <AuthProvider>
-          {children}
-          <Toaster />
-        </AuthProvider>
+        <ThemeProvider>
+          <AuthProvider>
+            {children}
+            <Toaster />
+          </AuthProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

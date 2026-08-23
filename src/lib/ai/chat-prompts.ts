@@ -12,18 +12,26 @@ import type { CoachFactCompact } from '@/lib/analysis';
 // ─── Log-Day Mode ───────────────────────────────────────────────────
 
 export function buildLogDaySystemPrompt(context: LogDayContext): string {
-  const exerciseLines = context.exercises
-    .map((ex) => {
-      const setsStr = ex.sets.map((s, i) => `  Set ${i + 1}: ${s.weight ?? 0}kg x ${s.reps ?? 0}`).join('\n');
-      const prStr = ex.personalRecord
-        ? `PR: ${ex.personalRecord.weight}kg x ${ex.personalRecord.reps}`
-        : 'PR: N/A';
-      const structStr = ex.setStructure && ex.setStructure !== 'normal' ? ` [${ex.setStructure}]` : '';
-      const overloadStr = ex.progressiveOverload ? `\n  Target: ${ex.progressiveOverload}` : '';
-
-      return `- ${ex.name} (${ex.muscleGroup})${structStr} | ${prStr}${overloadStr}\n${setsStr}`;
-    })
-    .join('\n\n');
+  const renderExercise = (ex: LogDayContext['exercises'][number]) => {
+    const setsStr = ex.sets.map((s, i) => `  Set ${i + 1}: ${s.weight ?? 0}kg x ${s.reps ?? 0}`).join('\n') || '  (no sets yet)';
+    const prStr = ex.personalRecord
+      ? `PR: ${ex.personalRecord.weight}kg x ${ex.personalRecord.reps}`
+      : 'PR: N/A';
+    const structStr = ex.setStructure && ex.setStructure !== 'normal' ? ` [${ex.setStructure}]` : '';
+    const overloadStr = ex.progressiveOverload ? `\n  Target: ${ex.progressiveOverload}` : '';
+    return `- ${ex.name} (${ex.muscleGroup})${structStr} | ${prStr}${overloadStr}\n${setsStr}`;
+  };
+  // The user may be mid-workout: split what was actually logged from what is
+  // still the untouched pre-fill, so the coach never treats planned work as done.
+  const done = context.exercises.filter((ex) => ex.status === 'done');
+  const planned = context.exercises.filter((ex) => ex.status === 'planned');
+  const exerciseLines =
+    `COMPLETED TODAY (${done.length}):\n` +
+    (done.length ? done.map(renderExercise).join('\n\n') : '(nothing logged yet)') +
+    (planned.length
+      ? `\n\nPLANNED — NOT DONE YET (${planned.length}). Sets shown are from the LAST session, pre-filled as the starting point:\n` +
+        planned.map(renderExercise).join('\n\n')
+      : '');
 
   const deloadNote = context.isDeload ? '\n⚠️ This is a DELOAD session. Reduced volume/intensity is expected.\n' : '';
   const routineNote = context.routineName ? `Routine: "${context.routineName}"` : '';
@@ -55,6 +63,7 @@ PROGRESSIVE OVERLOAD LOGIC (use when advising on weight/reps):
   • Bodyweight exception: if weight = 0kg and reps >= upper bound → suggest resistance (vest/band) or slower tempo.
 - If RPE is 9-10 (near failure), prioritize recovery over load increase.
 - Always reference the user's PR and current sets when giving specific recommendations.
+- Only COMPLETED exercises were performed today. For PLANNED ones, the sets are last session's numbers — use them to suggest today's target (reps/weight); never congratulate or analyze them as done.
 
 RULES:
 - Respond in the same language the user writes in.

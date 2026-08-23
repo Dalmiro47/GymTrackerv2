@@ -58,7 +58,7 @@ export const saveWorkoutLog = async (userId: string, date: string, workoutLogPay
     exerciseIds: exerciseIds,
     exercises: workoutLogPayload.exercises.map(ex => {
       // Destructure to remove UI-only fields before saving
-      const { personalRecordDisplay, isProvisional, currentPR, ...restOfEx } = ex;
+      const { personalRecordDisplay, isProvisional, currentPR, prefill, ...restOfEx } = ex;
 
       // Clean up optional fields that might be null or undefined on the exercise
       const exerciseToSave: { [key: string]: any } = { ...restOfEx };
@@ -97,15 +97,28 @@ export const saveWorkoutLog = async (userId: string, date: string, workoutLogPay
     })
   };
 
-  // Clean up optional fields on the root log object before saving
-  if (payloadForFirestore.routineId === undefined || payloadForFirestore.routineId === null) delete (payloadForFirestore as any).routineId;
-  if (payloadForFirestore.routineName === undefined || payloadForFirestore.routineName === null) delete (payloadForFirestore as any).routineName;
-  if (payloadForFirestore.duration === undefined || payloadForFirestore.duration === null) delete (payloadForFirestore as any).duration;
-  
+  // Clean up optional fields on the root log object before saving. The doc is
+  // written with merge:true, so absent keys must be explicitly deleted or the
+  // previous value (e.g. a cleared routine) survives in Firestore.
+  const fieldsToClear: Record<string, ReturnType<typeof deleteField>> = {};
+  if (payloadForFirestore.routineId === undefined || payloadForFirestore.routineId === null) {
+    delete (payloadForFirestore as any).routineId;
+    fieldsToClear.routineId = deleteField();
+  }
+  if (payloadForFirestore.routineName === undefined || payloadForFirestore.routineName === null) {
+    delete (payloadForFirestore as any).routineName;
+    fieldsToClear.routineName = deleteField();
+  }
+  if (payloadForFirestore.duration === undefined || payloadForFirestore.duration === null) {
+    delete (payloadForFirestore as any).duration;
+    fieldsToClear.duration = deleteField();
+  }
+
   // Always set isDeload to a boolean for consistent querying
   payloadForFirestore.isDeload = !!payloadForFirestore.isDeload;
   if (!payloadForFirestore.isDeload) {
     delete (payloadForFirestore as any).deloadParams;
+    fieldsToClear.deloadParams = deleteField();
   }
 
   payloadForFirestore.notes = payloadForFirestore.notes || '';
@@ -113,7 +126,9 @@ export const saveWorkoutLog = async (userId: string, date: string, workoutLogPay
 
   const logDocRef = doc(db, getUserWorkoutLogsCollectionPath(userId), date);
   try {
-    const sanitizedPayload = stripUndefinedDeep(payloadForFirestore);
+    // deleteField() sentinels are added AFTER sanitizing — stripUndefinedDeep
+    // would otherwise clone them into plain objects and break the sentinel.
+    const sanitizedPayload = { ...stripUndefinedDeep(payloadForFirestore), ...fieldsToClear };
     await setDoc(logDocRef, sanitizedPayload, { merge: true });
     invalidateCache(logsCachePrefix(userId));
   } catch (error: any) {
@@ -284,6 +299,37 @@ export type PerformanceEntryInput = {
   sets: LoggedSet[];
 };
 
+type PersonalRecordValue = ExercisePerformanceEntry['personalRecord'];
+
+const logDateToMs = (logId: string) => Timestamp.fromDate(parseISO(logId)).toMillis();
+
+/**
+ * Scans ALL logs containing `exerciseId` (except `excludeLogId`) and returns the
+ * best set across them as a PR, or null when nothing remains. Used when the log
+ * that sourced the current PR is deleted or edited, so the PR can be recomputed
+ * from the remaining history instead of just the most recent log.
+ */
+const recomputePRFromLogs = async (
+  userId: string,
+  exerciseId: string,
+  excludeLogId: string
+): Promise<PersonalRecordValue> => {
+  const logsCol = collection(db, getUserWorkoutLogsCollectionPath(userId));
+  const snap = await getDocs(query(logsCol, where("exerciseIds", "array-contains", exerciseId)));
+  let best: PersonalRecordValue = null;
+  snap.forEach(docSnap => {
+    if (docSnap.id === excludeLogId) return;
+    const log = docSnap.data() as WorkoutLog;
+    const exerciseInLog = (log.exercises ?? []).find(e => e.exerciseId === exerciseId);
+    if (!exerciseInLog) return;
+    const candidate = pickBestSet(exerciseInLog.sets ?? []);
+    if (isBetterPR(candidate, best)) {
+      best = { reps: candidate!.reps, weight: candidate!.weight, date: logDateToMs(docSnap.id), logId: docSnap.id };
+    }
+  });
+  return best;
+};
+
 /**
  * Saves/updates performance snapshots for several exercises at once:
  * existing entries are read in parallel, then all writes go out in a single batch.
@@ -308,11 +354,32 @@ export const saveExercisePerformanceEntries = async (
         const existing = snap.exists() ? (snap.data() as ExercisePerformanceEntry) : null;
 
         const bestToday = pickBestSet(sets);
-        const updatePayload: Partial<ExercisePerformanceEntry> = {
-          lastPerformedSets: validWorkingSets(sets),
-          lastPerformedDate: achievedAtMs,
-        };
-        if (isBetterPR(bestToday, existing?.personalRecord ?? null)) {
+        const updatePayload: Partial<ExercisePerformanceEntry> = {};
+
+        // Only refresh "last performed" when this log is at least as recent as
+        // the stored one — back-filling an older day must not overwrite it.
+        const existingLastDate = existing?.lastPerformedDate ?? null;
+        if (existingLastDate === null || achievedAtMs >= existingLastDate) {
+          updatePayload.lastPerformedSets = validWorkingSets(sets);
+          updatePayload.lastPerformedDate = achievedAtMs;
+        }
+
+        const existingPR = existing?.personalRecord ?? null;
+        let clearPR = false;
+        if (existingPR && existingPR.logId === logDate) {
+          // The PR's source log is being edited: recompute it. If today's best
+          // still matches/beats the old PR no other log can top it; otherwise
+          // scan the remaining logs, since one of them may now hold the best set.
+          let recomputed: PersonalRecordValue = bestToday
+            ? { reps: bestToday.reps, weight: bestToday.weight, date: achievedAtMs, logId: logDate }
+            : null;
+          if (!bestToday || isBetterPR(existingPR, bestToday)) {
+            const fromOthers = await recomputePRFromLogs(userId, exerciseId, logDate);
+            if (isBetterPR(fromOthers, recomputed)) recomputed = fromOthers;
+          }
+          if (recomputed) updatePayload.personalRecord = recomputed;
+          else clearPR = true;
+        } else if (isBetterPR(bestToday, existingPR)) {
           updatePayload.personalRecord = {
             reps: bestToday!.reps,
             weight: bestToday!.weight,
@@ -320,7 +387,12 @@ export const saveExercisePerformanceEntries = async (
             logId: logDate,
           };
         }
-        return { ref, payload: stripUndefinedDeep(updatePayload) };
+        // deleteField() is added after sanitizing so stripUndefinedDeep doesn't
+        // clone the sentinel into a plain object.
+        const payload = clearPR
+          ? { ...stripUndefinedDeep(updatePayload), personalRecord: deleteField() }
+          : stripUndefinedDeep(updatePayload);
+        return { ref, payload };
       })
     );
 
@@ -490,23 +562,23 @@ export const updatePerformanceEntryOnLogDelete = async (
     return;
   }
   
-  const bestSetInFallback = pickBestSet(exerciseInFallbackLog.sets);
+  // Only recompute the PR when the deleted log was its source — otherwise the
+  // existing PR (possibly from an older log) must survive untouched. When it
+  // was the source, scan ALL remaining logs, not just the most recent one.
+  const existingEntry = perfSnap.data() as ExercisePerformanceEntry;
+  const personalRecord: PersonalRecordValue =
+    existingEntry.personalRecord?.logId === deletedLogId
+      ? await recomputePRFromLogs(userId, exerciseId, deletedLogId)
+      : (existingEntry.personalRecord ?? null);
 
-  const newEntryDataToSet: ExercisePerformanceEntry = { 
+  const newEntryDataToSet: ExercisePerformanceEntry = {
     lastPerformedDate: Timestamp.fromDate(parseISO(fallbackLogData.id)).toMillis(),
     lastPerformedSets: exerciseInFallbackLog.sets.map(s => ({
-      id: s.id, 
+      id: s.id,
       reps: Number(s.reps ?? 0),
       weight: Number(s.weight ?? 0),
     })),
-    personalRecord: bestSetInFallback
-      ? {
-          reps: bestSetInFallback.reps,
-          weight: bestSetInFallback.weight,
-          date: Timestamp.fromDate(parseISO(fallbackLogData.id)).toMillis(),
-          logId: fallbackLogData.id,
-        }
-      : null,
+    personalRecord,
   };
   
   const isFallbackEntryEmpty = !newEntryDataToSet.personalRecord && 

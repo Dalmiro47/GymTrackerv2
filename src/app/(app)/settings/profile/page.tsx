@@ -29,8 +29,8 @@ export default function SettingsProfilePage() {
         console.error('[SettingsProfilePage] profile load failed:', error);
         if (ignore) return;
         toast({
-          title: 'Error al cargar',
-          description: friendlyErrorMessage(error, 'No pudimos cargar tu perfil. Se muestran valores por defecto.'),
+          title: 'Load error',
+          description: friendlyErrorMessage(error, "Couldn't load your profile. Showing defaults."),
           variant: 'destructive',
         });
         // Fall back to defaults so the page never hangs on the spinner.
