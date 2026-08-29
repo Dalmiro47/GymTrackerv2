@@ -12,11 +12,12 @@ import {
   getMonthLogFlags,
   updatePerformanceEntryOnLogDelete,
   getLastNonDeloadPerformance,
+  getLastLoggedPerformance,
   saveExercisePerformanceEntries,
 } from '@/services/trainingLogService';
 import { getExercises as fetchAllUserExercises } from '@/services/exerciseService';
 import { getRoutines as fetchUserRoutines } from '@/services/routineService';
-import { format, startOfMonth } from 'date-fns';
+import { format, parseISO, startOfMonth } from 'date-fns';
 import { useToast } from './use-toast';
 import { inferWarmupTemplate, roundToGymHalf } from '@/lib/utils';
 import { isBetterPR, formatPR, pickBestSet } from '@/lib/pr';
@@ -195,7 +196,15 @@ export const useTrainingLog = (initialDate: Date) => {
         if (fetchedLog) {
             const finalExercisesForCurrentLog = await Promise.all(
                 fetchedLog.exercises.map(async (exFromStoredLog) => {
-                    const performanceEntry = await fetchExercisePerformanceData(exFromStoredLog.exerciseId);
+                    // `performanceEntry` (last non-deload sets for pre-filling)
+                    // dates itself by the newest LOG containing the exercise —
+                    // today's log once it's saved, performed or not. The stored
+                    // performanceEntries doc is the one only performed exercises
+                    // update, so it alone can tell "done today" from "planned".
+                    const [performanceEntry, storedEntry] = await Promise.all([
+                      fetchExercisePerformanceData(exFromStoredLog.exerciseId),
+                      getLastLoggedPerformance(user.id!, exFromStoredLog.exerciseId),
+                    ]);
                     const fullDef = availableExercises.find(e => e.id === exFromStoredLog.exerciseId);
                     
                     const setsWithIds = exFromStoredLog.sets.map((s, idx) => ({
@@ -207,7 +216,17 @@ export const useTrainingLog = (initialDate: Date) => {
                       ? { reps: performanceEntry.personalRecord.reps, weight: performanceEntry.personalRecord.weight }
                       : null;
 
-                    return {
+                    // `prefill` is UI-only and not stored, so a reload can't tell a
+                    // performed exercise from a still-planned one by the log alone.
+                    // Saving stamps the performanceEntries doc's `lastPerformedDate`
+                    // with the log's date for performed exercises only — so an entry
+                    // older than this day (or none) means this exercise was saved as
+                    // a plan, not done. Rebuild its prefill from the stored sets so
+                    // it stays provisional: overload cues and the Coach's PLANNED
+                    // status survive leaving and re-entering the page.
+                    const performedOnOrAfterDay =
+                      (storedEntry?.lastPerformedDate ?? -1) >= parseISO(dateId).getTime();
+                    const restored: LoggedExercise = {
                         ...exFromStoredLog,
                         name: fullDef?.name ?? exFromStoredLog.name,
                         muscleGroup: fullDef?.muscleGroup ?? exFromStoredLog.muscleGroup,
@@ -219,6 +238,9 @@ export const useTrainingLog = (initialDate: Date) => {
                         personalRecordDisplay: formatPR(currentPR),
                         currentPR: currentPR,
                     };
+                    return performedOnOrAfterDay
+                      ? restored
+                      : withDerivedProvisional({ ...restored, prefill: makePrefill(storedEntry, setsWithIds) });
                 })
             );
 
@@ -318,18 +340,25 @@ export const useTrainingLog = (initialDate: Date) => {
     return () => setUnsavedChanges(false);
   }, [isDirty]);
 
-  // Composite row ids whose sets already match what Firestore has for this day.
-  // The card suppresses in-session overload cues for these: once the exercise is
-  // saved as performed, "go up to Xkg" belongs to the NEXT session, not this one.
-  // Compared against `savedSnapshot` (not `isProvisional`, which only means
-  // "untouched prefill" — an edited-but-unsaved exercise still needs the cue).
+  // Composite row ids of exercises saved AS PERFORMED for this day. The card
+  // suppresses in-session overload cues for these: once the exercise is saved
+  // as done, "go up to Xkg" belongs to the NEXT session, not this one.
+  // Two conditions, both needed:
+  //  - sets match `savedSnapshot` (an edited-but-unsaved exercise still needs
+  //    the cue), and
+  //  - sets differ from `prefill` — saving writes the WHOLE day doc, so an
+  //    untouched planned exercise is "in Firestore" too, but it hasn't been
+  //    performed and must keep its cue (saving one exercise used to blank all).
+  //    Read from `prefill` directly: `isProvisional` is stripped on save.
   const savedExerciseIds = useMemo(() => {
     const ids = new Set<string>();
     if (!originalLogState || !savedSnapshot) return ids;
     const savedById = new Map(savedSnapshot.exercises.map(ex => [ex.id, ex]));
     for (const ex of originalLogState.exercises) {
       const saved = savedById.get(ex.id);
-      if (saved && setsShape(ex.sets) === setsShape(saved.sets)) ids.add(ex.id);
+      if (!saved || setsShape(ex.sets) !== setsShape(saved.sets)) continue;
+      const stillPlanned = !!ex.prefill && setsShape(ex.sets) === setsShape(ex.prefill.sets);
+      if (!stillPlanned) ids.add(ex.id);
     }
     return ids;
   }, [originalLogState, savedSnapshot]);
