@@ -318,6 +318,22 @@ export const useTrainingLog = (initialDate: Date) => {
     return () => setUnsavedChanges(false);
   }, [isDirty]);
 
+  // Composite row ids whose sets already match what Firestore has for this day.
+  // The card suppresses in-session overload cues for these: once the exercise is
+  // saved as performed, "go up to Xkg" belongs to the NEXT session, not this one.
+  // Compared against `savedSnapshot` (not `isProvisional`, which only means
+  // "untouched prefill" — an edited-but-unsaved exercise still needs the cue).
+  const savedExerciseIds = useMemo(() => {
+    const ids = new Set<string>();
+    if (!originalLogState || !savedSnapshot) return ids;
+    const savedById = new Map(savedSnapshot.exercises.map(ex => [ex.id, ex]));
+    for (const ex of originalLogState.exercises) {
+      const saved = savedById.get(ex.id);
+      if (saved && setsShape(ex.sets) === setsShape(saved.sets)) ids.add(ex.id);
+    }
+    return ids;
+  }, [originalLogState, savedSnapshot]);
+
   const applyDeloadTransform = useCallback((log: WorkoutLog | null): WorkoutLog | null => {
     if (!log) return null;
     const { volumeMultiplier, intensityMultiplier } = DEFAULT_DELOAD_PARAMS;
@@ -753,6 +769,7 @@ export const useTrainingLog = (initialDate: Date) => {
     isSavingLog,
     isDeletingLog,
     isDirty,
+    savedExerciseIds,
     availableRoutines,
     isLoadingRoutines,
     availableExercises,

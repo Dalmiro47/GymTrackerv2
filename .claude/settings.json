@@ -2,5 +2,19 @@
   "statusLine": {
     "type": "command",
     "command": "node .claude/statusline-command.js"
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/check-main-fresh.sh",
+            "timeout": 15,
+            "statusMessage": "Checking if local main is behind GitHub..."
+          }
+        ]
+      }
+    ]
   }
 }

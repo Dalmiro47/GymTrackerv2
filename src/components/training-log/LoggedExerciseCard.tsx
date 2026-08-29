@@ -159,6 +159,9 @@ interface LoggedExerciseCardProps {
   /** Deload Mode shows a derived (reduced) view — set values must not be edited
    *  there, or the reduced numbers would be written back into the baseline. */
   isReadOnly?: boolean;
+  /** True when this exercise's sets already match the saved log for this day.
+   *  Suppresses the overload cues/targets: guidance is for work not yet saved. */
+  isSavedForDay?: boolean;
 }
 
 export function LoggedExerciseCard({
@@ -169,6 +172,7 @@ export function LoggedExerciseCard({
   isSavingParentLog,
   onUpdateSetStructureOverride,
   isReadOnly = false,
+  isSavedForDay = false,
 }: LoggedExerciseCardProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [localSets, setLocalSets] = useState<LoggedSet[]>(loggedExercise.sets);
@@ -225,17 +229,18 @@ export function LoggedExerciseCard({
   // Progressive-overload cue: every set at the top of the exercise's rep range
   // means it's time to add weight; every set under the bottom means the load is
   // too heavy. Reads `localSets` so it reacts as you type. Suppressed in Deload
-  // Mode — the shown values are a derived, reduced view.
+  // Mode — the shown values are a derived, reduced view — and once the exercise
+  // is saved for the day (the increase belongs to the next session by then).
   const repRange = useMemo(
     () => parseRepRange(loggedExercise.progressiveOverload),
     [loggedExercise.progressiveOverload]
   );
   const rawCue = useMemo<'above' | 'below' | null>(() => {
-    if (isReadOnly || !repRange) return null;
+    if (isReadOnly || isSavedForDay || !repRange) return null;
     if (isRepGoalReached(localSets, repRange)) return 'above';
     if (isBelowRepRange(localSets, repRange)) return 'below';
     return null;
-  }, [isReadOnly, localSets, repRange]);
+  }, [isReadOnly, isSavedForDay, localSets, repRange]);
 
   // The under-range cue fires on a single set, which puts it in the path of every
   // keystroke — typing "12" into an 8–12 range passes through "1". Let it settle
@@ -256,9 +261,9 @@ export function LoggedExerciseCard({
   // "What do I do next?" for the in-range case the two cues above leave open.
   // Only one of the three ever shows: the target yields to an active cue.
   const rawNextTarget = useMemo<NextRepTarget | null>(() => {
-    if (isReadOnly || rawCue) return null;
+    if (isReadOnly || isSavedForDay || rawCue) return null;
     return getNextRepTarget(localSets, repRange);
-  }, [isReadOnly, rawCue, localSets, repRange]);
+  }, [isReadOnly, isSavedForDay, rawCue, localSets, repRange]);
 
   // Every keystroke re-targets (9 → 1 → 10 walks through three different answers),
   // and this one renders inside a set row, so an un-delayed version would shuffle

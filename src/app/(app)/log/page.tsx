@@ -108,8 +108,9 @@ function TrainingLogPageContent() {
     currentLog,
     isLoadingLog,
     isSavingLog,
-    isDeletingLog, 
+    isDeletingLog,
     isDirty,
+    savedExerciseIds,
     availableRoutines,
     isLoadingRoutines,
     availableExercises, 
@@ -439,6 +440,7 @@ function TrainingLogPageContent() {
                               isSavingParentLog={isSavingLog || isDeletingLog}
                               onUpdateSetStructureOverride={updateExerciseSetStructureOverride}
                               isReadOnly={isDeload}
+                              isSavedForDay={savedExerciseIds.has(loggedEx.id)}
                             />
                         </div>
                         {index < currentLog.exercises.length - 1 && (
