@@ -12,6 +12,16 @@ export type VisualViewportRect = {
   keyboardHeight: number;
   /** Height of the visible area, i.e. excluding the on-screen keyboard (px). */
   height: number;
+  /**
+   * How far iOS has PANNED the visual viewport down inside the layout viewport
+   * (px, 0 normally). This pan happens on input focus and on drag while the
+   * keyboard is open, and it is NOT a document scroll — pinning the body does
+   * not stop it. `position: fixed` elements live in layout coordinates, so the
+   * pan slides them up out of view; add this to a fixed panel's `top` to keep
+   * it glued to the visible area. Safe even though iOS absolutes are not: it is
+   * a delta that collapses to 0 whenever nothing panned.
+   */
+  offsetTop: number;
   /** Rough heuristic: the keyboard (or another OS overlay) is covering the page. */
   keyboardOpen: boolean;
 };
@@ -47,15 +57,20 @@ export function useVisualViewport(enabled: boolean): VisualViewportRect | null {
       // `offsetTop` counts too: it is the slice of the layout viewport scrolled
       // off above the visible area, which is not keyboard and must not be
       // double-counted as such.
-      const keyboardHeight = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      const offsetTop = Math.max(0, vv.offsetTop);
+      const keyboardHeight = Math.max(0, window.innerHeight - vv.height - offsetTop);
       const next: VisualViewportRect = {
         keyboardHeight,
         height: vv.height,
+        offsetTop,
         keyboardOpen: keyboardHeight > KEYBOARD_THRESHOLD_PX,
       };
       // Keep the same object while nothing moved — vv fires on every scroll tick.
       setRect((prev) =>
-        prev && prev.keyboardHeight === next.keyboardHeight && prev.height === next.height
+        prev &&
+        prev.keyboardHeight === next.keyboardHeight &&
+        prev.height === next.height &&
+        prev.offsetTop === next.offsetTop
           ? prev
           : next,
       );
