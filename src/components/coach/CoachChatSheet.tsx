@@ -172,25 +172,22 @@ export function CoachChatSheet({ mode, context, loadContext, suggestedPrompts, l
 
   const noContext = !resolvedContext && !isLoadingContext;
 
-  // Mobile: while the keyboard is up, pin to the *visible* viewport so it can
-  // never bury the composer. Idle, let CSS resolve top/bottom against the layout
-  // viewport instead -- iOS reports a `visualViewport.height` that overshoots the
-  // visible content box, so measuring then pushed the panel off the bottom edge.
+  // Mobile: the panel is bounded by top+bottom and never given a `height`, so
+  // opening the keyboard only lifts its BOTTOM edge -- the header stays exactly
+  // where it was and the message list is what shrinks (LinkedIn-style). Moving
+  // the top as well made the whole dialog jump upward and ran the header off
+  // the screen. `bottom` is offset by the keyboard because `position: fixed`
+  // resolves against the layout viewport, which iOS never shrinks.
   // Desktop: anchored window, bottom-right.
   const panelStyle: React.CSSProperties = isMobile
-    ? viewport?.keyboardOpen
-      ? {
-          left: MOBILE_GAP,
-          right: MOBILE_GAP,
-          top: viewport.top + MOBILE_GAP,
-          height: viewport.height - MOBILE_GAP * 2,
-        }
-      : {
-          left: MOBILE_GAP,
-          right: MOBILE_GAP,
-          top: MOBILE_TOP_GAP,
-          bottom: `calc(${MOBILE_GAP}px + env(safe-area-inset-bottom, 0px))`,
-        }
+    ? {
+        left: MOBILE_GAP,
+        right: MOBILE_GAP,
+        top: MOBILE_TOP_GAP,
+        bottom: viewport?.keyboardOpen
+          ? viewport.keyboardHeight + MOBILE_GAP
+          : `calc(${MOBILE_GAP}px + env(safe-area-inset-bottom, 0px))`,
+      }
     : {
         right: '1.5rem',
         bottom: '5rem',

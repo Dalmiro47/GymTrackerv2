@@ -2,14 +2,14 @@
 claude --dangerously-skip-permissions 
 
 ## Pull Request to Github 
-git switch -c fix/coach-ai
+git switch -c ref/chat-text-box2
 
 ## Do ALL THE CHANGES 
 
 ## Pull Request to Github 
 git add -A 
-git commit -m "fix: fixed coach ai not working" 
-git push -u origin fix/coach-ai
+git commit -m "ref: refactor chat text box to make it Linkedin-style" 
+git push -u origin ref/chat-text-box2
 
 ## Make local main match GitHub
 
@@ -24,5 +24,4 @@ git rev-parse HEAD
 git rev-parse origin/main 
  
 ## After merge, delete the branch
-git branch -D fix/coach-ai
- 
+git branch -D ref/chat-text-box2
