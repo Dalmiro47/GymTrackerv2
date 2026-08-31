@@ -1,13 +1,15 @@
 'use client';
 
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Sparkles, Send, Trash2, Square, Loader2, X } from 'lucide-react';
+import { Sparkles, Send, Trash2, Square, Loader2, X, Maximize2, Minimize2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { useVisualViewport } from '@/hooks/use-visual-viewport';
 import { useCoachChat, type ChatMessage } from '@/hooks/use-coach-chat';
 import type { LogDayContext, RoutineReviewContext, DashboardContext } from '@/lib/ai/context-builders';
 
@@ -31,22 +33,27 @@ const MODE_CONFIG = {
   'log-day': {
     title: 'Coach de Entrenamiento',
     description: 'Pregunta sobre tu entrenamiento de hoy',
-    placeholder: 'Ej: "Como voy con el press banca?" o "Que peso deberia usar?"',
+    placeholder: 'Ej: "Que peso deberia usar hoy?"',
     emptyText: 'Preguntale al coach sobre tu entrenamiento de hoy',
   },
   'routine-review': {
     title: 'Coach de Programacion',
     description: 'Analisis de tu programa de entrenamiento',
-    placeholder: 'Ej: "Como puedo mejorar mi rutina?" o "Tengo algun desbalance muscular?"',
+    placeholder: 'Ej: "Como puedo mejorar mi rutina?"',
     emptyText: 'Preguntale al coach sobre tu programacion y rutinas',
   },
   dashboard: {
     title: 'Coach Semanal',
     description: 'Tu panorama de entrenamiento semanal',
-    placeholder: 'Ej: "En que me enfoco esta semana?" o "Estoy listo para un deload?"',
+    placeholder: 'Ej: "En que me enfoco esta semana?"',
     emptyText: 'Preguntale al coach sobre tu progreso semanal',
   },
 };
+
+/** Composer grows line by line up to this, then scrolls inside itself (LinkedIn-style). */
+const COMPOSER_MAX_HEIGHT = 140;
+/** Inset of the mobile panel from the edges of the visible viewport. */
+const MOBILE_GAP = 8;
 
 export function CoachChatSheet({ mode, context, loadContext, suggestedPrompts, logDate }: CoachChatSheetProps) {
   const [open, setOpen] = useState(false);
@@ -55,11 +62,14 @@ export function CoachChatSheet({ mode, context, loadContext, suggestedPrompts, l
   );
   const [isLoadingContext, setIsLoadingContext] = useState(false);
   const [input, setInput] = useState('');
+  const [composerExpanded, setComposerExpanded] = useState(false);
   const { messages, isStreaming, error, sendMessage, clearChat, stopStreaming } = useCoachChat(mode, logDate);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const config = MODE_CONFIG[mode];
 
+  const isMobile = useIsMobile();
+  const viewport = useVisualViewport(open && isMobile);
 
   // Update resolved context when prop changes
   useEffect(() => {
@@ -77,16 +87,38 @@ export function CoachChatSheet({ mode, context, loadContext, suggestedPrompts, l
     }
   }, [open, resolvedContext, loadContext]);
 
-  // Auto-scroll to bottom on new content (including each streaming chunk) or when panel opens
+  // Auto-scroll to bottom on new content (including each streaming chunk), when
+  // the panel opens, and when the keyboard resizes the visible area.
   const lastMsgContent = messages[messages.length - 1]?.content ?? '';
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'instant' });
-  }, [lastMsgContent, open]);
+    bottomRef.current?.scrollIntoView({ behavior: 'instant', block: 'end' });
+  }, [lastMsgContent, open, viewport?.height]);
 
-  // Lock body scroll when chat is open
+  // Freeze the page behind the chat. `overflow: hidden` alone does not hold on
+  // iOS Safari (touch scroll still chains to the document), so the body is
+  // pinned and its scroll offset restored on close.
   useEffect(() => {
-    document.body.style.overflow = open ? 'hidden' : '';
-    return () => { document.body.style.overflow = ''; };
+    if (!open) return;
+    const body = document.body;
+    const scrollY = window.scrollY;
+    const prev = {
+      position: body.style.position,
+      top: body.style.top,
+      left: body.style.left,
+      right: body.style.right,
+      width: body.style.width,
+      overflow: body.style.overflow,
+    };
+    body.style.position = 'fixed';
+    body.style.top = `-${scrollY}px`;
+    body.style.left = '0';
+    body.style.right = '0';
+    body.style.width = '100%';
+    body.style.overflow = 'hidden';
+    return () => {
+      Object.assign(body.style, prev);
+      window.scrollTo(0, scrollY);
+    };
   }, [open]);
 
   // Focus textarea when chat opens
@@ -96,25 +128,31 @@ export function CoachChatSheet({ mode, context, loadContext, suggestedPrompts, l
     }
   }, [open]);
 
+  // Auto-grow the composer: one line by default, taller with every wrapped or
+  // typed line, capped so the conversation stays visible. Expanded mode hands
+  // the whole panel body to the textarea instead.
+  useLayoutEffect(() => {
+    const el = textareaRef.current;
+    if (!el || !open) return;
+    if (composerExpanded) {
+      el.style.height = '100%';
+      return;
+    }
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, COMPOSER_MAX_HEIGHT)}px`;
+  }, [input, composerExpanded, open]);
+
   const handleSend = useCallback(() => {
     if (!input.trim() || !resolvedContext || isStreaming) return;
     sendMessage(input, resolvedContext);
     setInput('');
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-    }
+    setComposerExpanded(false);
   }, [input, resolvedContext, isStreaming, sendMessage]);
-
-  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setInput(e.target.value);
-    const el = e.target;
-    el.style.height = 'auto';
-    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
-  }, []);
 
   const handleClear = useCallback(() => {
     clearChat();
     setInput('');
+    setComposerExpanded(false);
   }, [clearChat]);
 
   const handleSuggested = useCallback(
@@ -125,7 +163,45 @@ export function CoachChatSheet({ mode, context, loadContext, suggestedPrompts, l
     [resolvedContext, isStreaming, sendMessage],
   );
 
+  const handleClose = useCallback(() => {
+    setOpen(false);
+    setComposerExpanded(false);
+  }, []);
+
   const noContext = !resolvedContext && !isLoadingContext;
+
+  // Mobile: pin to the *visible* viewport so the keyboard can never bury the
+  // composer. Desktop: anchored window, bottom-right.
+  const panelStyle: React.CSSProperties = isMobile
+    ? viewport
+      ? {
+          left: MOBILE_GAP,
+          right: MOBILE_GAP,
+          top: viewport.top + MOBILE_GAP,
+          height: viewport.height - MOBILE_GAP * 2,
+        }
+      : { left: MOBILE_GAP, right: MOBILE_GAP, top: MOBILE_GAP, bottom: MOBILE_GAP }
+    : {
+        right: '1.5rem',
+        bottom: '5rem',
+        width: 'min(360px, calc(100vw - 2rem))',
+        height: 'min(680px, calc(100dvh - 7rem))',
+      };
+
+  const sendButton = isStreaming ? (
+    <Button size="icon" variant="outline" onClick={stopStreaming} className="shrink-0">
+      <Square className="h-4 w-4" />
+    </Button>
+  ) : (
+    <Button
+      size="icon"
+      onClick={handleSend}
+      disabled={!input.trim() || noContext || isLoadingContext}
+      className="shrink-0"
+    >
+      <Send className="h-4 w-4" />
+    </Button>
+  );
 
   return (
     <>
@@ -151,16 +227,16 @@ export function CoachChatSheet({ mode, context, loadContext, suggestedPrompts, l
           {/* Backdrop — covers page content including mobile action bar (z-40), blurs background */}
           <div
             className="fixed inset-0 z-[49] bg-black/30 backdrop-blur-sm"
-            onClick={() => setOpen(false)}
+            onClick={handleClose}
           />
 
-          {/* Floating chat window — centered on mobile, anchored bottom-right on desktop */}
+          {/* Floating chat window */}
           <div
-            className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 md:left-auto md:top-auto md:translate-x-0 md:translate-y-0 md:bottom-20 md:right-6 z-50 flex flex-col rounded-2xl border bg-background shadow-2xl"
-            style={{ width: 'min(360px, calc(100vw - 2rem))', height: 'min(680px, calc(100dvh - 7rem))' }}
+            className="fixed z-50 flex flex-col overflow-hidden rounded-2xl border bg-background shadow-2xl"
+            style={panelStyle}
           >
             {/* Header */}
-            <div className="flex items-center justify-between border-b px-4 py-3">
+            <div className="flex shrink-0 items-center justify-between border-b px-4 py-3">
               <div className="flex items-center gap-2">
                 <Sparkles className="h-5 w-5 text-primary" />
                 <div>
@@ -174,96 +250,118 @@ export function CoachChatSheet({ mode, context, loadContext, suggestedPrompts, l
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 )}
-                <Button variant="ghost" size="icon" onClick={() => setOpen(false)} className="h-8 w-8">
+                <Button variant="ghost" size="icon" onClick={handleClose} className="h-8 w-8">
                   <X className="h-4 w-4" />
                 </Button>
               </div>
             </div>
 
-            {/* Messages */}
-            <ScrollArea className="flex-1 px-4">
-              <div className="space-y-4 py-4">
-                {isLoadingContext && (
-                  <div className="space-y-3">
-                    <Skeleton className="h-4 w-3/4" />
-                    <Skeleton className="h-4 w-1/2" />
-                    <Skeleton className="h-4 w-2/3" />
-                    <p className="text-xs text-muted-foreground text-center mt-2">
-                      Cargando datos de entrenamiento...
-                    </p>
-                  </div>
-                )}
-
-                {!isLoadingContext && messages.length === 0 && (
-                  <div className="flex flex-col items-center justify-center py-12 text-center">
-                    <Sparkles className="h-10 w-10 text-muted-foreground/40 mb-3" />
-                    <p className="text-sm text-muted-foreground">{config.emptyText}</p>
-                    {noContext && (
-                      <p className="text-xs text-muted-foreground/60 mt-2">
-                        No data available for the coach.
+            {/* Body — messages + composer. The expanded composer overlays this
+                region only, so the header stays reachable. */}
+            <div className="relative flex min-h-0 flex-1 flex-col">
+              {/* Messages — the only scrollable surface; `overscroll-contain`
+                  stops the frozen page behind from taking over at the edges. */}
+              <ScrollArea className="min-h-0 flex-1 px-4 [&>[data-radix-scroll-area-viewport]]:overscroll-contain">
+                <div className="space-y-4 py-4">
+                  {isLoadingContext && (
+                    <div className="space-y-3">
+                      <Skeleton className="h-4 w-3/4" />
+                      <Skeleton className="h-4 w-1/2" />
+                      <Skeleton className="h-4 w-2/3" />
+                      <p className="text-xs text-muted-foreground text-center mt-2">
+                        Cargando datos de entrenamiento...
                       </p>
-                    )}
-                    {resolvedContext && suggestedPrompts && suggestedPrompts.length > 0 && (
-                      <div className="mt-5 flex w-full flex-col gap-2">
-                        {suggestedPrompts.map((prompt, i) => (
-                          <button
-                            key={i}
-                            onClick={() => handleSuggested(prompt)}
-                            disabled={isStreaming}
-                            className="rounded-full border px-3 py-1.5 text-left text-xs text-foreground transition-colors hover:bg-accent disabled:opacity-50"
-                          >
-                            {prompt}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                    </div>
+                  )}
+
+                  {!isLoadingContext && messages.length === 0 && (
+                    <div className="flex flex-col items-center justify-center py-12 text-center">
+                      <Sparkles className="h-10 w-10 text-muted-foreground/40 mb-3" />
+                      <p className="text-sm text-muted-foreground">{config.emptyText}</p>
+                      {noContext && (
+                        <p className="text-xs text-muted-foreground/60 mt-2">
+                          No data available for the coach.
+                        </p>
+                      )}
+                      {resolvedContext && suggestedPrompts && suggestedPrompts.length > 0 && (
+                        <div className="mt-5 flex w-full flex-col gap-2">
+                          {suggestedPrompts.map((prompt, i) => (
+                            <button
+                              key={i}
+                              onClick={() => handleSuggested(prompt)}
+                              disabled={isStreaming}
+                              className="rounded-full border px-3 py-1.5 text-left text-xs text-foreground transition-colors hover:bg-accent disabled:opacity-50"
+                            >
+                              {prompt}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {messages.map((msg, i) => (
+                    <MessageBubble key={i} message={msg} isLast={i === messages.length - 1} isStreaming={isStreaming} />
+                  ))}
+
+                  {/* Sentinel — must be last child; scrollIntoView targets this */}
+                  <div ref={bottomRef} />
+                </div>
+              </ScrollArea>
+
+              {/* Error */}
+              {error && !composerExpanded && (
+                <div className="shrink-0 px-4 pb-2">
+                  <Alert variant="destructive">
+                    <AlertDescription className="text-xs">{error}</AlertDescription>
+                  </Alert>
+                </div>
+              )}
+
+              {/* Composer. Same element in both states — toggling classes rather
+                  than swapping trees keeps focus and the caret in place. */}
+              <div
+                className={cn(
+                  'bg-background',
+                  composerExpanded ? 'absolute inset-0 z-10 flex flex-col' : 'shrink-0 border-t',
                 )}
+              >
+                <div
+                  className={cn(
+                    'flex gap-2 px-3',
+                    composerExpanded ? 'min-h-0 flex-1 flex-col pt-3' : 'items-end py-3',
+                  )}
+                >
+                  <div className="relative min-h-0 w-full flex-1">
+                    <Textarea
+                      ref={textareaRef}
+                      value={input}
+                      onChange={(e) => setInput(e.target.value)}
+                      placeholder={config.placeholder}
+                      disabled={isStreaming || noContext || isLoadingContext}
+                      className={cn(
+                        'resize-none overflow-y-auto overscroll-contain pr-10',
+                        composerExpanded ? 'h-full min-h-0' : 'min-h-[44px]',
+                      )}
+                      rows={1}
+                      style={composerExpanded ? undefined : { maxHeight: COMPOSER_MAX_HEIGHT }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setComposerExpanded((v) => !v)}
+                      aria-label={composerExpanded ? 'Reducir el cuadro de texto' : 'Ampliar el cuadro de texto'}
+                      className="absolute right-1.5 top-1.5 rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                    >
+                      {composerExpanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+                    </button>
+                  </div>
+                  {!composerExpanded && sendButton}
+                </div>
 
-                {messages.map((msg, i) => (
-                  <MessageBubble key={i} message={msg} isLast={i === messages.length - 1} isStreaming={isStreaming} />
-                ))}
-
-                {/* Sentinel — must be last child; scrollIntoView targets this */}
-                <div ref={bottomRef} />
-              </div>
-            </ScrollArea>
-
-            {/* Error */}
-            {error && (
-              <div className="px-4 pb-2">
-                <Alert variant="destructive">
-                  <AlertDescription className="text-xs">{error}</AlertDescription>
-                </Alert>
-              </div>
-            )}
-
-            {/* Input */}
-            <div className="border-t px-4 py-3">
-              <div className="flex gap-2 items-end">
-                <Textarea
-                  ref={textareaRef}
-                  value={input}
-                  onChange={handleInputChange}
-                  placeholder={config.placeholder}
-                  disabled={isStreaming || noContext || isLoadingContext}
-                  className="resize-none text-sm overflow-y-auto"
-                  rows={1}
-                  style={{ minHeight: '80px', height: '80px', maxHeight: '160px' }}
-                />
-                {isStreaming ? (
-                  <Button size="icon" variant="outline" onClick={stopStreaming} className="shrink-0">
-                    <Square className="h-4 w-4" />
-                  </Button>
-                ) : (
-                  <Button
-                    size="icon"
-                    onClick={handleSend}
-                    disabled={!input.trim() || noContext || isLoadingContext}
-                    className="shrink-0"
-                  >
-                    <Send className="h-4 w-4" />
-                  </Button>
+                {composerExpanded && (
+                  <div className="flex shrink-0 items-center justify-end border-t px-3 py-2">
+                    {sendButton}
+                  </div>
                 )}
               </div>
             </div>
