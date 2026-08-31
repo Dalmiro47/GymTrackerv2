@@ -54,6 +54,8 @@ const MODE_CONFIG = {
 const COMPOSER_MAX_HEIGHT = 140;
 /** Inset of the mobile panel from the edges of the visible viewport. */
 const MOBILE_GAP = 8;
+/** Gap above the mobile panel so the page header stays visible behind it. */
+const MOBILE_TOP_GAP = 64;
 
 export function CoachChatSheet({ mode, context, loadContext, suggestedPrompts, logDate }: CoachChatSheetProps) {
   const [open, setOpen] = useState(false);
@@ -170,17 +172,25 @@ export function CoachChatSheet({ mode, context, loadContext, suggestedPrompts, l
 
   const noContext = !resolvedContext && !isLoadingContext;
 
-  // Mobile: pin to the *visible* viewport so the keyboard can never bury the
-  // composer. Desktop: anchored window, bottom-right.
+  // Mobile: while the keyboard is up, pin to the *visible* viewport so it can
+  // never bury the composer. Idle, let CSS resolve top/bottom against the layout
+  // viewport instead -- iOS reports a `visualViewport.height` that overshoots the
+  // visible content box, so measuring then pushed the panel off the bottom edge.
+  // Desktop: anchored window, bottom-right.
   const panelStyle: React.CSSProperties = isMobile
-    ? viewport
+    ? viewport?.keyboardOpen
       ? {
           left: MOBILE_GAP,
           right: MOBILE_GAP,
           top: viewport.top + MOBILE_GAP,
           height: viewport.height - MOBILE_GAP * 2,
         }
-      : { left: MOBILE_GAP, right: MOBILE_GAP, top: MOBILE_GAP, bottom: MOBILE_GAP }
+      : {
+          left: MOBILE_GAP,
+          right: MOBILE_GAP,
+          top: MOBILE_TOP_GAP,
+          bottom: `calc(${MOBILE_GAP}px + env(safe-area-inset-bottom, 0px))`,
+        }
     : {
         right: '1.5rem',
         bottom: '5rem',
