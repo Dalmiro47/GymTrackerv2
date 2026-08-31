@@ -68,6 +68,7 @@ export function CoachChatSheet({ mode, context, loadContext, suggestedPrompts, l
   const { messages, isStreaming, error, sendMessage, clearChat, stopStreaming } = useCoachChat(mode, logDate);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const config = MODE_CONFIG[mode];
 
   const isMobile = useIsMobile();
@@ -123,6 +124,35 @@ export function CoachChatSheet({ mode, context, loadContext, suggestedPrompts, l
     };
   }, [open]);
 
+  // Pinning the body does NOT stop iOS from panning the visual viewport while
+  // the keyboard is open (that pan is not a document scroll), so gestures on
+  // the frozen page still moved everything and resized the panel. Block them:
+  // a touchmove is only allowed when the finger is over an element inside the
+  // panel that can actually scroll (message list, overflowing textarea) — that
+  // scroller consumes it and `overscroll-contain` stops the chain.
+  useEffect(() => {
+    if (!open || !isMobile) return;
+    const canScroll = (el: HTMLElement) => {
+      const overflowY = window.getComputedStyle(el).overflowY;
+      return (overflowY === 'auto' || overflowY === 'scroll') && el.scrollHeight > el.clientHeight;
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      if (!e.cancelable) return;
+      const panel = panelRef.current;
+      const target = e.target instanceof HTMLElement ? e.target : null;
+      if (!panel || !target || !panel.contains(target)) {
+        e.preventDefault();
+        return;
+      }
+      for (let el: HTMLElement | null = target; el && el !== panel; el = el.parentElement) {
+        if (canScroll(el)) return;
+      }
+      e.preventDefault();
+    };
+    document.addEventListener('touchmove', onTouchMove, { passive: false });
+    return () => document.removeEventListener('touchmove', onTouchMove);
+  }, [open, isMobile]);
+
   // Focus textarea when chat opens
   useEffect(() => {
     if (open) {
@@ -174,16 +204,20 @@ export function CoachChatSheet({ mode, context, loadContext, suggestedPrompts, l
 
   // Mobile: the panel is bounded by top+bottom and never given a `height`, so
   // opening the keyboard only lifts its BOTTOM edge -- the header stays exactly
-  // where it was and the message list is what shrinks (LinkedIn-style). Moving
-  // the top as well made the whole dialog jump upward and ran the header off
-  // the screen. `bottom` is offset by the keyboard because `position: fixed`
-  // resolves against the layout viewport, which iOS never shrinks.
+  // where it was and the message list is what shrinks (LinkedIn-style).
+  // `bottom` is offset by the keyboard because `position: fixed` resolves
+  // against the layout viewport, which iOS never shrinks. Both edges add
+  // `offsetTop`: on input focus iOS PANS the visual viewport (not a document
+  // scroll — the body pin can't stop it), which slides fixed elements up and
+  // ran the header off-screen; adding the pan back glues the panel to the
+  // visible area, and it is 0 whenever nothing panned. (`keyboardHeight`
+  // already subtracts `offsetTop`, so `bottom` tracks the pan on its own.)
   // Desktop: anchored window, bottom-right.
   const panelStyle: React.CSSProperties = isMobile
     ? {
         left: MOBILE_GAP,
         right: MOBILE_GAP,
-        top: MOBILE_TOP_GAP,
+        top: MOBILE_TOP_GAP + (viewport?.offsetTop ?? 0),
         bottom: viewport?.keyboardOpen
           ? viewport.keyboardHeight + MOBILE_GAP
           : `calc(${MOBILE_GAP}px + env(safe-area-inset-bottom, 0px))`,
@@ -233,12 +267,13 @@ export function CoachChatSheet({ mode, context, loadContext, suggestedPrompts, l
         <>
           {/* Backdrop — covers page content including mobile action bar (z-40), blurs background */}
           <div
-            className="fixed inset-0 z-[49] bg-black/30 backdrop-blur-sm"
+            className="fixed inset-0 z-[49] touch-none bg-black/30 backdrop-blur-sm"
             onClick={handleClose}
           />
 
           {/* Floating chat window */}
           <div
+            ref={panelRef}
             className="fixed z-50 flex flex-col overflow-hidden rounded-2xl border bg-background shadow-2xl"
             style={panelStyle}
           >
