@@ -89,6 +89,7 @@ export interface LoggedExercise {
   currentPR: { reps: number, weight: number } | null; // Numeric PR for reliable logic
   isProvisional?: boolean; // UI-only, DERIVED: true while `sets` still equal `prefill.sets` (nothing changed)
   prefill?: { sets: Array<{ reps: number | null; weight: number | null }>; lastPerformedDate: number | null }; // UI-only: what was auto-filled from the last session
+  progressionStepKg?: number | null; // UI-only: kg added the last time this exercise went up (drives the overload cue)
   warmupConfig?: WarmupConfig; // Pass along for warmup calculation
   setStructure?: SetStructure; // Default from the routine
   setStructureOverride?: SetStructure | null; // User override for this specific log
@@ -138,6 +139,9 @@ export interface ExercisePerformanceEntry {
   lastPerformedDate: number | null; // Timestamp (milliseconds) of when sets were last performed, or null
   lastPerformedSets: PerformanceSet[]; // The sets recorded for the last performance for pre-filling
   personalRecord: PersonalRecord | null; // The best single set ever
+  // kg added the last time this exercise's working weight actually went up.
+  // Derived from recent logs (never stored) — null when there is no increase to learn from.
+  lastWeightStepKg?: number | null;
 }
 
 

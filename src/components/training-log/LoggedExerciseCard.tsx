@@ -270,9 +270,16 @@ export function LoggedExerciseCard({
   // the rows as you type. Show a settled snapshot instead: it appears once typing
   // stops and disappears at once when it no longer applies.
   // Only meaningful for the "above" cue, so it isn't computed for the others.
+  // The step is copied from this exercise's own last increase; the warm-up
+  // template is only the fallback when there is nothing to copy.
   const weightBump = useMemo(
-    () => (repCue === 'above' ? suggestWeightBump(localSets) : null),
-    [repCue, localSets]
+    () => (repCue === 'above'
+      ? suggestWeightBump(localSets, {
+          historyStepKg: loggedExercise.progressionStepKg,
+          template: loggedExercise.warmupConfig?.template,
+        })
+      : null),
+    [repCue, localSets, loggedExercise.progressionStepKg, loggedExercise.warmupConfig?.template]
   );
 
   const [nextTarget, setNextTarget] = useState<NextRepTarget | null>(null);
@@ -532,18 +539,16 @@ export function LoggedExerciseCard({
                   {repCue === 'above' ? (
                     <>
                       <span className="font-semibold">Rep goal reached.</span>{' '}
-                      Every set is at {repRange.max}+ reps —{' '}
                       {weightBump ? (
                         <>
-                          go up to{' '}
+                          Next session:{' '}
                           <span className="font-semibold tabular-nums">
                             {formatWeightHalf(weightBump.next)}kg
                           </span>{' '}
-                          <span className="tabular-nums">(+{formatWeightHalf(weightBump.step)}kg)</span>{' '}
-                          and rebuild the reps from the bottom of the range.
+                          <span className="tabular-nums">(+{formatWeightHalf(weightBump.step)}kg)</span>.
                         </>
                       ) : (
-                        <>increase the weight to keep overloading.</>
+                        <>Add weight next session.</>
                       )}
                     </>
                   ) : (
