@@ -1,4 +1,4 @@
-import type { LoggedSet } from '@/types';
+import type { LoggedSet, WarmupTemplate } from '@/types';
 import { snapToHalf } from '@/lib/rounding';
 
 /**
@@ -113,21 +113,51 @@ export interface WeightBump {
 }
 
 /**
+ * How much the user actually adds when they progress, read off the warm-up
+ * template — the only equipment signal the app stores. Used ONLY when this
+ * exercise has no increase in its recent history to copy.
+ */
+const TEMPLATE_STEP_KG: Record<WarmupTemplate, number> = {
+  HEAVY_BARBELL: 10,
+  MACHINE_COMPOUND: 5,
+  HEAVY_DB: 2.5,
+  ISOLATION: 2.5,
+  BODYWEIGHT: 2.5,   // weighted dips/pull-ups: the added load moves in plate-sized steps
+  NONE: 2.5,
+};
+
+export interface WeightBumpInput {
+  /** kg added the last time this exercise's working weight went up, if known. */
+  historyStepKg?: number | null;
+  /** Equipment proxy, used only when there is no history. */
+  template?: WarmupTemplate;
+}
+
+/**
  * The load to try once `isRepGoalReached` fires — the last step of the loop, so
  * it lands on a number instead of "increase the weight".
  *
- * ~2.5% of the working weight: the smallest jump that is still a real jump.
- * Snapped to 0.5kg (the only granularity the app stores) and floored at 1kg, so
- * light cable/dumbbell loads get a genuine increase rather than rounding noise.
+ * The step is what the user themselves last added on THIS exercise: the jump
+ * that already worked beats any formula. A percentage-based guess is what made
+ * this suggest +1kg on lifts that only move in 2.5/5/10kg plates. With no
+ * increase in recent history, fall back to the equipment's usual jump.
  * Bodyweight work has no weight to bump and returns null — the caller keeps its
  * generic wording.
  */
-export function suggestWeightBump(sets: LoggedSet[] | undefined): WeightBump | null {
+export function suggestWeightBump(
+  sets: LoggedSet[] | undefined,
+  { historyStepKg, template }: WeightBumpInput = {}
+): WeightBump | null {
   if (!sets || sets.length === 0) return null;
 
   const current = sets.reduce((max, set) => Math.max(max, set.weight ?? 0), 0);
   if (current <= 0) return null;
 
-  const step = Math.max(1, snapToHalf(current * 0.025) ?? 1);
+  // Snapped to 0.5kg, the only granularity the app stores.
+  const fromHistory = historyStepKg && historyStepKg > 0 ? snapToHalf(historyStepKg) : null;
+  const step = fromHistory && fromHistory > 0
+    ? fromHistory
+    : TEMPLATE_STEP_KG[template ?? 'ISOLATION'] ?? 2.5;
+
   return { current, next: Number((current + step).toFixed(1)), step };
 }

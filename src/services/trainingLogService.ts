@@ -58,7 +58,7 @@ export const saveWorkoutLog = async (userId: string, date: string, workoutLogPay
     exerciseIds: exerciseIds,
     exercises: workoutLogPayload.exercises.map(ex => {
       // Destructure to remove UI-only fields before saving
-      const { personalRecordDisplay, isProvisional, currentPR, prefill, ...restOfEx } = ex;
+      const { personalRecordDisplay, isProvisional, currentPR, prefill, progressionStepKg, ...restOfEx } = ex;
 
       // Clean up optional fields that might be null or undefined on the exercise
       const exerciseToSave: { [key: string]: any } = { ...restOfEx };
@@ -436,6 +436,36 @@ export const getLastLoggedPerformance = async (userId: string, exerciseId: strin
   }
 };
 
+/**
+ * "How much did I add last time?" — the newest positive jump in this exercise's
+ * working weight (heaviest set, the same definition the warm-up panel uses)
+ * across the recent logs already fetched for the pre-fill, so it costs no extra
+ * reads. Deload logs are skipped: their loads are artificially reduced, so the
+ * step back up afterwards is not a real progression. Null when the recent
+ * sessions contain no increase — the caller then falls back to a default step.
+ */
+const workingWeightForExercise = (log: WorkoutLog | undefined, exerciseId: string): number => {
+  const ex = log?.exercises?.find(e => e.exerciseId === exerciseId);
+  if (!ex?.sets?.length) return 0;
+  return ex.sets.reduce((max, s) => Math.max(max, s.weight ?? 0), 0);
+};
+
+const computeLastWeightStep = (
+  logs: WorkoutLog[], // newest first
+  exerciseId: string
+): number | null => {
+  const weights = logs
+    .filter(log => log?.isDeload !== true)
+    .map(log => workingWeightForExercise(log, exerciseId))
+    .filter(w => w > 0);
+
+  for (let i = 0; i + 1 < weights.length; i++) {
+    const diff = weights[i] - weights[i + 1];
+    if (diff > 0) return Number(diff.toFixed(1));
+  }
+  return null;
+};
+
 export const getLastNonDeloadPerformance = async (userId: string, exerciseId: string): Promise<ExercisePerformanceEntry | null> => {
     if (!userId || !exerciseId) return null;
 
@@ -456,6 +486,7 @@ export const getLastNonDeloadPerformance = async (userId: string, exerciseId: st
             getLastLoggedPerformance(userId, exerciseId),
             getDocs(q),
         ]);
+        const recentLogs = logsSnap.docs.map(doc => doc.data() as WorkoutLog);
         const lastNonDeloadLogDoc = logsSnap.docs.find(doc => doc.data()?.isDeload !== true);
 
         let lastSets: PerformanceSet[] = [];
@@ -484,6 +515,7 @@ export const getLastNonDeloadPerformance = async (userId: string, exerciseId: st
             personalRecord: overallPerformanceEntry?.personalRecord || null,
             lastPerformedSets: lastSets,
             lastPerformedDate: lastDate,
+            lastWeightStepKg: computeLastWeightStep(recentLogs, exerciseId),
         };
 
     } catch (e) {

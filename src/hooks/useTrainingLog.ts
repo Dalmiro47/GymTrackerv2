@@ -237,6 +237,7 @@ export const useTrainingLog = (initialDate: Date) => {
                         sets: setsWithIds,
                         personalRecordDisplay: formatPR(currentPR),
                         currentPR: currentPR,
+                        progressionStepKg: performanceEntry?.lastWeightStepKg ?? null,
                     };
                     return performedOnOrAfterDay
                       ? restored
@@ -462,6 +463,7 @@ export const useTrainingLog = (initialDate: Date) => {
                 currentPR: currentPR,
                 isProvisional: true, 
                 prefill: makePrefill(performanceEntry, initialSets),
+                progressionStepKg: performanceEntry?.lastWeightStepKg ?? null,
                 warmupConfig: fullExerciseDef ? getWarmupConfig(fullExerciseDef) : undefined,
                 setStructure: routineEx.setStructure ?? 'normal',
                 setStructureOverride: null,
@@ -528,6 +530,7 @@ export const useTrainingLog = (initialDate: Date) => {
       currentPR: currentPR,
       isProvisional: true,
       prefill: makePrefill(performanceEntry, initialSets),
+      progressionStepKg: performanceEntry?.lastWeightStepKg ?? null,
       warmupConfig: getWarmupConfig(exercise),
       setStructure: 'normal',
       setStructureOverride: null,
@@ -591,6 +594,7 @@ export const useTrainingLog = (initialDate: Date) => {
         currentPR: currentPR,
         isProvisional: true,
         prefill: makePrefill(performanceEntry, initialSets),
+        progressionStepKg: performanceEntry?.lastWeightStepKg ?? null,
         warmupConfig: getWarmupConfig(newExercise),
         setStructure: prev.setStructure ?? 'normal',
         setStructureOverride: prev.setStructureOverride ?? null,
