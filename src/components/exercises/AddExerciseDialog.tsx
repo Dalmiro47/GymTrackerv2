@@ -121,12 +121,12 @@ export function AddExerciseDialog({
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       {triggerButton && <DialogTrigger asChild>{triggerButton}</DialogTrigger>}
       <DialogContent
-        className="sm:max-w-3xl max-h-[85dvh] flex flex-col p-0 gap-0 overflow-hidden"
+        className="flex max-h-[85dvh] w-[min(95vw,560px)] flex-col gap-0 overflow-hidden p-0"
         onOpenAutoFocus={(e) => e.preventDefault()} // STOP MOBILE KEYBOARD
       >
-        
-        <DialogHeader className="p-6 pb-4 border-b">
-          <DialogTitle className="font-headline text-xl">{exerciseToEdit ? 'Edit Exercise' : 'Add New Exercise'}</DialogTitle>
+
+        <DialogHeader className="border-b p-4 pr-12">
+          <DialogTitle>{exerciseToEdit ? 'Edit Exercise' : 'Add New Exercise'}</DialogTitle>
           <DialogDescription>
             {exerciseToEdit ? 'Update the details for this exercise.' : 'Fill in the details for the new exercise.'}
           </DialogDescription>
@@ -134,11 +134,11 @@ export function AddExerciseDialog({
 
         <Form {...form}>
             <form onSubmit={handleSubmit(onSubmit)} className="flex-grow overflow-y-auto">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-6">
-                    
-                    {/* LEFT COLUMN: Basic Info */}
+                <div className="grid grid-cols-1 gap-6 p-4">
+
+                    {/* Basic Info */}
                     <div className="space-y-4">
-                        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground border-b pb-2 mb-2 h-8">
+                        <div className="eyebrow flex h-8 items-center gap-2 border-b pb-2">
                             <Dumbbell className="h-4 w-4" /> Basic Info
                         </div>
 
@@ -196,9 +196,9 @@ export function AddExerciseDialog({
                         />
                     </div>
 
-                    {/* RIGHT COLUMN: Advanced Details */}
+                    {/* Advanced Details */}
                     <div className="space-y-4">
-                        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground border-b pb-2 mb-2 h-8">
+                        <div className="eyebrow flex h-8 items-center gap-2 border-b pb-2">
                             <Settings2 className="h-4 w-4" /> Training Details
                         </div>
 
@@ -244,7 +244,7 @@ export function AddExerciseDialog({
                                         Warm-up Config
                                         <Popover>
                                             <PopoverTrigger asChild>
-                                                <Button type="button" variant="ghost" size="icon" className="h-4 w-4 text-muted-foreground hover:bg-transparent p-0 ml-1">
+                                                <Button type="button" variant="ghost" size="icon" className="-my-1.5 ml-1 h-8 w-8 rounded-full p-0 text-muted-foreground" aria-label="About warm-up templates">
                                                     <Info className="h-3.5 w-3.5" />
                                                 </Button>
                                             </PopoverTrigger>
@@ -273,11 +273,11 @@ export function AddExerciseDialog({
                     </div>
                 </div>
 
-                <DialogFooter className="p-4 border-t bg-muted/30">
+                <DialogFooter className="border-t bg-muted/30 p-4">
                     <Button type="button" variant="outline" onClick={() => setIsOpen(false)} disabled={isSaving}>
                     Cancel
                     </Button>
-                    <Button type="submit" disabled={isSaving} className="min-w-[120px]">
+                    <Button type="submit" disabled={isSaving} className="min-w-[140px]">
                     {isSaving ? (exerciseToEdit ? "Saving..." : "Adding...") : (exerciseToEdit ? "Save Changes" : "Add Exercise")}
                     </Button>
                 </DialogFooter>

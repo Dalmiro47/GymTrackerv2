@@ -264,17 +264,17 @@ export default function RoutinesPage() {
 
   if (authContext.isLoading) {
     return (
-      <div className="flex justify-center items-center h-screen">
-        <Loader2 className="h-12 w-12 animate-spin text-primary" />
-        <p className="ml-4 text-lg text-muted-foreground font-medium">Loading authentication...</p>
+      <div className="flex h-64 items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <p className="ml-4 text-[15px] font-medium text-muted-foreground">Loading authentication...</p>
       </div>
     );
   }
 
   if (!user && !authContext.isLoading) {
     return (
-      <div className="flex flex-col justify-center items-center h-64">
-        <p className="text-lg font-semibold mb-4">Please log in to manage your routines.</p>
+      <div className="flex h-64 flex-col items-center justify-center">
+        <p className="mb-4 font-headline text-[22px] font-semibold leading-none">Please log in to manage your routines.</p>
         <Button onClick={() => { if (confirmDiscardUnsavedChanges()) router.push('/login'); }}>Go to Login</Button>
       </div>
     );
@@ -283,9 +283,9 @@ export default function RoutinesPage() {
   return (
     <div className="space-y-6">
       <PageHeader title="Workout Routines" description="Design and manage your custom workout plans. Drag to reorder.">
-        <div className="flex items-center gap-2">
+        <div className="flex w-full items-center justify-end gap-3">
             {isOrderSaving && (
-                <div className="flex items-center text-sm text-muted-foreground">
+                <div className="flex items-center text-[13px] text-muted-foreground">
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Saving order...
                 </div>
@@ -311,9 +311,9 @@ export default function RoutinesPage() {
       />
 
       {isLoading && user ? (
-        <div className="flex justify-center items-center py-10">
-          <Loader2 className="h-10 w-10 animate-spin text-primary" />
-          <p className="ml-3 text-lg text-muted-foreground">Loading your routines...</p>
+        <div className="flex items-center justify-center py-10">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="ml-3 text-[15px] text-muted-foreground">Loading your routines...</p>
         </div>
       ) : routines.length > 0 ? (
         <DndContext
@@ -322,7 +322,7 @@ export default function RoutinesPage() {
           onDragEnd={handleDragEndRoutines}
         >
           <SortableContext items={routines.map(r => r.id)} strategy={rectSortingStrategy}>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="animate-enter enter-1 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
               {routines.map(routine => (
                 <RoutineCard
                   key={routine.id}
@@ -336,18 +336,20 @@ export default function RoutinesPage() {
           </SortableContext>
         </DndContext>
       ) : (
-        <Card>
+        <Card className="animate-enter enter-1">
           <CardHeader>
-            <CardTitle className="font-headline text-xl flex items-center">
-                <ListChecks className="mr-2 h-5 w-5 text-primary"/>
+            <CardTitle className="flex items-center gap-2">
+                <ListChecks className="h-5 w-5 text-primary"/>
                 Your Routines
             </CardTitle>
             <CardDescription>You haven&apos;t created any routines yet.</CardDescription>
           </CardHeader>
-          <CardContent className="text-center py-12">
-            <ListChecks className="mx-auto h-20 w-20 text-muted-foreground mb-4 opacity-50" />
-            <p className="text-lg text-muted-foreground font-semibold">No routines found.</p>
-            <p className="text-muted-foreground">Click &quot;Create Routine&quot; to get started!</p>
+          <CardContent className="py-12 text-center">
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+              <ListChecks className="h-6 w-6" />
+            </div>
+            <p className="font-headline text-[22px] font-semibold leading-none">No routines found.</p>
+            <p className="mt-2 text-[13px] text-muted-foreground">Click &quot;Create Routine&quot; to get started!</p>
           </CardContent>
         </Card>
       )}

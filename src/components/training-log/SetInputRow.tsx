@@ -30,9 +30,23 @@ export function SetInputRow({ set, index, onSetChange, onRemoveSet, isProvisiona
     onSetChange(index, field, v); // allow '' to go through -> becomes null in parent
   };
 
+  // Purely derived from what is already on screen: a set counts as "done" once it
+  // carries both numbers and is no longer the untouched pre-fill. No state, no
+  // effect, no focus involvement — those would fight the provisional invariant.
+  const isFilled = set.reps != null && set.weight != null && !isProvisional;
+
   return (
-    <div className="grid grid-cols-[2rem_1fr_auto_1fr_auto_2.25rem] items-center gap-2" data-dndkit-no-drag>
-      <span className="font-medium text-sm text-muted-foreground text-center">{index + 1}.</span>
+    <div className="grid grid-cols-[2.25rem_1fr_auto_1fr_auto_2.75rem] items-center gap-2" data-dndkit-no-drag>
+      <span
+        className={cn(
+          "mx-auto flex h-7 w-7 items-center justify-center rounded-full border text-[12px] font-semibold tabular-nums transition-colors",
+          isFilled
+            ? "border-primary/30 bg-primary/15 text-primary"
+            : "border-border text-muted-foreground"
+        )}
+      >
+        {index + 1}
+      </span>
 
       {/* Reps: integers only, max 2 digits (0–99) */}
       <Input
@@ -73,15 +87,15 @@ export function SetInputRow({ set, index, onSetChange, onRemoveSet, isProvisiona
           if (blocked.includes(e.key)) e.preventDefault();
         }}
         className={cn(
-          "h-10 text-sm font-medium tabular-nums text-center placeholder:text-center placeholder:font-normal",
-          isProvisional && "bg-muted/40 dark:bg-muted/20 placeholder:text-muted-foreground/70 opacity-80",
+          "h-11 rounded-md text-center font-semibold tabular-nums placeholder:text-center placeholder:font-normal",
+          isProvisional && "bg-muted/30 dark:bg-muted/20 placeholder:text-muted-foreground/70 text-muted-foreground/70 opacity-80",
           // Marks the one set to push next. A tint on the box itself, not a ring
           // on the card — the card border is the set-structure channel.
-          repTarget != null && "border-primary/50 bg-primary/5 text-primary"
+          repTarget != null && "border-primary/50 bg-primary/10 text-primary"
         )}
       />
 
-      <span className="text-muted-foreground text-center">x</span>
+      <span className="text-center text-[13px] text-muted-foreground">x</span>
 
       {/* Weight: integers or .5 only (accepts '.' or ',' as decimal; normalizes to '.') */}
       <Input
@@ -166,15 +180,16 @@ export function SetInputRow({ set, index, onSetChange, onRemoveSet, isProvisiona
           if (block.includes(e.key)) e.preventDefault();
         }}
         className={cn(
-          "h-10 text-sm font-medium tabular-nums text-center placeholder:text-center placeholder:font-normal",
-          isProvisional && "bg-muted/40 dark:bg-muted/20 placeholder:text-muted-foreground/70 opacity-80"
+          "h-11 rounded-md text-center font-semibold tabular-nums placeholder:text-center placeholder:font-normal",
+          isProvisional && "bg-muted/30 dark:bg-muted/20 placeholder:text-muted-foreground/70 text-muted-foreground/70 opacity-80"
         )}
       />
 
-      <span className="text-muted-foreground">kg</span>
+      <span className="text-[13px] text-muted-foreground">kg</span>
 
       <Button variant="ghost" size="icon" onClick={onRemoveSet} disabled={disabled}
-        className="text-muted-foreground hover:text-destructive h-9 w-9">
+        aria-label={`Remove set ${index + 1}`}
+        className="h-11 w-11 rounded-md text-muted-foreground hover:text-destructive">
         <Trash2 className="h-4 w-4" />
       </Button>
 

@@ -2,8 +2,8 @@
 "use client";
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Calendar as ShadCNCalendar } from "@/components/ui/calendar"; // ShadCN Calendar
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { WorkoutCalendar } from "@/components/dashboard/WorkoutCalendar";
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { getWorkoutLog, getMonthLogFlags, getLogsSince } from '@/services/trainingLogService';
@@ -47,6 +47,31 @@ function getMonthlySummaryMessage(
     return `You logged ${logCount} session${logCount > 1 ? "s" : ""} in ${monthLabel}. Solid effort.`;
   }
   return `You logged ${logCount} sessions in ${monthLabel}—nice consistency!`;
+}
+
+/**
+ * Compact one-line summary of a logged exercise's sets, e.g. "10 · 10 · 9 × 32 kg"
+ * when every set shares a weight, otherwise "10 × 32 · 8 × 30 kg". Purely a
+ * display transform of the same sets the detailed list already showed.
+ */
+function formatSetsLine(sets: LoggedSet[]): string {
+  if (sets.length === 0) return 'No sets recorded';
+  const weights = Array.from(new Set(sets.map(s => s.weight)));
+  const reps = (s: LoggedSet) => (s.reps ?? '–');
+  if (weights.length === 1) {
+    const w = weights[0];
+    const repsLine = sets.map(reps).join(' · ');
+    return w === null ? repsLine : `${repsLine} × ${w} kg`;
+  }
+  return `${sets.map(s => `${reps(s)} × ${s.weight ?? '–'}`).join(' · ')} kg`;
+}
+
+/** Per-set detail, kept reachable on the compact row via title/aria. */
+function describeSets(sets: LoggedSet[]): string {
+  if (sets.length === 0) return 'No sets recorded';
+  return sets
+    .map((s, i) => `Set ${i + 1}: ${s.reps ?? '-'} reps @ ${s.weight ?? '-'} kg`)
+    .join('; ');
 }
 
 export function WorkoutCalendarSection() {
@@ -177,119 +202,85 @@ export function WorkoutCalendarSection() {
   return (
     <div className="space-y-4">
       {/* Monthly stats strip */}
-      <div className="grid grid-cols-3 gap-3">
-        <div className="rounded-lg border bg-card px-3 py-2.5 sm:px-4 sm:py-3">
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <CalendarCheck2 className="h-3.5 w-3.5" />
+      <div className="animate-enter enter-1 grid grid-cols-3 gap-3">
+        <div className="surface p-3.5">
+          <div className="eyebrow flex items-center gap-1.5">
+            <CalendarCheck2 className="h-3.5 w-3.5 shrink-0" />
             <span className="truncate">Sessions</span>
           </div>
-          <p className="mt-1 text-2xl font-bold tabular-nums leading-none">
+          <p className="mt-2 font-headline text-[36px] font-bold leading-none tabular-nums">
             {isLoadingLoggedDays ? '–' : logsInCurrentDisplayedMonth}
           </p>
-          <p className="mt-1 text-[11px] text-muted-foreground truncate">{format(displayedMonth, 'MMMM')}</p>
+          <p className="mt-1.5 truncate text-[12px] text-muted-foreground">{format(displayedMonth, 'MMMM')}</p>
         </div>
-        <div className="rounded-lg border bg-card px-3 py-2.5 sm:px-4 sm:py-3">
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Flame className="h-3.5 w-3.5" />
+        <div className="surface p-3.5">
+          <div className="eyebrow flex items-center gap-1.5">
+            <Flame className="h-3.5 w-3.5 shrink-0" />
             <span className="truncate">This week</span>
           </div>
-          <p className="mt-1 text-2xl font-bold tabular-nums leading-none">
+          <p className="mt-2 font-headline text-[36px] font-bold leading-none tabular-nums">
             {sessionsThisWeek === null ? '–' : sessionsThisWeek}
           </p>
-          <p className="mt-1 text-[11px] text-muted-foreground truncate">since Monday</p>
+          <p className="mt-1.5 truncate text-[12px] text-muted-foreground">since Monday</p>
         </div>
         <div className={cn(
-          "rounded-lg border bg-card px-3 py-2.5 sm:px-4 sm:py-3",
+          "surface p-3.5",
           noRecentDeload && "border-destructive/50"
         )}>
           <div className={cn(
-            "flex items-center gap-1.5 text-xs text-muted-foreground",
+            "eyebrow flex items-center gap-1.5",
             noRecentDeload && "text-destructive"
           )}>
-            <BatteryLow className="h-3.5 w-3.5" />
+            <BatteryLow className="h-3.5 w-3.5 shrink-0" />
             <span className="truncate">Deloads</span>
           </div>
           <p className={cn(
-            "mt-1 text-2xl font-bold tabular-nums leading-none",
+            "mt-2 font-headline text-[36px] font-bold leading-none tabular-nums",
             noRecentDeload && "text-destructive"
           )}>
             {deloadCount3mo === null ? '–' : deloadCount3mo}
           </p>
           <p className={cn(
-            "mt-1 text-[11px] truncate",
-            noRecentDeload ? "text-destructive font-medium" : "text-muted-foreground"
+            "mt-1.5 truncate text-[12px]",
+            noRecentDeload ? "font-medium text-destructive" : "text-muted-foreground"
           )}>
             {noRecentDeload ? "none in 3 months" : "last 3 months"}
           </p>
         </div>
       </div>
 
-      <div className="grid md:grid-cols-2 gap-4 md:items-stretch">
+      <div className="grid gap-4 md:grid-cols-2 md:items-stretch">
         {/* Left Column: Calendar */}
-        <Card className="flex flex-col">
-          <CardContent className="flex flex-col items-center flex-grow p-4 sm:p-5">
+        <Card className="animate-enter enter-2 flex flex-col">
+          <CardContent className="flex flex-grow flex-col items-center p-4">
               {isLoadingLoggedDays ? (
-                <div className="flex-grow flex justify-center items-center h-[200px]">
+                <div className="flex h-[200px] flex-grow items-center justify-center">
                   <Loader2 className="h-8 w-8 animate-spin text-primary" />
                 </div>
               ) : (
-                <>
-                  <ShadCNCalendar
-                    mode="single"
-                    selected={selectedDate}
-                    onSelect={handleDateSelect}
-                    month={displayedMonth}
-                    onMonthChange={(m) => setDisplayedMonth(startOfMonth(m))}
-                    modifiers={{ logged: daysWithLogs, deload: daysWithDeload }}
-                    modifiersClassNames={{ logged: 'day-is-logged', deload: 'day-is-deload' }}
-                    components={{
-                      DayContent: (props) => {
-                        const { date, activeModifiers } = props;
-                        const isDeload = !!activeModifiers?.deload;
-                        const isLogged = !!activeModifiers?.logged;
-
-                        const label = [
-                          date.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }),
-                          isDeload ? '— Deload day' : (isLogged ? '— Workout logged' : '')
-                        ].filter(Boolean).join(' ');
-
-                        return (
-                          <span title={label} aria-label={label} style={{ display: 'inline-block', width: '100%' }}>
-                            {date.getDate()}
-                          </span>
-                        );
-                      },
-                    }}
-                    className="p-0"
-                    weekStartsOn={1}
-                    toDate={today}
-                    disabled={{ after: today }}
-                  />
-                  <div className="mt-3 flex items-center justify-center gap-4 text-xs text-muted-foreground">
-                    <span className="inline-flex items-center gap-1.5">
-                      <span className="inline-block h-[3px] w-5 rounded bg-primary" />
-                      Logged
-                    </span>
-                    <span className="inline-flex items-center gap-1.5">
-                      <span className="inline-block h-[3px] w-5 rounded bg-chart-4" />
-                      Deload
-                    </span>
-                  </div>
-                </>
+                <WorkoutCalendar
+                  selectedDate={selectedDate}
+                  onSelect={handleDateSelect}
+                  month={displayedMonth}
+                  onMonthChange={(m) => setDisplayedMonth(startOfMonth(m))}
+                  loggedDays={daysWithLogs}
+                  deloadDays={daysWithDeload}
+                  today={today}
+                />
               )}
-              <p className="text-xs text-muted-foreground mt-3 text-center px-2 border-t pt-3 w-full">
+              <p className="mt-3 w-full border-t px-2 pt-3 text-center text-[13px] leading-snug text-muted-foreground">
                 {monthlySummaryMessage}
               </p>
             </CardContent>
         </Card>
 
         {/* Right Column: Workout Details */}
-        <Card className="flex flex-col">
+        <Card className="animate-enter enter-3 flex flex-col">
             <CardHeader className="pb-3">
-              <CardTitle className="font-headline">Workout Details</CardTitle>
-              <CardDescription>
-                {selectedDate ? `${format(selectedDate, 'MMMM do, yyyy')}` : "Select a day to see details."}
-              </CardDescription>
+              <p className="eyebrow">Workout Details</p>
+              <CardTitle>
+                {selectedDate ? format(selectedDate, 'MMMM do, yyyy') : "Select a day"}
+              </CardTitle>
             </CardHeader>
             <CardContent className="flex-grow flex flex-col">
               {isLoadingLogDetails ? (
@@ -300,41 +291,43 @@ export function WorkoutCalendarSection() {
                 <ScrollArea className="flex-grow pr-3">
                   <div className="space-y-4">
                     {selectedLog.routineName && (
-                      <p className="text-sm">
+                      <p className="text-[13px]">
                         <span className="font-semibold">Routine:</span> {selectedLog.routineName}
                       </p>
                     )}
                     {selectedLog.notes && selectedLog.notes.trim() !== '' && (
-                       <p className="text-sm"><span className="font-semibold">Overall Notes:</span> {selectedLog.notes}</p>
+                       <p className="text-[13px]"><span className="font-semibold">Overall Notes:</span> {selectedLog.notes}</p>
                     )}
                     <div>
-                      <h4 className="font-semibold text-md mb-2 flex items-center">
-                        <ListChecks className="mr-2 h-4 w-4 text-primary" />
-                        Logged Exercises:
+                      <h4 className="eyebrow mb-2 flex items-center">
+                        <ListChecks className="mr-2 h-3.5 w-3.5 text-primary" />
+                        Logged Exercises
                       </h4>
                       {selectedLog.exercises.length > 0 ? (
-                        <ul className="space-y-3">
+                        <ul className="space-y-2">
                           {selectedLog.exercises.map((exercise) => (
-                            <li key={exercise.id} className="text-sm p-3 border rounded-md bg-muted/30">
-                              <p className="font-semibold">{exercise.name}</p>
-                              {exercise.exerciseSetup && <p className="text-xs text-muted-foreground">Setup: {exercise.exerciseSetup}</p>}
-                              <ul className="list-disc list-inside pl-2 mt-1 space-y-0.5">
-                                {exercise.sets.map((set, index) => (
-                                  <li key={set.id} className="text-xs">
-                                    Set {index + 1}: {set.reps ?? '-'} reps @ {set.weight ?? '-'} kg
-                                  </li>
-                                ))}
-                              </ul>
-                              {exercise.notes && <p className="text-xs mt-1">Exercise Notes: {exercise.notes}</p>}
+                            <li key={exercise.id} className="rounded-md bg-muted/40 p-3">
+                              <p className="font-headline text-[18px] font-semibold leading-tight">{exercise.name}</p>
+                              <p
+                                className="mt-1 text-[13px] tabular-nums text-muted-foreground"
+                                title={describeSets(exercise.sets)}
+                                aria-label={`${exercise.name} — ${describeSets(exercise.sets)}`}
+                              >
+                                {formatSetsLine(exercise.sets)}
+                              </p>
+                              {exercise.exerciseSetup && (
+                                <p className="mt-1 text-[12px] text-muted-foreground">Setup: {exercise.exerciseSetup}</p>
+                              )}
+                              {exercise.notes && <p className="mt-1 text-[12px]">Notes: {exercise.notes}</p>}
                             </li>
                           ))}
                         </ul>
                       ) : (
-                        <p className="text-sm text-muted-foreground">No exercises were recorded for this day.</p>
+                        <p className="text-[13px] text-muted-foreground">No exercises were recorded for this day.</p>
                       )}
                     </div>
                     {selectedDate && isValid(selectedDate) && (
-                      <Link href={`/log?date=${format(selectedDate, 'yyyy-MM-dd')}`}>
+                      <Link href={`/log?date=${format(selectedDate, 'yyyy-MM-dd')}`} className="block">
                           <Button variant="outline" size="sm" className="mt-4 w-full">
                               <ExternalLink className="mr-2 h-4 w-4" />
                               View/Edit Full Log for this Day
@@ -344,12 +337,12 @@ export function WorkoutCalendarSection() {
                   </div>
                 </ScrollArea>
               ) : selectedDate ? (
-                <div className="flex-grow flex flex-col justify-center items-center text-center rounded-lg border border-dashed bg-muted/30 px-4 py-10 my-1">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary mb-3">
+                <div className="my-1 flex flex-grow flex-col items-center justify-center rounded-md border border-dashed bg-muted/40 px-4 py-10 text-center">
+                  <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
                     <CalendarIcon className="h-6 w-6" />
                   </div>
-                  <p className="text-sm font-semibold">Rest day — nothing logged.</p>
-                  <p className="text-sm text-muted-foreground mt-0.5">Pick another day, or start a session for this one.</p>
+                  <p className="font-headline text-[20px] font-semibold leading-tight">Rest day — nothing logged.</p>
+                  <p className="mt-1 text-[13px] text-muted-foreground">Pick another day, or start a session for this one.</p>
                    <Link href={`/log?date=${format(selectedDate, 'yyyy-MM-dd')}`}>
                         <Button size="sm" className="mt-4">
                             <PlusCircle className="mr-2 h-4 w-4" />
@@ -358,11 +351,11 @@ export function WorkoutCalendarSection() {
                     </Link>
                 </div>
               ) : (
-                 <div className="flex-grow flex flex-col justify-center items-center text-center rounded-lg border border-dashed bg-muted/30 px-4 py-10 my-1">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary mb-3">
+                 <div className="my-1 flex flex-grow flex-col items-center justify-center rounded-md border border-dashed bg-muted/40 px-4 py-10 text-center">
+                    <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
                       <CalendarIcon className="h-6 w-6" />
                     </div>
-                    <p className="text-sm font-semibold text-muted-foreground">Select a day on the calendar to see its workout.</p>
+                    <p className="text-[13px] font-medium text-muted-foreground">Select a day on the calendar to see its workout.</p>
                 </div>
               )}
             </CardContent>

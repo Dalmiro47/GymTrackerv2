@@ -44,8 +44,8 @@ export default function SettingsProfilePage() {
 
   if (isLoading || loadingProfile || !profile) {
     return (
-      <div className="mx-auto w-full max-w-2xl flex items-center gap-2 text-muted-foreground py-8">
-        <Loader2 className="h-5 w-5 animate-spin" /> Loading profile…
+      <div className="mx-auto flex w-full max-w-2xl items-center gap-2 py-8 text-[15px] text-muted-foreground">
+        <Loader2 className="h-5 w-5 animate-spin text-primary" /> Loading profile…
       </div>
     );
   }

@@ -43,30 +43,34 @@ export default function LoginPage() {
 
   if (isLoading || (!isLoading && isAuthenticated)) {
     return (
-      <div className="flex h-screen items-center justify-center bg-background">
+      <div className="flex min-h-[100dvh] items-center justify-center">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
       </div>
     );
   }
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-sm shadow-md">
-        <CardHeader className="text-center">
+    <div className="flex min-h-[100dvh] flex-col items-center justify-center p-4">
+      <Card className="animate-enter w-full max-w-sm">
+        <CardHeader className="items-center pt-8 text-center">
           <div className="mb-6 flex justify-center">
-            <Logo iconSize={32} textSize="text-3xl" />
+            <Logo iconSize={30} textSize="text-[26px]" />
           </div>
-          <CardTitle className="font-headline text-2xl">Welcome Back</CardTitle>
-          <CardDescription>Sign in to continue to DDS Gym Tracker.</CardDescription>
+          <CardTitle className="text-[28px]">Welcome Back</CardTitle>
+          <CardDescription className="text-[15px]">
+            Sign in to continue to DDS Gym Tracker.
+          </CardDescription>
         </CardHeader>
-        <CardContent>
-          <Button onClick={handleGoogleSignIn} className="w-full" aria-label="Sign in with Google" disabled={isLoading}>
+        <CardContent className="pb-8">
+          <Button
+            onClick={handleGoogleSignIn}
+            className="w-full"
+            aria-label="Sign in with Google"
+            disabled={isLoading}
+          >
             {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <GoogleIcon />}
             Sign in with Google
           </Button>
-          {/* <p className="mt-4 text-center text-xs text-muted-foreground">
-            Sign in using your Google account.
-          </p> */}
         </CardContent>
       </Card>
     </div>

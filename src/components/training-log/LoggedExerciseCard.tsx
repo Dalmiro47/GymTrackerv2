@@ -18,7 +18,6 @@ import { cn } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
 import { SetStructureBadge } from '../SetStructureBadge';
 import { SetStructurePicker } from '../SetStructurePicker';
-import { Separator } from '../ui/separator';
 import { SET_STRUCTURE_COLORS } from '@/types/setStructure';
 
 const WarmupPanel: React.FC<{ loggedExercise: LoggedExercise }> = ({ loggedExercise }) => {
@@ -42,11 +41,11 @@ const WarmupPanel: React.FC<{ loggedExercise: LoggedExercise }> = ({ loggedExerc
     }, [loggedExercise.warmupConfig, loggedExercise.name, workingWeight]);
 
     if (workingWeight <= 0 && loggedExercise.warmupConfig?.template !== 'BODYWEIGHT') {
-         return <div className="p-4 text-sm text-muted-foreground">Enter a working weight to calculate warm-ups.</div>;
+         return <div className="p-4 text-[13px] text-muted-foreground">Enter a working weight to calculate warm-ups.</div>;
     }
-    
+
     if (warmupSteps.length === 0) {
-        return <div className="p-4 text-sm text-muted-foreground">No warm-up sets needed for this exercise.</div>
+        return <div className="p-4 text-[13px] text-muted-foreground">No warm-up sets needed for this exercise.</div>
     }
 
     return (
@@ -73,7 +72,7 @@ const WarmupPanel: React.FC<{ loggedExercise: LoggedExercise }> = ({ loggedExerc
                     ))}
                 </TableBody>
             </Table>
-            <div className="px-4 text-xs text-muted-foreground space-y-1">
+            <div className="px-4 text-[12px] text-muted-foreground space-y-1">
                 <p>Rest between sets: Warm-ups: 30–90s • Compounds: 2–3 min • Isolations: 1–2 min</p>
                 <Button variant="link" className="p-0 h-auto" onClick={() => router.push(`/exercises?edit=${loggedExercise.exerciseId}`)}>
                     Edit warm-up settings
@@ -105,7 +104,7 @@ const WarmupModal: React.FC<{ loggedExercise: LoggedExercise; onClose: () => voi
         <>
             {/* Backdrop */}
             <div
-                className="fixed inset-0 z-[49] bg-black/30 backdrop-blur-sm"
+                className="fixed inset-0 z-[49] bg-black/40 backdrop-blur-sm"
                 onClick={onClose}
             />
             {/* Floating panel — centered, constrained width like the AI Coach dialog */}
@@ -113,19 +112,19 @@ const WarmupModal: React.FC<{ loggedExercise: LoggedExercise; onClose: () => voi
                 role="dialog"
                 aria-modal="true"
                 aria-label="Warm-up sets"
-                className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 flex flex-col rounded-2xl border bg-background shadow-2xl"
-                style={{ width: 'min(360px, calc(100vw - 2rem))', maxHeight: 'calc(100dvh - 4rem)' }}
+                className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 flex flex-col rounded-lg border bg-popover text-popover-foreground shadow-2xl"
+                style={{ width: 'min(420px, calc(100vw - 2rem))', maxHeight: 'calc(85dvh)' }}
             >
                 {/* Header */}
-                <div className="flex items-center justify-between border-b px-4 py-3">
-                    <div className="flex items-center gap-2">
-                        <Flame className="h-5 w-5 text-chart-5" />
-                        <div>
-                            <p className="text-sm font-semibold leading-tight">Warm-up Sets</p>
-                            <p className="text-xs text-muted-foreground truncate max-w-[220px]">{loggedExercise.name}</p>
+                <div className="flex items-center justify-between gap-2 border-b px-4 py-3">
+                    <div className="flex min-w-0 items-center gap-2">
+                        <Flame className="h-5 w-5 shrink-0 text-chart-5" />
+                        <div className="min-w-0">
+                            <p className="font-headline text-[20px] font-semibold leading-none">Warm-up Sets</p>
+                            <p className="mt-1 truncate text-[12px] text-muted-foreground">{loggedExercise.name}</p>
                         </div>
                     </div>
-                    <Button variant="ghost" size="icon" onClick={onClose} className="h-8 w-8" aria-label="Close warm-up">
+                    <Button variant="ghost" size="icon" onClick={onClose} className="h-9 w-9 shrink-0 rounded-full" aria-label="Close warm-up">
                         <X className="h-4 w-4" />
                     </Button>
                 </div>
@@ -411,7 +410,7 @@ export function LoggedExerciseCard({
           '--card-border-color': borderColor,
         } as React.CSSProperties}
         className={cn(
-          "shadow-sm transition-all rounded-lg border",
+          "rounded-lg border shadow-none transition-colors",
           "border-[var(--card-border-color)]",
           localStructure !== 'normal' && "border-2",
           // No rep-cue ring here on purpose: this border is the set-structure
@@ -420,56 +419,68 @@ export function LoggedExerciseCard({
         )}
       >
         <CardHeader className="py-3 px-4 border-b">
-          <div className="flex items-start justify-between">
-            <div className="flex items-center gap-2">
-                <button 
-                  type="button" 
-                  {...attributes} 
-                  {...listeners} 
-                  className="cursor-grab p-1 text-muted-foreground hover:text-foreground touch-none"
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-1">
+                <button
+                  type="button"
+                  {...attributes}
+                  {...listeners}
+                  className="-ml-2 flex h-11 w-9 shrink-0 cursor-grab touch-none items-center justify-center text-muted-foreground transition-colors hover:text-foreground"
                   aria-label={`Drag to reorder ${loggedExercise.name}`}
                   aria-roledescription="Draggable exercise"
               >
-                <GripVertical className="h-5 w-5" />
+                <GripVertical className="h-[18px] w-[18px]" />
               </button>
-              <div className="flex flex-col gap-1 items-start">
-                  <CardTitle className="font-headline text-lg">{loggedExercise.name}</CardTitle>
+              <div className="flex min-w-0 flex-col items-start gap-1">
+                  <CardTitle className="font-headline text-[20px] font-semibold leading-tight">{loggedExercise.name}</CardTitle>
                   <SetStructureBadge value={localStructure} />
               </div>
             </div>
-            <div className="flex items-center">
+            <div className="flex shrink-0 items-center">
               {loggedExercise.warmupConfig && loggedExercise.warmupConfig.template !== 'NONE' && (
                   <Button
                     variant="ghost"
                     size="icon"
                     onClick={() => setWarmupOpen(true)}
-                    className="text-chart-5 hover:text-chart-5/80 h-8 w-8"
+                    className="h-10 w-10 rounded-full text-chart-5 hover:text-chart-5"
                     aria-label={`Warm-up sets for ${loggedExercise.name}`}
                   >
                       <Flame className="h-4 w-4" />
                   </Button>
               )}
-              <Button variant="ghost" size="icon" onClick={onReplace} className="text-primary hover:text-primary/80 h-8 w-8" aria-label={`Replace ${loggedExercise.name}`}>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={onReplace}
+                className="h-10 w-10 rounded-full text-muted-foreground hover:text-foreground"
+                aria-label={`Replace ${loggedExercise.name}`}
+              >
                 <ArrowLeftRight className="h-4 w-4" />
               </Button>
-              <Button variant="ghost" size="icon" onClick={onRemove} className="text-destructive hover:text-destructive/90 h-8 w-8" aria-label={`Remove ${loggedExercise.name}`}>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={onRemove}
+                className="h-10 w-10 rounded-full text-muted-foreground hover:text-destructive"
+                aria-label={`Remove ${loggedExercise.name}`}
+              >
                 <Trash2 className="h-4 w-4" />
               </Button>
             </div>
           </div>
-          <div className="pl-8 mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary leading-tight">
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 pl-7">
+            <span className="inline-flex h-6 items-center gap-1 rounded-full bg-primary/10 px-2 text-[11px] font-medium leading-none text-primary">
               <Dumbbell aria-hidden="true" className="h-3 w-3" />
               <span className="tabular-nums">{loggedExercise.personalRecordDisplay || 'PR: N/A'}</span>
             </span>
             {lastTimeLabel && (
-              <span className="inline-flex items-center gap-1 rounded-md border border-dashed border-border bg-muted/60 px-1.5 py-0.5 text-[11px] text-muted-foreground leading-tight" title="Sets pre-filled from your last session. Edit a set to log it as done.">
+              <span className="inline-flex h-6 items-center gap-1 rounded-full border border-dashed border-border bg-muted/50 px-2 text-[11px] leading-none text-muted-foreground" title="Sets pre-filled from your last session. Edit a set to log it as done.">
                 <History aria-hidden="true" className="h-3 w-3" />
                 <span className="tabular-nums">{lastTimeLabel}</span>
               </span>
             )}
             {loggedExercise.exerciseSetup && (
-                <span className="inline-flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground leading-tight">
+                <span className="inline-flex h-6 items-center gap-1 rounded-full bg-muted px-2 text-[11px] leading-none text-muted-foreground">
                     <Settings2 aria-hidden="true" className="h-3 w-3" />
                     {loggedExercise.exerciseSetup}
                 </span>
@@ -477,9 +488,9 @@ export function LoggedExerciseCard({
             {loggedExercise.progressiveOverload && (
               <span
                 className={cn(
-                  "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] leading-tight",
+                  "inline-flex h-6 items-center gap-1 rounded-full px-2 text-[11px] leading-none",
                   repCue === 'above' && "border border-success/30 bg-success/10 font-medium text-success",
-                  repCue === 'below' && "border border-chart-4/30 bg-chart-4/10 font-medium text-chart-4",
+                  repCue === 'below' && "border border-warning/30 bg-warning/10 font-medium text-warning",
                   !repCue && "bg-muted text-muted-foreground"
                 )}
               >
@@ -518,16 +529,16 @@ export function LoggedExerciseCard({
           <div
             className={cn(
               "-mx-4 px-4 py-3 space-y-3 border-y border-transparent transition-colors duration-300",
-              repCue === 'above' && "border-success/25 bg-success/5",
-              repCue === 'below' && "border-chart-4/25 bg-chart-4/5"
+              repCue === 'above' && "border-success/25 bg-success/10",
+              repCue === 'below' && "border-warning/25 bg-warning/10"
             )}
           >
             {repCue && repRange && (
               <p
                 role="status"
                 className={cn(
-                  "flex items-start gap-2 text-xs leading-snug",
-                  repCue === 'above' ? "text-success" : "text-chart-4"
+                  "flex items-start gap-2 text-[13px] leading-snug",
+                  repCue === 'above' ? "text-success" : "text-warning"
                 )}
               >
                 {repCue === 'above' ? (
@@ -563,7 +574,7 @@ export function LoggedExerciseCard({
             )}
 
             {/* column headers */}
-            <div className="grid grid-cols-[2rem_1fr_auto_1fr_auto_2.25rem] items-center gap-2 text-xs font-medium text-muted-foreground">
+            <div className="eyebrow grid grid-cols-[2.25rem_1fr_auto_1fr_auto_2.75rem] items-center gap-2">
               <span className="w-full text-center">Set</span>
               <span className="w-full text-center">Reps</span>
               <span className="invisible select-none w-full text-center" aria-hidden>x</span>
@@ -596,32 +607,31 @@ export function LoggedExerciseCard({
             ))}
           </div>
 
-          <div className="pt-2">
-            <Separator className="mb-4 border-dashed" />
+          <div className="pt-1">
             <div className="flex justify-center">
               <Button
                 variant="outline"
                 size="sm"
                 onClick={addSet}
-                className="border-dashed hover:border-solid hover:bg-muted/50 text-muted-foreground hover:text-foreground"
+                className="h-9 rounded-full border-dashed px-3.5 text-[13px] font-medium text-muted-foreground hover:border-solid hover:text-foreground"
                 disabled={isSavingParentLog || isReadOnly}
               >
-                <PlusCircle className="mr-2 h-4 w-4" />
-                Add Set Here
+                <PlusCircle className="h-4 w-4" />
+                Add set
               </Button>
             </div>
           </div>
-          <div className="border-t -mx-4 px-4 pt-4 sm:mx-0 sm:px-0">
+          <div className="-mx-4 border-t px-4 pt-3">
             <div
-              className="flex items-center gap-2 flex-1"
+              className="flex flex-1 items-center justify-between gap-2"
               onPointerDownCapture={(e) => e.stopPropagation()}
             >
-              <span className="text-sm text-muted-foreground whitespace-nowrap">
-                Session Set Structure
+              <span className="eyebrow whitespace-nowrap">
+                Session structure
               </span>
 
               <SetStructurePicker
-                className="h-10 w-44 sm:w-56"
+                className="max-w-[13rem]"
                 value={localStructure}
                 onChange={(val) => {
                                 setLocalStructure(val);

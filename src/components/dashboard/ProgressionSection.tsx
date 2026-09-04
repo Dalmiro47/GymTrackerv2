@@ -130,11 +130,11 @@ function ProgressionRow({ item }: { item: ProgressionResult }) {
   const recency = prLabel(item);
 
   return (
-    <li className="flex flex-col gap-2 border-b border-border/70 py-3 sm:flex-row sm:items-center sm:gap-4 sm:py-2.5">
+    <li className="flex min-h-[56px] flex-col justify-center gap-2 border-b border-border/70 py-3 sm:flex-row sm:items-center sm:gap-4 sm:py-2.5">
       {/* Name — on mobile this takes the full row width so it no longer truncates. */}
       <div className="min-w-0 sm:flex-1">
-        <p className="truncate text-sm font-medium">{item.name}</p>
-        <p className="truncate text-xs text-muted-foreground">{item.muscleGroup}</p>
+        <p className="truncate text-[15px] font-medium leading-snug">{item.name}</p>
+        <p className="truncate text-[12px] text-muted-foreground">{item.muscleGroup}</p>
       </div>
 
       {/* Meta cluster — spread on mobile, packed to the right on wider screens. */}
@@ -145,27 +145,27 @@ function ProgressionRow({ item }: { item: ProgressionResult }) {
 
         <div className="w-24 shrink-0 text-right">
           {item.pr ? (
-            <p className="whitespace-nowrap text-sm font-semibold tabular-nums leading-none">
+            <p className="whitespace-nowrap text-[15px] font-semibold leading-none tabular-nums">
               {item.metricKind === 'reps' ? (
                 <>
-                  {item.pr.reps} <span className="text-xs font-normal text-muted-foreground">reps</span>
+                  {item.pr.reps} <span className="text-[12px] font-normal text-muted-foreground">reps</span>
                 </>
               ) : (
                 <>
                   {item.pr.weight}
-                  <span className="text-xs font-normal text-muted-foreground">kg</span> × {item.pr.reps}
+                  <span className="text-[12px] font-normal text-muted-foreground">kg</span> × {item.pr.reps}
                 </>
               )}
             </p>
           ) : (
-            <p className="text-sm text-muted-foreground">—</p>
+            <p className="text-[15px] text-muted-foreground">—</p>
           )}
-          <p className={cn('mt-0.5 text-xs font-medium tabular-nums', meta.tone)}>{recency ?? '—'}</p>
+          <p className={cn('mt-1 text-[12px] font-medium tabular-nums', meta.tone)}>{recency ?? '—'}</p>
         </div>
 
         <span
           className={cn(
-            'inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold',
+            'inline-flex h-6 shrink-0 items-center gap-1 rounded-full border px-2 text-[11px] font-semibold',
             meta.badge
           )}
         >
@@ -297,11 +297,11 @@ export function ProgressionSection() {
 
   return (
     <>
-    <Card>
+    <Card className="animate-enter enter-4">
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between gap-2">
           <div className="space-y-1.5">
-            <CardTitle className="font-headline flex items-center gap-2">
+            <CardTitle className="flex items-center gap-2">
               <LineChart className="h-5 w-5 text-primary" />
               Progression
             </CardTitle>
@@ -314,7 +314,7 @@ export function ProgressionSection() {
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8 shrink-0 text-muted-foreground"
+                className="h-10 w-10 shrink-0 text-muted-foreground"
                 aria-label="How to read this section"
               >
                 <Info className="h-4 w-4" />
@@ -358,12 +358,12 @@ export function ProgressionSection() {
                 ))}
               </ul>
             ) : (
-              <div className="flex flex-col items-center justify-center rounded-lg border border-dashed bg-muted/30 px-4 py-10 text-center">
+              <div className="flex flex-col items-center justify-center rounded-md border border-dashed bg-muted/40 px-4 py-10 text-center">
                 <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
                   <LineChart className="h-6 w-6" />
                 </div>
-                <p className="text-sm font-semibold">No active exercises.</p>
-                <p className="mt-0.5 text-sm text-muted-foreground">
+                <p className="font-headline text-[20px] font-semibold leading-tight">No active exercises.</p>
+                <p className="mt-1 text-[13px] text-muted-foreground">
                   Log a session and your current trends will show up here.
                 </p>
               </div>

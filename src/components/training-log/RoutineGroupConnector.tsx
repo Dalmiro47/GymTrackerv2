@@ -21,16 +21,16 @@ export function RoutineGroupConnector({ structure }: RoutineGroupConnectorProps)
       />
 
       {/* The Badge */}
-      <div 
-        className="relative flex items-center gap-1.5 px-3 py-0.5 rounded-full border shadow-sm bg-background"
+      <div
+        className="relative flex h-6 items-center gap-1.5 rounded-full border bg-popover px-3"
         style={{ borderColor: theme.border }}
       >
-        <Link 
-            className="h-3 w-3" 
+        <Link
+            className="h-3 w-3"
             style={{ color: theme.text }}
         />
-        <span 
-            className="text-[9px] font-extrabold uppercase tracking-widest"
+        <span
+            className="text-[10px] font-bold uppercase leading-none tracking-widest"
             style={{ color: theme.text }}
         >
             {SET_STRUCTURE_LABEL[structure]} Link

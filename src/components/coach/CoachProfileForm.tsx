@@ -63,13 +63,13 @@ export function CoachProfileForm({ initial, title = 'Profile' }: { initial: User
   }
 
   return (
-    <Card>
+    <Card className="animate-enter enter-1">
       <CardHeader className="border-b">
         <CardTitle>{title}</CardTitle>
       </CardHeader>
-      <CardContent className="pt-6 space-y-6">
-       <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Training targets</p>
-       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 !mt-3">
+      <CardContent className="space-y-6 pt-6">
+       <p className="eyebrow">Training targets</p>
+       <div className="!mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
         {/* Goal */}
         <div className="space-y-1.5">
           <Label>Goal</Label>
@@ -137,8 +137,8 @@ export function CoachProfileForm({ initial, title = 'Profile' }: { initial: User
         </div>
        </div>
 
-       <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground border-t pt-5">About you</p>
-       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 !mt-3">
+       <p className="eyebrow border-t pt-5">About you</p>
+       <div className="!mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">
           <Label>Age</Label>
           <Input
@@ -193,16 +193,16 @@ export function CoachProfileForm({ initial, title = 'Profile' }: { initial: User
         )}
        </div>
 
-        <div className="flex items-center gap-3 border-t pt-4 !mt-6">
-          <Button onClick={save} disabled={saving || !isDirty}>
+        <div className="!mt-6 flex items-center gap-3 border-t pt-4">
+          <Button onClick={save} disabled={saving || !isDirty} className="h-11 min-w-[150px]">
             {saving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving…</> : 'Save profile'}
           </Button>
           {saved ? (
-            <span className="text-sm text-success flex items-center gap-1" aria-live="polite">
+            <span className="flex items-center gap-1 text-[13px] text-success" aria-live="polite">
               <CheckCircle2 className="h-4 w-4" /> Saved
             </span>
           ) : isDirty ? (
-            <span className="text-sm text-muted-foreground" aria-live="polite">Unsaved changes</span>
+            <span className="text-[13px] text-muted-foreground" aria-live="polite">Unsaved changes</span>
           ) : null}
         </div>
       </CardContent>

@@ -254,9 +254,10 @@ export function CoachChatSheet({ mode, context, loadContext, suggestedPrompts, l
         onClick={() => setOpen((v) => !v)}
         aria-label="AI Coach"
         className={cn(
-          "fixed right-4 md:right-6 z-50 flex items-center justify-center gap-2 bg-foreground text-background rounded-full shadow-lg hover:opacity-90 transition-opacity font-medium text-sm",
-          "h-12 w-12 md:h-auto md:w-auto md:px-4 md:py-2.5",
-          mode === 'log-day' ? "bottom-24 md:bottom-24" : "bottom-6 md:bottom-6",
+          "pressable fixed right-4 md:right-6 z-50 flex items-center justify-center gap-2 bg-primary text-primary-foreground rounded-full shadow-lg hover:opacity-90 transition-opacity font-semibold text-sm",
+          "h-14 w-14 md:h-auto md:w-auto md:px-4 md:py-2.5",
+          // Clears the mobile tab bar; the log page no longer has a bottom save bar.
+          "bottom-[calc(var(--bottomnav-height)+env(safe-area-inset-bottom)+1rem)] md:bottom-6",
         )}
       >
         <Sparkles className="h-5 w-5 md:h-4 md:w-4" />

@@ -106,7 +106,7 @@ Once the server is running, you can open your browser to [http://localhost:3000]
     *   `src/app/login/`: Login page.
 *   `src/components/`: Shared React components.
     *   `src/components/ui/`: UI components from ShadCN.
-    *   `src/components/layout/`: Layout components like sidebar and header.
+    *   `src/components/layout/`: Layout components: desktop sidebar, header (with the `AppBarActions` slot) and the mobile `BottomNav` tab bar.
     *   `src/components/exercises/`: Components specific to the exercises feature.
 *   `src/contexts/`: React context providers (e.g., `AuthContext`).
 *   `src/hooks/`: Custom React hooks.

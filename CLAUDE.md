@@ -86,8 +86,9 @@ The Coach is a contextual chat embedded in `/log` (workout coaching) and `/routi
 
 - **shadCN/UI** components in `src/components/ui/` (Radix primitives + Tailwind)
 - **Tailwind** with CSS variable theming — colors/fonts defined in `src/app/globals.css` and `tailwind.config.ts`
-- **Design tokens (2026-06 redesign)**: single brand accent is `--primary` (violet); `--accent` is a NEUTRAL gray wired to shadcn ghost/outline hovers — never use `bg-accent`/`text-accent` for brand actions (the pre-redesign code did, and it caused the color chaos). No Tailwind palette classes (`text-blue-600` etc.) outside the token system
-- Custom fonts: PT Sans (body), Space Grotesk (headlines)
+- **Design tokens ("Chalk & Iron", 2026-09)**: dark-first; single brand accent is `--primary` (sky, the PWA icon's dumbbell); `--warning` (amber) is the deload/plateau signal (`--chart-4` kept identical); `--accent` is a NEUTRAL gray wired to shadcn ghost/outline hovers — never use `bg-accent`/`text-accent` for brand actions (the pre-redesign code did, and it caused the color chaos). No Tailwind palette classes (`text-blue-600` etc.) outside the token system. Off-scale opacities (`bg-primary/12`) are silently dropped by Tailwind — use /10, /15, /20
+- Fonts: Hanken Grotesk (`font-body`) + Big Shoulders Display (`font-headline`, dates/stats/day numbers/exercise names). Utilities in `globals.css`: `.surface .eyebrow .pressable .glass .animate-enter .enter-1..6 .no-scrollbar`; CSS-only motion with a reduced-motion guard. The iOS 16px `!important` rule covers `input, select, textarea` only (adding `button` flattens every chip)
+- **Shell**: mobile nav is `BottomNav` (tab bar, `--bottomnav-height`); the sidebar is desktop-only; pages inject app-bar buttons via `AppBarActions` (the Training Log's Save/Delete live there — no bottom save bar). Pickers use `ResponsiveSheet` (bottom sheet on mobile, centered dialog on desktop). `WorkoutCalendar` + `WeekStrip` are shared pure-UI components (dashboard + log). `DialogHeader` reserves `pr-10` for the restyled close button; a header that sets its own padding must restate `pr-12`, otherwise tailwind-merge drops it and the title runs under the X (found 2026-09)
 - **PWA** enabled in production only (configured in `next.config.ts`)
 
 ### Key Types
