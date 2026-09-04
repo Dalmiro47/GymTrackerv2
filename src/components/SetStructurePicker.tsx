@@ -21,9 +21,10 @@ export function SetStructurePicker({
     <select
       aria-label="Set structure"
       className={cn(
-        // keep styles close to shadcn trigger
-        "h-10 w-44 sm:w-56 rounded-md border bg-background px-3 text-sm",
-        "focus:outline-none focus:ring-2 focus:ring-ring/50",
+        // chip-shaped, but still a native <select> (best mobile picker there is)
+        "h-9 rounded-full border border-border bg-card px-3 text-[13px] font-medium",
+        "transition-colors hover:bg-accent",
+        "focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
         "disabled:opacity-50 disabled:cursor-not-allowed",
         className
       )}

@@ -88,13 +88,13 @@ export function RoutineHistorySheet({ userId, routine, isOpen, setIsOpen }: Rout
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       {/* Same floating shell as AddEditRoutineDialog so it matches the app's dialogs. */}
-      <DialogContent className="flex h-[85dvh] max-w-lg flex-col gap-0 overflow-hidden p-0 sm:h-[85vh] sm:w-[95vw]">
-        <DialogHeader className="shrink-0 space-y-1 border-b px-4 py-3 pr-10 text-left">
-          <DialogTitle className="font-headline flex items-center gap-2 text-lg">
+      <DialogContent className="flex h-[85dvh] max-h-[85dvh] w-[min(95vw,560px)] flex-col gap-0 overflow-hidden p-0">
+        <DialogHeader className="shrink-0 space-y-1 border-b px-4 py-3 pr-12 text-left">
+          <DialogTitle className="flex items-center gap-2">
             <History className="h-5 w-5 shrink-0 text-primary" />
             <span className="truncate">History · {routine?.name}</span>
           </DialogTitle>
-          <DialogDescription className="text-xs">
+          <DialogDescription>
             {isLoading
               ? 'Loading changes…'
               : timeline.length > 0 && oldest
@@ -130,12 +130,14 @@ export function RoutineHistorySheet({ userId, routine, isOpen, setIsOpen }: Rout
             )}
 
             {!isLoading && !error && timeline.length === 0 && (
-              <div className="flex flex-col items-center justify-center py-12 text-center">
-                <History className="mb-3 h-12 w-12 text-muted-foreground/40" />
-                <p className="text-sm font-medium text-muted-foreground">
+              <div className="flex flex-col items-center justify-center rounded-md border border-dashed bg-muted/40 py-12 text-center">
+                <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+                  <History className="h-6 w-6" />
+                </div>
+                <p className="font-headline text-[20px] font-semibold leading-tight">
                   No changes recorded yet.
                 </p>
-                <p className="mt-1 max-w-[240px] text-xs text-muted-foreground/70">
+                <p className="mt-1 max-w-[240px] text-[13px] text-muted-foreground">
                   Edits you make to this routine from now on will show up here.
                 </p>
               </div>
@@ -211,22 +213,22 @@ function TimelineEntry({
       />
 
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <time className="text-xs font-medium text-muted-foreground">
+        <time className="text-[12px] font-medium tabular-nums text-muted-foreground">
           {format(new Date(version.createdAtMs), 'MMM d, yyyy')}
         </time>
-        {isCurrent && !isDeletion && <Badge className="h-5 px-1.5 text-[10px]">Current</Badge>}
+        {isCurrent && !isDeletion && <Badge className="h-6 px-2 text-[11px]">Current</Badge>}
         {version.changeType === 'created' && (
-          <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">Created</Badge>
+          <Badge variant="secondary" className="h-6 px-2 text-[11px]">Created</Badge>
         )}
         {isDeletion && (
-          <Badge variant="destructive" className="h-5 px-1.5 text-[10px]">Deleted</Badge>
+          <Badge variant="destructive" className="h-6 px-2 text-[11px]">Deleted</Badge>
         )}
         {version.source === 'exercise-cascade' && (
-          <Badge variant="outline" className="h-5 px-1.5 text-[10px]">Library edit</Badge>
+          <Badge variant="outline" className="h-6 px-2 text-[11px]">Library edit</Badge>
         )}
       </div>
 
-      <p className="mt-1 text-sm leading-snug">{summarizeRoutineChanges(changes)}</p>
+      <p className="mt-1 text-[15px] leading-snug">{summarizeRoutineChanges(changes)}</p>
 
       {hasGapBefore && (
         <p className="mt-1 text-[11px] text-muted-foreground/70">
@@ -238,14 +240,14 @@ function TimelineEntry({
         type="button"
         onClick={onToggle}
         aria-expanded={isExpanded}
-        className="mt-1.5 inline-flex items-center gap-1 rounded-md text-xs text-muted-foreground transition-colors hover:text-foreground focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        className="mt-1.5 inline-flex min-h-[32px] items-center gap-1 rounded-md text-[13px] text-muted-foreground transition-colors hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         View routine
         <ChevronDown className={cn('h-3 w-3 transition-transform', isExpanded && 'rotate-180')} />
       </button>
 
       {isExpanded && (
-        <ul className="mt-2 space-y-1 rounded-md border bg-muted/30 p-2.5">
+        <ul className="mt-2 space-y-1 rounded-md bg-muted/40 p-2.5">
           {version.snapshot.exercises.map((ex, i) => {
             const marker = markers.get(ex.name);
             return (

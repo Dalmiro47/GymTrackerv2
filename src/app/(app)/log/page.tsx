@@ -3,23 +3,24 @@
 import React, { useState, useMemo, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { confirmDiscardUnsavedChanges } from '@/lib/unsavedChanges';
-import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import {
-  Calendar as CalendarIconLucide,
+  Plus,
   PlusCircle,
-  Save,
   Trash2,
   AlertTriangle,
   Info,
+  ListChecks,
+  BatteryLow,
+  Check,
+  ChevronDown,
+  MoreHorizontal,
+  StickyNote,
+  X,
 } from "lucide-react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar"; 
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea"; 
+import { Textarea } from "@/components/ui/textarea";
 import { useTrainingLog } from '@/hooks/useTrainingLog';
-import type { LoggedExercise, Exercise, MuscleGroup, SetStructure } from '@/types';
+import type { Exercise, MuscleGroup, SetStructure } from '@/types';
 import { LoggedExerciseCard } from '@/components/training-log/LoggedExerciseCard';
 import { AddExerciseDialog } from '@/components/training-log/AddExerciseDialog';
 import { ReplaceExerciseDialog } from '@/components/training-log/ReplaceExerciseDialog';
@@ -35,6 +36,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 import {
   DndContext,
@@ -56,12 +63,12 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useToday } from '@/hooks/use-today';
 import { Separator } from '@/components/ui/separator';
-import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { SET_STRUCTURE_COLORS } from '@/types/setStructure';
 import { cn } from '@/lib/utils';
 import { RoutineGroupConnector } from '@/components/training-log/RoutineGroupConnector'; // NEW IMPORT
+import { WeekStrip } from '@/components/training-log/WeekStrip';
+import { WorkoutCalendar } from '@/components/dashboard/WorkoutCalendar';
+import { ResponsiveSheet } from '@/components/ui/responsive-sheet';
+import { AppBarActions } from '@/components/layout/AppBarActions';
 import { CoachChatSheet } from '@/components/coach/CoachChatSheet';
 import { serializeLogDayContext } from '@/lib/ai/context-builders';
 import { doc, getDoc } from 'firebase/firestore';
@@ -79,16 +86,16 @@ const getGroupSize = (type: string) => {
     if (t === 'superset') return 2;
     if (t === 'triset') return 3;
     if (t === 'giant set') return 99;
-    return 1; 
+    return 1;
 };
 
 
 function TrainingLogPageContent() {
   const { user, isLoading: authIsLoading } = useAuth();
   const isMobile = useIsMobile();
-  
+
   const searchParams = useSearchParams();
-  
+
   const getInitialDateFromParams = () => {
     const dateQueryParam = searchParams.get('date');
     if (dateQueryParam) {
@@ -101,7 +108,7 @@ function TrainingLogPageContent() {
   };
 
   const initialDate = getInitialDateFromParams();
-  
+
   const {
     selectedDate,
     setSelectedDate,
@@ -113,8 +120,8 @@ function TrainingLogPageContent() {
     savedExerciseIds,
     availableRoutines,
     isLoadingRoutines,
-    availableExercises, 
-    isLoadingExercises, 
+    availableExercises,
+    isLoadingExercises,
     loggedDayStrings,
     deloadDayStrings,
     isLoadingLoggedDayStrings,
@@ -155,6 +162,8 @@ function TrainingLogPageContent() {
   const [showLogNotes, setShowLogNotes] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+  const [isRoutineSheetOpen, setIsRoutineSheetOpen] = useState(false);
+  const [isDeloadInfoOpen, setIsDeloadInfoOpen] = useState(false);
   // Stable "today" that only changes identity when the local day rolls over
   const today = useToday();
 
@@ -167,11 +176,14 @@ function TrainingLogPageContent() {
     () => deloadDayStrings.map(s => parseISO(s)).filter(d => !isNaN(d.getTime())),
     [deloadDayStrings]
   );
+  // The week strip marks days by key, not by Date identity.
+  const loggedDaySet = useMemo(() => new Set(loggedDayStrings), [loggedDayStrings]);
+  const deloadDaySet = useMemo(() => new Set(deloadDayStrings), [deloadDayStrings]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
-      activationConstraint: isMobile 
-        ? { delay: 120, tolerance: 6 } 
+      activationConstraint: isMobile
+        ? { delay: 120, tolerance: 6 }
         : { distance: 6 },
     }),
     useSensor(KeyboardSensor, {
@@ -183,17 +195,30 @@ function TrainingLogPageContent() {
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
     if (!currentLog || !over || active.id === over.id) return;
-  
+
     const oldIndex = currentLog.exercises.findIndex(ex => ex.id === String(active.id));
     const newIndex = currentLog.exercises.findIndex(ex => ex.id === String(over.id));
     if (oldIndex < 0 || newIndex < 0) return;
-  
+
     const reordered = arrayMove(currentLog.exercises, oldIndex, newIndex);
     reorderExercisesInLog(reordered);
   }
 
   const handleOverallNotesChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     updateOverallLogNotes(e.target.value);
+  };
+
+  // Same guard the date popover has always used: a date change discards the
+  // in-progress log, so it must go through the unsaved-changes confirm.
+  const handleDateChange = (date: Date | undefined) => {
+    if (date && confirmDiscardUnsavedChanges()) {
+      setSelectedDate(date);
+    }
+  };
+
+  const handleChooseRoutine = (routineId: string) => {
+    if (confirmDiscardUnsavedChanges()) handleSelectRoutine(routineId);
+    setIsRoutineSheetOpen(false);
   };
 
   // Row ids (LoggedExercise.id) — for dnd-kit sorting only.
@@ -217,7 +242,7 @@ function TrainingLogPageContent() {
     setExerciseToReplace({ id: exerciseId, muscleGroup });
     setIsReplaceExerciseDialogOpen(true);
   };
-  
+
   const handleReplaceExercise = (newExercise: Exercise) => {
     if (exerciseToReplace) {
       replaceExerciseInLog(exerciseToReplace.id, newExercise);
@@ -232,13 +257,19 @@ function TrainingLogPageContent() {
 
     return currentLog && (currentLog.exercises.length > 0 || (currentLog.notes && currentLog.notes.trim() !== '') || existsOnBackend);
   }, [currentLog, selectedDate, loggedDayStrings, deloadDayStrings]);
-  
+
   const logDayContext = useMemo(
     () => serializeLogDayContext(currentLog ?? null, userProfile),
     [currentLog, userProfile],
   );
 
-  const routineSelectValue = currentLog?.routineId || "";
+  const activeRoutine = useMemo(
+    () => availableRoutines.find(r => r.id === currentLog?.routineId),
+    [availableRoutines, currentLog?.routineId]
+  );
+
+  const controlsDisabled = isLoadingRoutines || isLoadingLog || isSavingLog || isDeletingLog;
+  const hasExercises = (currentLog?.exercises.length ?? 0) > 0;
 
   const deloadDescription = useMemo(() => {
     if (!currentLog?.deloadParams) {
@@ -264,253 +295,338 @@ function TrainingLogPageContent() {
   }
 
   return (
-    <div className="space-y-6">
-      <PageHeader title="Training Log" description="Record your daily workouts and track progress."/>
+    <div className="space-y-5">
+      {/* Save / delete live in the app bar — the page has no bottom action bar. */}
+      <AppBarActions>
+        <Button
+          size="sm"
+          onClick={async () => await saveCurrentLog()}
+          disabled={isSavingLog || isLoadingLog || isDeletingLog}
+          className="h-9 rounded-full px-4"
+        >
+          {isSavingLog && <Loader2 className="h-4 w-4 animate-spin" />}
+          Save
+          {isDirty && !isSavingLog && (
+            <span
+              className="h-2 w-2 rounded-full bg-destructive"
+              aria-label="Unsaved changes"
+              title="Unsaved changes"
+            />
+          )}
+        </Button>
 
-      <Card>
-        <CardHeader>
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <div>
-              <CardTitle className="font-headline text-xl">Log for: {format(selectedDate, 'PPP')}</CardTitle>
-              <CardDescription>Select a date, choose a routine, or add exercises manually.</CardDescription>
-            </div>
-            <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
-              <PopoverTrigger asChild>
-                <Button variant="outline" className="w-full sm:w-[280px] justify-start text-left font-normal">
-                  <CalendarIconLucide className="mr-2 h-4 w-4" />
-                  {selectedDate ? format(selectedDate, "PPP") : <span>Pick a date</span>}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0">
-                {isLoadingLoggedDayStrings ? (
-                  <div className="flex items-center justify-center w-[308px] h-[328px]" aria-busy="true">
-                    <Loader2 className="h-6 w-6 animate-spin text-primary" />
-                  </div>
-                ) : (
-                  <Calendar
-                    key={format(displayedMonth, 'yyyy-MM')}
-                    mode="single"
-                    selected={selectedDate}
-                    onSelect={(date) => {
-                      if (date && confirmDiscardUnsavedChanges()) {
-                        setSelectedDate(date);
-                      }
-                      setIsCalendarOpen(false); 
-                    }}
-                    month={displayedMonth}
-                    onMonthChange={(m) => setDisplayedMonth(startOfMonth(m))}
-                    modifiers={{ logged: daysWithLogs, deload: daysWithDeload }}
-                    modifiersClassNames={{ logged: 'day-is-logged', deload: 'day-is-deload' }}
-                    components={{
-                      DayContent: ({ date, activeModifiers }) => {
-                        const isDeload = !!activeModifiers?.deload;
-                        const isLogged = !!activeModifiers?.logged;
-                        const label = [
-                          date.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }),
-                          isDeload ? '— Deload day' : (isLogged ? '— Workout logged' : '')
-                        ].filter(Boolean).join(' ');
-                        return (
-                          <span title={label} aria-label={label} style={{ display: 'inline-block', width: '100%' }}>
-                            {date.getDate()}
-                          </span>
-                        );
-                      },
-                    }}
-                    weekStartsOn={1}
-                    toDate={today}
-                    disabled={{ after: today }}
-                  />
-                )}
-                <div className="p-3 border-t">
-                  <div className="mt-0 flex items-center justify-center gap-4 text-xs text-muted-foreground">
-                    <span className="inline-flex items-center gap-1.5">
-                      <span className="inline-block h-[3px] w-5 rounded bg-primary" />
-                      Logged
-                    </span>
-                    <span className="inline-flex items-center gap-1.5">
-                      <span className="inline-block h-[3px] w-5 rounded bg-chart-4" />
-                      Deload
-                    </span>
-                  </div>
-                </div>
-              </PopoverContent>
-            </Popover>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Select 
-              value={routineSelectValue}
-              onValueChange={(id) => { if (confirmDiscardUnsavedChanges()) handleSelectRoutine(id); }} 
-              disabled={isLoadingRoutines || isLoadingLog || isSavingLog || isDeletingLog}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="h-9 w-9 md:h-9 md:w-9" aria-label="More log actions">
+              <MoreHorizontal className="h-5 w-5" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuItem
+              disabled={!canDeleteLog || isDeletingLog || isLoadingLog || isSavingLog}
+              onSelect={() => setIsDeleteConfirmOpen(true)}
+              className="text-destructive focus:text-destructive"
             >
-              <SelectTrigger>
-                <SelectValue placeholder={isLoadingRoutines || (isLoadingLog && !currentLog?.routineId) ? "Loading routines..." : "Start from a routine (optional)"} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">-- Clear Routine / Start Fresh --</SelectItem>
-                {availableRoutines.map(routine => (
-                  <SelectItem key={routine.id} value={routine.id}>{routine.name}</SelectItem>
-                ))}
-                {availableRoutines.length === 0 && !isLoadingRoutines && <SelectItem value="no-routines" disabled>No routines available</SelectItem>}
-              </SelectContent>
-            </Select>
-            <Button onClick={() => handleOpenAddDialog(currentLog?.exercises.length ?? 0)} variant="outline">
-              <PlusCircle className="mr-2 h-4 w-4" /> Add Exercise Manually
-            </Button>
-          </div>
+              <Trash2 className="h-4 w-4" />
+              Delete this day&apos;s log
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </AppBarActions>
 
-          {(currentLog?.exercises.length ?? 0) > 0 && (
-            <div className="flex items-center justify-end space-x-2 pt-2">
-                <Label htmlFor="deload-mode" className="text-muted-foreground">Deload Mode</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-5 w-5 text-muted-foreground">
-                      <Info className="h-4 w-4" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="max-w-xs text-sm">
-                    <p>{deloadDescription}</p>
-                  </PopoverContent>
-                </Popover>
-                <Switch
-                    id="deload-mode"
-                    checked={isDeload}
-                    onCheckedChange={setIsDeload}
-                    disabled={isLoadingLog || isSavingLog || isDeletingLog}
-                />
-            </div>
-          )}
+      <WeekStrip
+        className="animate-enter"
+        selectedDate={selectedDate}
+        onSelect={handleDateChange}
+        today={today}
+        loggedDays={loggedDaySet}
+        deloadDays={deloadDaySet}
+        onOpenMonth={() => setIsCalendarOpen(true)}
+        onVisibleMonthChange={(month) => setDisplayedMonth(startOfMonth(month))}
+      />
 
-           {isDeload && (
-              <Alert variant="default" className="border-primary/50 bg-primary/5">
-                <AlertTriangle className="h-4 w-4 text-primary" />
-                <AlertTitle className="text-primary">Deload Mode Active</AlertTitle>
-                <AlertDescription>
-                  {deloadDescription}
-                </AlertDescription>
-              </Alert>
+      {/* ONE control rail — routine, deload, add exercise. */}
+      <div className="animate-enter enter-1 -mx-4 flex items-center gap-2 overflow-x-auto px-4 no-scrollbar md:mx-0 md:overflow-visible md:px-0">
+        <Button
+          variant="outline"
+          onClick={() => setIsRoutineSheetOpen(true)}
+          disabled={controlsDisabled}
+          className="h-10 shrink-0 gap-2 rounded-full px-3.5 text-[14px] font-medium"
+        >
+          <ListChecks className="h-4 w-4 text-muted-foreground" />
+          <span className="max-w-[9rem] truncate">
+            {isLoadingRoutines ? 'Loading…' : (activeRoutine?.name ?? 'Choose routine')}
+          </span>
+          <ChevronDown className="h-4 w-4 opacity-60" />
+        </Button>
+
+        {hasExercises && (
+          <Button
+            variant="outline"
+            aria-pressed={isDeload}
+            onClick={() => setIsDeload(!isDeload)}
+            disabled={isLoadingLog || isSavingLog || isDeletingLog}
+            className={cn(
+              "h-10 shrink-0 gap-2 rounded-full px-3.5 text-[14px] font-medium",
+              isDeload
+                ? "border-warning/40 bg-warning/15 text-warning hover:bg-warning/20 hover:text-warning"
+                : "text-muted-foreground"
             )}
-          
-          {isLoadingLog ? (
-            <div className="flex justify-center items-center py-10">
-              <Loader2 className="h-10 w-10 animate-spin text-primary" />
-              <p className="ml-3 text-lg text-muted-foreground">Loading log data...</p>
+          >
+            <BatteryLow className="h-4 w-4" />
+            Deload
+          </Button>
+        )}
+
+        <Button
+          onClick={() => handleOpenAddDialog(currentLog?.exercises.length ?? 0)}
+          disabled={isLoadingLog || isSavingLog || isDeletingLog}
+          className="h-10 shrink-0 gap-2 rounded-full px-3.5 text-[14px]"
+        >
+          <Plus className="h-4 w-4" />
+          Add exercise
+        </Button>
+      </div>
+
+      {isDeload && (
+        <div className="flex items-start gap-2 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-[13px] leading-snug">
+          <AlertTriangle aria-hidden="true" className="mt-px h-4 w-4 shrink-0 text-warning" />
+          <p>
+            <span className="font-semibold text-warning">Deload mode active.</span>{' '}
+            <span className="text-muted-foreground">{deloadDescription}</span>
+          </p>
+        </div>
+      )}
+
+      <div className="animate-enter enter-2 space-y-4">
+        {isLoadingLog ? (
+          <div className="flex items-center justify-center py-16">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <p className="ml-3 text-[15px] text-muted-foreground">Loading log data…</p>
+          </div>
+        ) : currentLog && currentLog.exercises.length > 0 ? (
+          <>
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              <SortableContext items={loggedExerciseIds} strategy={verticalListSortingStrategy}>
+                <div>
+                  {currentLog.exercises.map((loggedEx, index) => {
+                      const currentStructure = effectiveOf(loggedEx);
+                      const nextExercise = currentLog.exercises[index + 1];
+                      const nextStructure = nextExercise ? effectiveOf(nextExercise) : 'normal';
+
+                      // LOGIC: Only link if next is same structure AND we are not at the end of a group size cap
+                      let shouldLink = false;
+
+                      if (nextExercise && currentStructure !== 'normal' && currentStructure === nextStructure) {
+                          // Calculate streak (how many items before this one were the same type?)
+                          let streak = 1;
+                          for (let i = index - 1; i >= 0; i--) {
+                              const prev = currentLog.exercises[i];
+                              if (effectiveOf(prev) === currentStructure) {
+                                  streak++;
+                              } else {
+                                  break;
+                              }
+                          }
+
+                          const maxSize = getGroupSize(currentStructure);
+                          // Link if we haven't hit the max size for this group chunk
+                          if (streak % maxSize !== 0) {
+                              shouldLink = true;
+                          }
+                      }
+
+                    return (
+                    <React.Fragment key={loggedEx.id}>
+                      <div className={cn(!shouldLink && "mb-3")}>
+                          <LoggedExerciseCard
+                            loggedExercise={loggedEx}
+                            onUpdateSets={(sets) => updateExerciseInLog({ ...loggedEx, sets })}
+                            onRemove={() => removeExerciseFromLog(loggedEx.id)}
+                            onReplace={() => handleOpenReplaceDialog(loggedEx.id, loggedEx.muscleGroup)}
+                            isSavingParentLog={isSavingLog || isDeletingLog}
+                            onUpdateSetStructureOverride={updateExerciseSetStructureOverride}
+                            isReadOnly={isDeload}
+                            isSavedForDay={savedExerciseIds.has(loggedEx.id)}
+                          />
+                      </div>
+                      {index < currentLog.exercises.length - 1 && (
+                        shouldLink ? (
+                          <RoutineGroupConnector structure={currentStructure} />
+                        ) : (
+                          // Standard Divider
+                          <div className="relative my-2 group">
+                              <div className="relative z-10 flex items-center justify-center">
+                                  <Button
+                                      onClick={() => handleOpenAddDialog(index + 1)}
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-8 rounded-full border-dashed bg-background px-3 text-[12px] font-medium text-muted-foreground hover:border-solid hover:text-foreground"
+                                  >
+                                      <PlusCircle className="h-3.5 w-3.5" />
+                                      Add exercise here
+                                  </Button>
+                              </div>
+                              <div className="absolute inset-0 flex items-center" aria-hidden="true">
+                                  <div className="w-full border-t border-border" />
+                              </div>
+                          </div>
+                        )
+                      )}
+                    </React.Fragment>
+                    )
+                  })}
+                </div>
+              </SortableContext>
+            </DndContext>
+
+            {/* Final Add Button */}
+            <div className="flex items-center gap-2 pt-1">
+                <Separator className="flex-1" />
+                <Button
+                    onClick={() => handleOpenAddDialog(currentLog.exercises.length)}
+                    variant="outline"
+                    size="sm"
+                    className="h-9 shrink-0 rounded-full border-dashed px-3.5 text-[13px] font-medium text-muted-foreground hover:border-solid hover:text-foreground"
+                >
+                    <PlusCircle className="h-4 w-4" />
+                    Add another exercise
+                </Button>
+                <Separator className="flex-1" />
             </div>
-          ) : currentLog && currentLog.exercises.length > 0 ? (
-            <>
-              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-                <SortableContext items={loggedExerciseIds} strategy={verticalListSortingStrategy}>
-                  <div>
-                    {currentLog.exercises.map((loggedEx, index) => {
-                        const currentStructure = effectiveOf(loggedEx);
-                        const nextExercise = currentLog.exercises[index + 1];
-                        const nextStructure = nextExercise ? effectiveOf(nextExercise) : 'normal';
+          </>
+        ) : (
+          <div className="surface flex flex-col items-center gap-1 px-4 py-12 text-center">
+            <p className="font-headline text-[22px] font-semibold leading-none">Nothing logged yet</p>
+            <p className="text-[13px] text-muted-foreground">
+              Pick a routine or add an exercise to start this session.
+            </p>
+          </div>
+        )}
 
-                        // LOGIC: Only link if next is same structure AND we are not at the end of a group size cap
-                        let shouldLink = false;
-                        
-                        if (nextExercise && currentStructure !== 'normal' && currentStructure === nextStructure) {
-                            // Calculate streak (how many items before this one were the same type?)
-                            let streak = 1; 
-                            for (let i = index - 1; i >= 0; i--) {
-                                const prev = currentLog.exercises[i];
-                                if (effectiveOf(prev) === currentStructure) {
-                                    streak++;
-                                } else {
-                                    break;
-                                }
-                            }
+        <div className="space-y-2 pt-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowLogNotes(!showLogNotes)}
+            className="h-9 gap-2 rounded-full px-3 text-[13px] font-medium text-muted-foreground hover:text-foreground"
+          >
+            <StickyNote className="h-4 w-4" />
+            {showLogNotes ? "Hide" : "Show"} workout notes
+          </Button>
+          {showLogNotes && (
+            <Textarea
+              placeholder="Add any overall notes for this workout session..."
+              value={currentLog?.notes || ''}
+              onChange={handleOverallNotesChange}
+              rows={3}
+              disabled={isLoadingLog || isSavingLog || isDeletingLog}
+            />
+          )}
+        </div>
+      </div>
 
-                            const maxSize = getGroupSize(currentStructure);
-                            // Link if we haven't hit the max size for this group chunk
-                            if (streak % maxSize !== 0) {
-                                shouldLink = true;
-                            }
-                        }
+      {/* Month picker */}
+      <ResponsiveSheet
+        open={isCalendarOpen}
+        onOpenChange={setIsCalendarOpen}
+        title="Pick a day"
+      >
+        {isLoadingLoggedDayStrings ? (
+          <div className="flex h-[340px] items-center justify-center" aria-busy="true">
+            <Loader2 className="h-6 w-6 animate-spin text-primary" />
+          </div>
+        ) : (
+          <WorkoutCalendar
+            className="pb-2"
+            selectedDate={selectedDate}
+            onSelect={(date) => {
+              handleDateChange(date);
+              setIsCalendarOpen(false);
+            }}
+            month={displayedMonth}
+            onMonthChange={(m) => setDisplayedMonth(startOfMonth(m))}
+            loggedDays={daysWithLogs}
+            deloadDays={daysWithDeload}
+            today={today}
+          />
+        )}
+      </ResponsiveSheet>
 
-                      return (
-                      <React.Fragment key={loggedEx.id}>
-                        <div className={cn(!shouldLink && "mb-4")}>
-                            <LoggedExerciseCard
-                              loggedExercise={loggedEx}
-                              onUpdateSets={(sets) => updateExerciseInLog({ ...loggedEx, sets })}
-                              onRemove={() => removeExerciseFromLog(loggedEx.id)}
-                              onReplace={() => handleOpenReplaceDialog(loggedEx.id, loggedEx.muscleGroup)}
-                              isSavingParentLog={isSavingLog || isDeletingLog}
-                              onUpdateSetStructureOverride={updateExerciseSetStructureOverride}
-                              isReadOnly={isDeload}
-                              isSavedForDay={savedExerciseIds.has(loggedEx.id)}
-                            />
-                        </div>
-                        {index < currentLog.exercises.length - 1 && (
-                          shouldLink ? (
-                            <RoutineGroupConnector structure={currentStructure} />
-                          ) : (
-                            // Standard Divider
-                            <div className="relative -mx-4 my-2 sm:mx-0 group">
-                                <div className="relative z-10 flex items-center justify-center">
-                                    <Button
-                                        onClick={() => handleOpenAddDialog(index + 1)}
-                                        variant="outline"
-                                        size="sm"
-                                        className='border-dashed hover:border-solid hover:bg-muted/50 text-muted-foreground hover:text-foreground h-7 text-xs rounded-full bg-background'
-                                    >
-                                        <PlusCircle className="mr-1.5 h-3.5 w-3.5" /> 
-                                        Add Exercise Here
-                                    </Button>
-                                </div>
-                                <div className="absolute inset-0 flex items-center" aria-hidden="true">
-                                    <div className="w-full border-t border-muted" />
-                                </div>
-                            </div>
-                          )
-                        )}
-                      </React.Fragment>
-                      )
-                    })}
-                  </div>
-                </SortableContext>
-              </DndContext>
-              
-              {/* Final Add Button */}
-              <div className="flex items-center space-x-2 my-2 pt-4">
-                  <Separator className="flex-1" />
-                  <Button 
-                      onClick={() => handleOpenAddDialog(currentLog.exercises.length)}
-                      variant="outline" 
-                      size="sm"
-                      className="border-dashed hover:border-solid hover:bg-muted/50 text-muted-foreground hover:text-foreground"
-                  >
-                      <PlusCircle className="mr-2 h-4 w-4" /> Add Another Exercise
-                  </Button>
-                  <Separator className="flex-1" />
-              </div>
-            </>
+      {/* Routine picker */}
+      <ResponsiveSheet
+        open={isRoutineSheetOpen}
+        onOpenChange={setIsRoutineSheetOpen}
+        title="Routine"
+        description="Start fresh, or load one of your routines into this day."
+      >
+        <div className="space-y-1 pb-2">
+          <button
+            type="button"
+            onClick={() => handleChooseRoutine('none')}
+            className="pressable flex min-h-[52px] w-full items-center gap-3 rounded-md border border-transparent px-3 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <X aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <span className="flex-1 text-[15px] font-medium">Start fresh</span>
+            {!currentLog?.routineId && <Check aria-hidden="true" className="h-4 w-4 shrink-0 text-primary" />}
+          </button>
+
+          {isLoadingRoutines ? (
+            <div className="flex min-h-[52px] items-center gap-2 px-3 text-[13px] text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Loading routines…
+            </div>
+          ) : availableRoutines.length === 0 ? (
+            <p className="px-3 py-6 text-center text-[13px] text-muted-foreground">
+              No routines yet. Create one on the Routines page.
+            </p>
           ) : (
-            <div className="text-center py-10 text-muted-foreground">
-              <p className="text-lg font-semibold">No exercises logged for this day yet.</p>
-              <p>Add exercises manually or select a routine to begin.</p>
-            </div>
+            availableRoutines.map(routine => {
+              const isCurrent = currentLog?.routineId === routine.id;
+              return (
+                <button
+                  key={routine.id}
+                  type="button"
+                  onClick={() => handleChooseRoutine(routine.id)}
+                  className={cn(
+                    "pressable flex min-h-[52px] w-full items-center gap-3 rounded-md border px-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    isCurrent ? "border-primary bg-primary/10" : "border-transparent hover:bg-accent"
+                  )}
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[15px] font-medium">{routine.name}</span>
+                    <span className="block text-[12px] text-muted-foreground tabular-nums">
+                      {routine.exercises.length} exercises
+                    </span>
+                  </span>
+                  {isCurrent && <Check aria-hidden="true" className="h-4 w-4 shrink-0 text-primary" />}
+                </button>
+              );
+            })
           )}
+        </div>
 
-          <div className="space-y-2 pt-4">
-            <Button variant="link" onClick={() => setShowLogNotes(!showLogNotes)} className="px-0">
-              {showLogNotes ? "Hide" : "Show"} Overall Workout Notes
-            </Button>
-            {showLogNotes && (
-              <Textarea
-                placeholder="Add any overall notes for this workout session..."
-                value={currentLog?.notes || ''}
-                onChange={handleOverallNotesChange}
-                rows={3}
-                disabled={isLoadingLog || isSavingLog || isDeletingLog}
-              />
-            )}
-          </div>
+        <div className="border-t pt-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setIsDeloadInfoOpen(true)}
+            className="h-9 gap-2 rounded-full px-3 text-[13px] font-medium text-muted-foreground hover:text-foreground"
+          >
+            <Info className="h-4 w-4" />
+            What is deload mode?
+          </Button>
+        </div>
+      </ResponsiveSheet>
 
-        </CardContent>
-      </Card>
+      {/* Deload explainer — same copy the old info popover carried. */}
+      <ResponsiveSheet
+        open={isDeloadInfoOpen}
+        onOpenChange={setIsDeloadInfoOpen}
+        title="Deload mode"
+      >
+        <p className="pb-2 text-[15px] leading-snug text-muted-foreground">{deloadDescription}</p>
+      </ResponsiveSheet>
 
       <AddExerciseDialog
         isOpen={isAddExerciseDialogOpen}
@@ -534,45 +650,13 @@ function TrainingLogPageContent() {
         onReplaceExercise={handleReplaceExercise}
         initialMuscleGroup={exerciseToReplace?.muscleGroup}
       />
-      
-      {/* Spacer so content isn't hidden behind the sticky action bar */}
-      <div className="h-20" />
 
-      {/* Sticky action bar — single save approach across all viewports.
-          On desktop, offset the left edge to the content column so the bar
-          aligns with the page (not stretched under the dark sidebar). */}
-      <div className="fixed bottom-0 inset-x-0 md:left-[var(--sidebar-width)] z-40 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="container mx-auto max-w-2xl px-4 py-3 grid grid-cols-2 gap-2 pb-[env(safe-area-inset-bottom)]">
-          <Button
-            variant="outline"
-            className="h-12 text-base gap-2 text-destructive hover:bg-destructive/10 hover:text-destructive"
-            onClick={() => setIsDeleteConfirmOpen(true)}
-            disabled={isDeletingLog || isLoadingLog || !canDeleteLog || isSavingLog}
-          >
-            <Trash2 className="h-5 w-5" />
-            Delete
-          </Button>
-
-          <Button
-            onClick={async () => await saveCurrentLog()}
-            disabled={isSavingLog || isLoadingLog || isDeletingLog}
-            className="h-12 text-base gap-2"
-          >
-            {isSavingLog ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Save className="h-5 w-5" />}
-            Save
-            {isDirty && !isSavingLog && (
-              <span className="ml-1 h-2.5 w-2.5 rounded-full bg-destructive" aria-label="Unsaved changes" title="Unsaved changes" />
-            )}
-          </Button>
-        </div>
-      </div>
-
-      {/* Delete-log confirmation (triggered from the sticky action bar) */}
+      {/* Delete-log confirmation (triggered from the app-bar overflow menu) */}
       <AlertDialog open={isDeleteConfirmOpen} onOpenChange={setIsDeleteConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center">
-              <AlertTriangle className="mr-2 h-5 w-5 text-destructive" />
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
               Confirm Deletion
             </AlertDialogTitle>
             <AlertDialogDescription>

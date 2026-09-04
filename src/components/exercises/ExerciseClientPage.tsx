@@ -376,9 +376,9 @@ export function ExerciseClientPage() {
 
   if (authContext.isLoading || isLoading) { 
     return (
-      <div className="flex justify-center items-center h-screen">
-        <Loader2 className="h-12 w-12 animate-spin text-primary" />
-        <p className="ml-4 text-lg text-muted-foreground font-medium">
+      <div className="flex h-64 items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <p className="ml-4 text-[15px] font-medium text-muted-foreground">
           {authContext.isLoading ? "Loading authentication..." : "Loading your exercises..."}
         </p>
       </div>
@@ -387,8 +387,8 @@ export function ExerciseClientPage() {
 
   if (!user && !authContext.isLoading) { 
     return (
-      <div className="flex flex-col justify-center items-center h-64">
-        <p className="text-lg font-semibold mb-4">Please log in to manage your exercises.</p>
+      <div className="flex h-64 flex-col items-center justify-center">
+        <p className="mb-4 font-headline text-[22px] font-semibold leading-none">Please log in to manage your exercises.</p>
         <Button onClick={() => router.push('/login')}>Go to Login</Button>
       </div>
     );
@@ -428,12 +428,12 @@ export function ExerciseClientPage() {
       
       {/* Restore Dialog - Updated UI */}
       <Dialog open={isRestoreDialogOpen} onOpenChange={setIsRestoreDialogOpen}>
-        <RestoreDialogContent className="sm:max-w-md">
+        <RestoreDialogContent>
           <RestoreDialogHeader>
             <RestoreDialogTitle>Restore Hidden Default Exercises</RestoreDialogTitle>
             <RestoreDialogDescription>Select the default exercises you want to add back to your library.</RestoreDialogDescription>
           </RestoreDialogHeader>
-          
+
           <div className="py-2">
             {hiddenDefaults.length > 0 ? (
                 <ScrollArea className="max-h-[300px] w-full p-1 pr-3">
@@ -441,29 +441,29 @@ export function ExerciseClientPage() {
                     {hiddenDefaults.map(ex => {
                         const isSelected = selectedToRestore.includes(ex.id);
                         return (
-                            <div 
-                                key={ex.id} 
+                            <div
+                                key={ex.id}
                                 className={cn(
-                                    "flex items-center justify-between p-3 rounded-lg border transition-all cursor-pointer",
-                                    isSelected 
-                                        ? "bg-primary/5 border-primary shadow-sm" 
-                                        : "hover:bg-muted/50 border-transparent bg-muted/10"
+                                    "flex min-h-[52px] cursor-pointer items-center justify-between rounded-md border p-3 transition-colors",
+                                    isSelected
+                                        ? "border-primary bg-primary/10"
+                                        : "border-transparent bg-muted/30 hover:bg-muted/50"
                                 )}
                                 onClick={() => handleToggleRestoreSelection(ex.id)}
                             >
-                                <div>
-                                    <p className={cn("font-medium text-sm", isSelected && "text-primary")}>
+                                <div className="min-w-0">
+                                    <p className={cn("truncate text-[15px] font-medium leading-snug", isSelected && "text-primary")}>
                                         {ex.name}
                                     </p>
-                                    <p className="text-xs text-muted-foreground">{ex.muscleGroup}</p>
+                                    <p className="text-[12px] text-muted-foreground">{ex.muscleGroup}</p>
                                 </div>
-                                
+
                                 {isSelected ? (
-                                    <div className="h-6 w-6 rounded-full bg-primary text-primary-foreground flex items-center justify-center shrink-0 animate-in zoom-in-50 duration-200">
+                                    <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
                                         <Check className="h-3.5 w-3.5" />
                                     </div>
                                 ) : (
-                                    <div className="h-6 w-6 rounded-full border border-muted-foreground/30 shrink-0" />
+                                    <div className="h-6 w-6 shrink-0 rounded-full border border-muted-foreground/30" />
                                 )}
                             </div>
                         );
@@ -471,7 +471,7 @@ export function ExerciseClientPage() {
                     </div>
                 </ScrollArea>
             ) : (
-                <p className="text-sm text-muted-foreground text-center py-4">No hidden default exercises to restore.</p>
+                <p className="py-4 text-center text-[13px] text-muted-foreground">No hidden default exercises to restore.</p>
             )}
           </div>
 
@@ -491,7 +491,7 @@ export function ExerciseClientPage() {
       <div className="space-y-6">
         {/* VIEW 1: Categories Grid */}
         {activeMuscleGroup === null && (
-            <div className="space-y-4">
+            <div className="animate-enter enter-1 space-y-4">
                 <div className="relative">
                     <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
                     <Input
@@ -499,7 +499,7 @@ export function ExerciseClientPage() {
                         placeholder="Search all exercises..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full pl-10"
+                        className="h-11 w-full pl-10"
                     />
                 </div>
 
@@ -516,20 +516,20 @@ export function ExerciseClientPage() {
                             ))}
                         </div>
                     ) : (
-                        <div className="text-center py-12 text-muted-foreground">No exercises found.</div>
+                        <div className="rounded-md border border-dashed bg-muted/40 py-12 text-center text-[13px] text-muted-foreground">No exercises found.</div>
                     )
                 ) : (
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
                         <button
                             onClick={() => setActiveMuscleGroup('All')}
-                            className="flex items-center gap-3 p-3.5 rounded-lg border bg-card hover:border-primary/40 hover:bg-accent/50 transition-colors text-left shadow-sm"
+                            className="pressable flex min-h-[72px] items-center gap-3 rounded-md border bg-card p-3.5 text-left transition-colors hover:border-primary/40 hover:bg-accent"
                         >
-                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
                                 <Dumbbell className="h-5 w-5" />
                             </div>
                             <div className="min-w-0">
-                                <span className="font-semibold text-sm block truncate">All Exercises</span>
-                                <span className="text-xs text-muted-foreground">{canonicalExercises.length} items</span>
+                                <span className="block truncate text-[15px] font-semibold leading-snug">All Exercises</span>
+                                <span className="text-[12px] text-muted-foreground">{canonicalExercises.length} items</span>
                             </div>
                         </button>
 
@@ -540,14 +540,14 @@ export function ExerciseClientPage() {
                                 <button
                                     key={mg}
                                     onClick={() => setActiveMuscleGroup(mg)}
-                                    className="flex items-center gap-3 p-3.5 rounded-lg border bg-card hover:border-primary/40 hover:bg-accent/50 transition-colors text-left shadow-sm"
+                                    className="pressable flex min-h-[72px] items-center gap-3 rounded-md border bg-card p-3.5 text-left transition-colors hover:border-primary/40 hover:bg-accent"
                                 >
-                                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
                                         <MuscleGroupIcon muscleGroup={mg} size={20} />
                                     </div>
                                     <div className="min-w-0">
-                                        <span className="font-semibold text-sm block truncate">{mg}</span>
-                                        <span className="text-xs text-muted-foreground">{count} exercise{count === 1 ? '' : 's'}</span>
+                                        <span className="block truncate text-[15px] font-semibold leading-snug">{mg}</span>
+                                        <span className="text-[12px] text-muted-foreground">{count} exercise{count === 1 ? '' : 's'}</span>
                                     </div>
                                 </button>
                             );
@@ -559,21 +559,22 @@ export function ExerciseClientPage() {
 
         {/* VIEW 2: Exercise List */}
         {activeMuscleGroup !== null && (
-            <div className="space-y-6">
-                <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+            <div className="animate-enter enter-1 space-y-6">
+                <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
                     <div className="flex items-center gap-2">
-                        <Button 
-                            variant="ghost" 
+                        <Button
+                            variant="ghost"
+                            size="sm"
                             onClick={() => {
                                 setActiveMuscleGroup(null);
                                 setSearchTerm('');
                             }}
-                            className="pl-0 hover:pl-2 transition-all"
+                            className="px-2 text-muted-foreground hover:text-foreground"
                         >
                             <ArrowLeft className="mr-2 h-4 w-4" />
                             Categories
                         </Button>
-                        <h2 className="text-xl font-headline font-bold tracking-tight">
+                        <h2 className="font-headline text-[22px] font-semibold leading-none tracking-tight">
                             {activeMuscleGroup === 'All' ? 'All Exercises' : activeMuscleGroup}
                         </h2>
                     </div>
@@ -583,13 +584,13 @@ export function ExerciseClientPage() {
                             placeholder={`Search ${activeMuscleGroup === 'All' ? '' : activeMuscleGroup}...`}
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
-                            className="pl-9"
+                            className="h-11 pl-9"
                         />
                     </div>
                 </div>
 
                 {displayedExercises.length > 0 ? (
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                         {displayedExercises.map(exercise => (
                         <ExerciseCard
                             key={exercise.id}
@@ -600,8 +601,8 @@ export function ExerciseClientPage() {
                         ))}
                     </div>
                 ) : (
-                    <div className="text-center py-12">
-                        <p className="text-xl text-muted-foreground font-semibold mb-2">No exercises found.</p>
+                    <div className="rounded-md border border-dashed bg-muted/40 py-12 text-center">
+                        <p className="font-headline text-[22px] font-semibold leading-none text-muted-foreground">No exercises found.</p>
                         <Button variant="link" onClick={() => setSearchTerm('')}>Clear search</Button>
                     </div>
                 )}
@@ -613,8 +614,8 @@ export function ExerciseClientPage() {
       <AlertDialog open={!!exerciseToDeleteId} onOpenChange={(open) => !open && closeDeleteDialog()}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center">
-              <AlertTriangle className="mr-2 text-destructive"/>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 shrink-0 text-destructive"/>
               Confirm Deletion
             </AlertDialogTitle>
           </AlertDialogHeader>

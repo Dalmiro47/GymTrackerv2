@@ -251,34 +251,34 @@ export function ExportLogsDialog({ isOpen, setIsOpen }: ExportLogsDialogProps) {
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 py-4">
+        <div className="grid grid-cols-1 gap-3 py-2 sm:grid-cols-2">
           <Button
             onClick={() => handleDownload('xlsx')}
             disabled={isDownloading}
             variant="outline"
-            className="h-20 flex-col"
+            className="h-24 flex-col gap-1 rounded-md [&_svg]:size-6"
           >
             {isDownloading && downloadFormat === 'xlsx' ? (
-              <Loader2 className="h-6 w-6 animate-spin mb-2" />
+              <Loader2 className="mb-1 animate-spin" />
             ) : (
-              <FileSpreadsheet className="h-6 w-6 mb-2 text-success" />
+              <FileSpreadsheet className="mb-1 text-success" />
             )}
-            <span>Excel (.xlsx)</span>
-            <span className="text-xs text-muted-foreground">Best for analysis</span>
+            <span className="text-[15px] font-semibold">Excel (.xlsx)</span>
+            <span className="text-[12px] font-normal text-muted-foreground">Best for analysis</span>
           </Button>
           <Button
             onClick={() => handleDownload('csv')}
             disabled={isDownloading}
             variant="outline"
-            className="h-20 flex-col"
+            className="h-24 flex-col gap-1 rounded-md [&_svg]:size-6"
           >
             {isDownloading && downloadFormat === 'csv' ? (
-              <Loader2 className="h-6 w-6 animate-spin mb-2" />
+              <Loader2 className="mb-1 animate-spin" />
             ) : (
-              <FileText className="h-6 w-6 mb-2 text-primary" />
+              <FileText className="mb-1 text-primary" />
             )}
-            <span>CSV (smaller file)</span>
-             <span className="text-xs text-muted-foreground">Best for compatibility</span>
+            <span className="text-[15px] font-semibold">CSV (smaller file)</span>
+             <span className="text-[12px] font-normal text-muted-foreground">Best for compatibility</span>
           </Button>
         </div>
 

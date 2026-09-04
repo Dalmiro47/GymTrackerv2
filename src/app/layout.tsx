@@ -25,8 +25,8 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#f4f5f9" },
-    { media: "(prefers-color-scheme: dark)", color: "#101219" },
+    { media: "(prefers-color-scheme: light)", color: "#f6f4f0" },
+    { media: "(prefers-color-scheme: dark)", color: "#0e1016" },
   ],
   width: 'device-width',
   initialScale: 1,
@@ -45,14 +45,17 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link href="https://fonts.googleapis.com/css2?family=PT+Sans:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet" />
-        <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300..700&display=swap" rel="stylesheet" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@500;600;700;800&family=Hanken+Grotesk:wght@400;500;600;700&display=swap"
+          rel="stylesheet"
+        />
       </head>
       <body
         className="min-h-screen bg-background overflow-x-hidden font-body antialiased"
         style={{
-          ['--appbar-height' as any]: '3rem', // 48px
+          ['--appbar-height' as any]: '3.25rem', // 52px
           ['--appbar-offset' as any]: 'calc(var(--appbar-height) + env(safe-area-inset-top))',
+          ['--bottomnav-height' as any]: '3.75rem', // 60px
         }}
       >
         <ThemeProvider>

@@ -88,13 +88,13 @@ export function AvailableExercisesSelector({
           <Button
               variant="ghost"
               size="sm"
-              className="h-9 px-2 -ml-2 text-muted-foreground shrink-0"
+              className="-ml-2 h-11 shrink-0 gap-1 px-2 text-[13px] text-muted-foreground"
               onClick={() => {
                   setActiveMuscleGroup(null);
                   setSearchTerm('');
               }}
           >
-              <ArrowLeft className="h-4 w-4 mr-1" />
+              <ArrowLeft className="h-4 w-4" />
               Categories
           </Button>
         )}
@@ -108,25 +108,25 @@ export function AvailableExercisesSelector({
             }
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className={cn("pl-9", !isGridView && "h-9")}
+            className="h-11 rounded-md pl-9"
           />
         </div>
       </div>
 
       {isGridView ? (
-        <ScrollArea className="flex-grow -mx-6 px-6">
-          <div className="grid grid-cols-2 gap-3 pb-4">
+        <ScrollArea className="flex-grow -mx-4 px-4">
+          <div className="grid grid-cols-2 gap-2.5 pb-4">
             <button
                 onClick={() => setActiveMuscleGroup('All')}
-                className="flex flex-col items-center justify-center p-4 rounded-lg border bg-card hover:bg-accent/50 hover:border-primary/40 transition-colors text-center gap-2"
+                className="pressable flex min-h-[64px] items-center gap-3 rounded-md border border-border bg-card p-3 text-left transition-colors hover:border-primary/40 hover:bg-accent"
             >
-                <div className="p-2 rounded-full bg-primary/10 text-primary">
-                    <Dumbbell className="h-6 w-6" />
-                </div>
-                <div>
-                    <span className="font-semibold block">All Exercises</span>
-                    <span className="text-xs text-muted-foreground">{uniqueExercises.length} items</span>
-                </div>
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                    <Dumbbell className="h-[18px] w-[18px]" />
+                </span>
+                <span className="min-w-0">
+                    <span className="block truncate text-[15px] font-semibold">All Exercises</span>
+                    <span className="block text-[12px] text-muted-foreground tabular-nums">{uniqueExercises.length} items</span>
+                </span>
             </button>
 
             {MUSCLE_GROUPS_LIST.map(mg => {
@@ -136,10 +136,10 @@ export function AvailableExercisesSelector({
                 <button
                   key={mg}
                   onClick={() => setActiveMuscleGroup(mg)}
-                  className="flex flex-col items-start p-4 rounded-lg border bg-card hover:bg-accent/50 hover:border-primary/40 transition-colors text-left"
+                  className="pressable flex min-h-[64px] flex-col justify-center rounded-md border border-border bg-card p-3 text-left transition-colors hover:border-primary/40 hover:bg-accent"
                 >
-                  <span className="font-semibold text-base">{mg}</span>
-                  <span className="text-xs text-muted-foreground">{count} exercises</span>
+                  <span className="truncate text-[15px] font-semibold">{mg}</span>
+                  <span className="text-[12px] text-muted-foreground tabular-nums">{count} exercises</span>
                 </button>
               );
             })}
@@ -159,12 +159,12 @@ export function AvailableExercisesSelector({
                       key={exercise.id}
                       aria-disabled={isDisabled || undefined}
                       className={cn(
-                        "flex items-center justify-between p-3 rounded-lg border transition-all",
+                        "flex min-h-[52px] items-center justify-between gap-2 rounded-md border p-2.5 transition-colors",
                         isDisabled
-                            ? "opacity-50 cursor-not-allowed border-transparent bg-muted/10"
+                            ? "cursor-not-allowed border-transparent bg-muted/20 opacity-50"
                             : mode === 'multi' && isSelected
-                                ? "cursor-pointer bg-primary/5 border-primary shadow-sm"
-                                : "cursor-pointer hover:bg-muted/50 border-transparent bg-muted/10"
+                                ? "cursor-pointer border-primary bg-primary/10"
+                                : "cursor-pointer border-transparent bg-muted/20 hover:bg-accent"
                       )}
                       onClick={() => {
                           if (isDisabled) return;
@@ -175,11 +175,11 @@ export function AvailableExercisesSelector({
                           }
                       }}
                     >
-                      <div>
-                        <p className={cn("font-medium text-sm", mode === 'multi' && isSelected && "text-primary")}>
+                      <div className="min-w-0">
+                        <p className={cn("truncate text-[15px] font-medium", mode === 'multi' && isSelected && "text-primary")}>
                             {exercise.name}
                         </p>
-                        <p className="text-xs text-muted-foreground">{exercise.muscleGroup}</p>
+                        <p className="text-[12px] text-muted-foreground">{exercise.muscleGroup}</p>
                       </div>
 
                       {isDisabled ? (
@@ -196,7 +196,7 @@ export function AvailableExercisesSelector({
                               <div className="h-6 w-6 rounded-full border border-muted-foreground/30 shrink-0" />
                           )
                       ) : (
-                          <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground">
+                          <Button size="icon" variant="ghost" tabIndex={-1} className="h-9 w-9 shrink-0 rounded-full text-muted-foreground md:h-9 md:w-9">
                               <Plus className="h-5 w-5" />
                           </Button>
                       )}

@@ -48,7 +48,7 @@ export function UserNav() {
 
   if (authIsLoading) {
      return (
-      <div className="flex items-center justify-center h-9 w-9">
+      <div className="flex h-11 w-11 items-center justify-center md:h-10 md:w-10">
         <Loader2 className="h-5 w-5 animate-spin text-primary" />
       </div>
     );
@@ -70,10 +70,14 @@ export function UserNav() {
     <>
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" className="relative h-9 w-9 rounded-full">
+        <Button
+          variant="ghost"
+          className="relative h-11 w-11 shrink-0 rounded-full p-0 md:h-10 md:w-10"
+          aria-label="Account menu"
+        >
           <Avatar className="h-9 w-9">
             <AvatarImage src={user.avatarUrl || undefined} alt={user.name || user.email || "User avatar"} />
-            <AvatarFallback>{initials}</AvatarFallback>
+            <AvatarFallback className="text-[13px] font-semibold">{initials}</AvatarFallback>
           </Avatar>
         </Button>
       </DropdownMenuTrigger>

@@ -43,17 +43,17 @@ export function AddExerciseDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogContent 
-        className="max-w-2xl sm:w-[95vw] flex flex-col h-[80dvh] sm:h-[80vh] p-0 gap-0 overflow-hidden"
+      <DialogContent
+        className="flex h-[85dvh] w-[min(95vw,640px)] max-h-[85dvh] flex-col gap-0 overflow-hidden p-0"
         onOpenAutoFocus={(e) => e.preventDefault()} // STOP MOBILE KEYBOARD
       >
-        <DialogHeader className="p-6 pb-2 shrink-0">
-          <DialogTitle className="font-headline">Add Exercise</DialogTitle>
+        <DialogHeader className="shrink-0 p-4 pb-2">
+          <DialogTitle>Add Exercise</DialogTitle>
           <DialogDescription>Select an exercise to add to your workout log. Exercises already logged today are marked as added.</DialogDescription>
         </DialogHeader>
 
-        <div className="flex-grow overflow-hidden p-6 pt-2">
-            <AvailableExercisesSelector 
+        <div className="flex-grow overflow-hidden p-4 pt-2">
+            <AvailableExercisesSelector
                 allExercises={availableExercises}
                 selectedExerciseIds={[]} // No pre-selected needed for adding new
                 isLoadingExercises={isLoadingExercises}
@@ -63,7 +63,7 @@ export function AddExerciseDialog({
             />
         </div>
 
-        <DialogFooter className="p-4 border-t bg-background shrink-0">
+        <DialogFooter className="shrink-0 border-t bg-card/40 p-3">
           <Button type="button" variant="outline" onClick={() => setIsOpen(false)}>
             Cancel
           </Button>

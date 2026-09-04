@@ -90,7 +90,7 @@ function SortableExerciseItem({
             borderColor: isSpecialStructure ? theme.border : undefined
         }}
         className={cn(
-          "group relative bg-card border rounded-lg shadow-sm transition-all touch-none overflow-hidden",
+          "group relative min-h-[52px] touch-none overflow-hidden rounded-md border bg-card transition-colors",
           // Default hover style if normal, otherwise the style prop handles the color
           !isSpecialStructure ? "hover:border-primary/30" : "hover:border-[theme.border]",
           // Add border width if special structure to make it pop
@@ -107,13 +107,13 @@ function SortableExerciseItem({
               type="button"
               {...attributes}
               {...listeners}
-              className="p-1.5 -ml-1.5 cursor-grab active:cursor-grabbing text-muted-foreground/40 hover:text-foreground hover:bg-muted rounded-md transition-colors"
+              className="-ml-1.5 flex h-10 w-10 cursor-grab items-center justify-center rounded-md text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground active:cursor-grabbing"
               aria-label={`Drag to reorder ${exercise.name}`}
               disabled={exercise.isMissing}
             >
-              <GripVertical className="h-5 w-5" />
+              <GripVertical className="h-[18px] w-[18px]" />
             </button>
-            <span className="text-xs font-mono font-medium text-muted-foreground/60 w-5 text-center">
+            <span className="w-5 text-center text-[12px] font-medium tabular-nums text-muted-foreground/60">
               {index + 1}
             </span>
           </div>
@@ -124,7 +124,7 @@ function SortableExerciseItem({
             {/* NAME SECTION */}
             <div className="flex flex-col justify-center min-w-0 flex-grow">
                 <div className="flex items-center gap-2">
-                    <p className="text-sm font-semibold truncate text-foreground">{exercise.name}</p>
+                    <p className="truncate text-[15px] font-semibold text-foreground">{exercise.name}</p>
                     {exercise.isMissing && (
                         <Badge variant="destructive" className="h-5 px-1 text-[10px] gap-1 shrink-0">
                             <AlertTriangle className="h-3 w-3"/> Missing
@@ -165,7 +165,7 @@ function SortableExerciseItem({
                   size="icon"
                   onClick={() => onReplaceExercise(index)}
                   aria-label={`Replace ${exercise.name}`}
-                  className="text-muted-foreground/50 hover:text-primary hover:bg-primary/10 h-8 w-8 transition-colors rounded-full"
+                  className="h-10 w-10 rounded-full text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
                 >
                   <ArrowLeftRight className="h-4 w-4" />
                 </Button>
@@ -177,7 +177,7 @@ function SortableExerciseItem({
                   size="icon"
                   onClick={() => onRemoveExercise(exercise.id)}
                   aria-label={`Remove ${exercise.name}`}
-                  className="text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10 h-8 w-8 transition-colors rounded-full"
+                  className="h-10 w-10 rounded-full text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
                 >
                   <Trash2 className="h-4 w-4" />
                 </Button>
@@ -200,7 +200,7 @@ function SortableExerciseItem({
                   variant="ghost"
                   size="sm"
                   onClick={() => onInsertExercise(index + 1)}
-                  className="h-7 text-xs text-muted-foreground/50 hover:text-primary hover:bg-primary/5 gap-1 rounded-full border border-transparent hover:border-primary/20 px-3 transition-all"
+                  className="h-9 gap-1 rounded-full border border-dashed border-border px-3 text-[13px] text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/10 hover:text-primary"
               >
                   <PlusCircle className="h-3.5 w-3.5" />
                   <span>Insert Here</span>
@@ -256,14 +256,14 @@ export function SelectedRoutineExercisesList({
 
   return (
     <div className="h-full flex flex-col">
-      <div className="flex-grow min-h-0 bg-muted/5 border rounded-lg overflow-hidden relative">
+      <div className="relative min-h-0 flex-grow overflow-hidden rounded-md border">
         {selectedExercises.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full min-h-[200px] text-center p-6">
-            <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mb-3">
-                <Dumbbell className="h-6 w-6 text-muted-foreground/50" />
+          <div className="flex h-full min-h-[200px] flex-col items-center justify-center p-6 text-center">
+            <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+                <Dumbbell className="h-6 w-6" />
             </div>
-            <p className="text-sm font-medium text-foreground">No exercises yet</p>
-            <p className="text-xs text-muted-foreground mt-1 max-w-[200px]">
+            <p className="font-headline text-[20px] font-semibold leading-tight text-foreground">No exercises yet</p>
+            <p className="mt-1 max-w-[220px] text-[13px] text-muted-foreground">
               Tap &quot;Add Exercises&quot; below to build your routine.
             </p>
           </div>
@@ -287,7 +287,7 @@ export function SelectedRoutineExercisesList({
                             variant="ghost"
                             size="sm"
                             onClick={() => onInsertExercise(0)}
-                            className="h-7 text-xs text-muted-foreground/50 hover:text-primary hover:bg-primary/5 gap-1 rounded-full border border-transparent hover:border-primary/20 px-3 transition-all"
+                            className="h-9 gap-1 rounded-full border border-dashed border-border px-3 text-[13px] text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/10 hover:text-primary"
                         >
                             <PlusCircle className="h-3.5 w-3.5" />
                             <span>Insert at Start</span>

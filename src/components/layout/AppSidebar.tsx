@@ -14,6 +14,10 @@ interface AppSidebarProps {
   setIsOpen: (isOpen: boolean) => void;
 }
 
+/**
+ * Desktop (md+) primary navigation. Mobile navigation lives in <BottomNav />;
+ * the overlay/drawer props are kept so the API is unchanged.
+ */
 export function AppSidebar({ isOpen, setIsOpen }: AppSidebarProps) {
   const pathname = usePathname();
 
@@ -21,8 +25,8 @@ export function AppSidebar({ isOpen, setIsOpen }: AppSidebarProps) {
     <>
       {/* Overlay for mobile */}
       {isOpen && (
-        <div 
-          className="fixed inset-0 z-30 bg-black/50 md:hidden"
+        <div
+          className="fixed inset-0 z-30 bg-black/40 backdrop-blur-sm md:hidden"
           onClick={() => setIsOpen(false)}
         />
       )}
@@ -30,15 +34,15 @@ export function AppSidebar({ isOpen, setIsOpen }: AppSidebarProps) {
       <aside
         id="primary-sidebar"
         className={cn(
-          "fixed inset-y-0 left-0 z-40 flex h-full transform flex-col border-r bg-sidebar text-sidebar-foreground shadow-lg",
+          "fixed inset-y-0 left-0 z-40 flex h-full transform flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground",
           "transition-transform duration-300 ease-in-out will-change-transform backface-hidden",
           "md:static md:z-auto md:translate-x-0",
           isOpen ? "translate-x-0" : "-translate-x-full"
         )}
         style={{ width: 'var(--sidebar-width)' }}
       >
-        <div className="sticky top-0 z-10 bg-sidebar border-b border-sidebar-border">
-          <div className="h-12 flex items-center px-4 justify-between">
+        <div className="sticky top-0 z-10 border-b border-sidebar-border bg-sidebar">
+          <div className="flex h-[var(--appbar-height)] items-center justify-between px-4">
             <div
               onClickCapture={(e) => {
                 if (pathname !== '/dashboard' && !confirmDiscardUnsavedChanges()) {
@@ -49,39 +53,50 @@ export function AppSidebar({ isOpen, setIsOpen }: AppSidebarProps) {
                 setIsOpen(false);
               }}
             >
-              <Logo iconSize={18} textSize="text-lg" />
+              <Logo iconSize={20} textSize="text-[17px]" />
             </div>
-            <Button variant="ghost" size="icon" className="md:hidden text-sidebar-foreground" onClick={() => setIsOpen(false)} aria-label="Close sidebar">
-              <X className="h-6 w-6" />
+            <Button
+              variant="ghost"
+              size="icon"
+              className="md:hidden text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              onClick={() => setIsOpen(false)}
+              aria-label="Close sidebar"
+            >
+              <X className="h-5 w-5" />
             </Button>
           </div>
         </div>
-        <nav className="flex-1 space-y-2 p-4">
-          {navItems.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              onClick={(e) => {
-                if (pathname !== item.href && !confirmDiscardUnsavedChanges()) {
-                  e.preventDefault();
-                  return;
-                }
-                setIsOpen(false);
-              }}
-              className={cn(
-                "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                pathname === item.href
-                  ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                  : "text-sidebar-foreground"
-              )}
-              aria-current={pathname === item.href ? "page" : undefined}
-            >
-              <item.icon className="h-5 w-5" />
-              <span>{item.title}</span>
-            </Link>
-          ))}
+
+        <nav className="flex-1 space-y-1 p-3">
+          {navItems.map((item) => {
+            const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={(e) => {
+                  if (pathname !== item.href && !confirmDiscardUnsavedChanges()) {
+                    e.preventDefault();
+                    return;
+                  }
+                  setIsOpen(false);
+                }}
+                className={cn(
+                  "pressable flex min-h-[44px] items-center gap-3 rounded-md px-3 text-[15px] font-medium transition-colors",
+                  "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring",
+                  isActive
+                    ? "bg-sidebar-accent text-sidebar-primary"
+                    : "text-sidebar-foreground"
+                )}
+                aria-current={isActive ? "page" : undefined}
+              >
+                <item.icon className={cn("h-5 w-5 shrink-0", isActive && "text-sidebar-primary")} />
+                <span className="truncate">{item.title}</span>
+              </Link>
+            );
+          })}
         </nav>
-        {/* Optional Footer can go here */}
       </aside>
     </>
   );

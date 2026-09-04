@@ -228,29 +228,29 @@ export function AddEditRoutineDialog({
     <>
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogContent
-        className="max-w-4xl sm:w-[95vw] flex flex-col h-[85dvh] sm:h-[85vh] p-0 gap-0 overflow-hidden"
+        className="flex h-[85dvh] w-[min(95vw,640px)] max-h-[85dvh] flex-col gap-0 overflow-hidden p-0"
         onOpenAutoFocus={(e) => e.preventDefault()} // STOP MOBILE KEYBOARD
       >
-        
-        <DialogHeader className="p-6 pb-4 border-b shrink-0 bg-background z-10">
-          <div className="flex items-center justify-between">
-            <DialogTitle className="font-headline text-xl">
+
+        <DialogHeader className="z-10 shrink-0 border-b bg-background p-4 pr-12">
+          <div className="flex items-center justify-between gap-2">
+            <DialogTitle>
               {isPickerOpen ? 'Select Exercises' : (routineToEdit ? 'Edit Routine' : 'Create Routine')}
             </DialogTitle>
             {isPickerOpen && (
-               <Badge variant="secondary" className="ml-2">
+               <Badge variant="secondary" className="ml-2 shrink-0">
                  {selectedExerciseObjects.length} Selected
                </Badge>
             )}
           </div>
           <DialogDescription>
-            {isPickerOpen 
-              ? 'Search and select exercises to add to your routine.' 
+            {isPickerOpen
+              ? 'Search and select exercises to add to your routine.'
               : 'Organize your routine details below.'}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex-grow overflow-y-auto p-6 bg-muted/5">
+        <div className="flex-grow overflow-y-auto p-4">
           {isPickerOpen ? (
             <div className="h-full flex flex-col gap-4">
                <AvailableExercisesSelector
@@ -262,41 +262,41 @@ export function AddEditRoutineDialog({
             </div>
           ) : (
             <form id="routine-form" onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-              <div className="grid grid-cols-1 gap-4 p-1">
+              <div className="grid grid-cols-1 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="name">Routine Name</Label>
-                  <Input 
-                    id="name" 
-                    {...register('name')} 
+                  <Input
+                    id="name"
+                    {...register('name')}
                     placeholder="e.g., Push Day A"
-                    className="text-lg font-medium"
-                    aria-invalid={errors.name ? "true" : "false"} 
+                    className="h-11 font-medium"
+                    aria-invalid={errors.name ? "true" : "false"}
                   />
-                  {errors.name && <p className="text-sm text-destructive">{errors.name.message}</p>}
+                  {errors.name && <p className="text-[13px] text-destructive">{errors.name.message}</p>}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="description">Description (Optional)</Label>
-                  <Textarea 
-                    id="description" 
-                    {...register('description')} 
+                  <Textarea
+                    id="description"
+                    {...register('description')}
                     placeholder="Notes about this routine..."
-                    rows={2} 
+                    rows={2}
                   />
                 </div>
               </div>
 
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                    <Label className="text-base font-semibold">Exercises ({selectedExerciseObjects.length})</Label>
+                    <Label className="eyebrow">Exercises ({selectedExerciseObjects.length})</Label>
                 </div>
-                
+
                 <div className="min-h-[100px] rounded-md border bg-card">
                     {selectedExerciseObjects.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center h-32 text-muted-foreground">
+                        <div className="flex h-32 flex-col items-center justify-center text-[13px] text-muted-foreground">
                             <p>No exercises added yet.</p>
-                            <Button 
-                                type="button" 
-                                variant="link" 
+                            <Button
+                                type="button"
+                                variant="link"
                                 onClick={(e) => { e.preventDefault(); openPickerAtIndex(null); }}
                             >
                                 Browse Library
@@ -319,7 +319,7 @@ export function AddEditRoutineDialog({
           )}
         </div>
 
-        <DialogFooter className="p-4 border-t bg-background shrink-0 flex-row gap-2 sm:justify-between items-center">
+        <DialogFooter className="shrink-0 flex-row items-center gap-2 border-t bg-background p-4 sm:justify-between">
           {isPickerOpen ? (
             <>
                 <Button 
