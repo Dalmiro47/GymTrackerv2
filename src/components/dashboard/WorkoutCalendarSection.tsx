@@ -207,35 +207,35 @@ export function WorkoutCalendarSection() {
       {/* Monthly stats strip */}
       <div className="animate-enter enter-1 grid grid-cols-3 gap-3">
         <div className="surface p-3.5">
-          <div className="eyebrow flex items-center gap-1.5">
-            <CalendarCheck2 className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate">{t('dashboard.sessions')}</span>
+          <div className="eyebrow flex min-h-[2.1em] items-start gap-1.5 leading-tight">
+            <CalendarCheck2 className="mt-px h-3.5 w-3.5 shrink-0" />
+            <span>{t('dashboard.sessions')}</span>
           </div>
           <p className="mt-2 font-headline text-[36px] font-bold leading-none tabular-nums">
             {isLoadingLoggedDays ? '–' : logsInCurrentDisplayedMonth}
           </p>
-          <p className="mt-1.5 truncate text-[12px] text-muted-foreground">{capitalize(format(displayedMonth, 'MMMM', { locale }))}</p>
+          <p className="mt-1.5 min-h-[2.4em] text-[12px] leading-tight text-muted-foreground">{capitalize(format(displayedMonth, 'MMMM', { locale }))}</p>
         </div>
         <div className="surface p-3.5">
-          <div className="eyebrow flex items-center gap-1.5">
-            <Flame className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate">{t('dashboard.thisWeek')}</span>
+          <div className="eyebrow flex min-h-[2.1em] items-start gap-1.5 leading-tight">
+            <Flame className="mt-px h-3.5 w-3.5 shrink-0" />
+            <span>{t('dashboard.thisWeek')}</span>
           </div>
           <p className="mt-2 font-headline text-[36px] font-bold leading-none tabular-nums">
             {sessionsThisWeek === null ? '–' : sessionsThisWeek}
           </p>
-          <p className="mt-1.5 truncate text-[12px] text-muted-foreground">{t('dashboard.sinceMonday')}</p>
+          <p className="mt-1.5 min-h-[2.4em] text-[12px] leading-tight text-muted-foreground">{t('dashboard.sinceMonday')}</p>
         </div>
         <div className={cn(
           "surface p-3.5",
           noRecentDeload && "border-destructive/50"
         )}>
           <div className={cn(
-            "eyebrow flex items-center gap-1.5",
+            "eyebrow flex min-h-[2.1em] items-start gap-1.5 leading-tight",
             noRecentDeload && "text-destructive"
           )}>
-            <BatteryLow className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate">{t('dashboard.deloads')}</span>
+            <BatteryLow className="mt-px h-3.5 w-3.5 shrink-0" />
+            <span>{t('dashboard.deloads')}</span>
           </div>
           <p className={cn(
             "mt-2 font-headline text-[36px] font-bold leading-none tabular-nums",
@@ -244,7 +244,7 @@ export function WorkoutCalendarSection() {
             {deloadCount3mo === null ? '–' : deloadCount3mo}
           </p>
           <p className={cn(
-            "mt-1.5 truncate text-[12px]",
+            "mt-1.5 min-h-[2.4em] text-[12px] leading-tight",
             noRecentDeload ? "font-medium text-destructive" : "text-muted-foreground"
           )}>
             {noRecentDeload ? t('dashboard.noneIn3Months') : t('dashboard.last3Months')}

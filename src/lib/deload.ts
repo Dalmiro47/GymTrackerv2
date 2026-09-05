@@ -1,4 +1,4 @@
-import { addWeeks, endOfWeek, format, isAfter, isBefore, parseISO, startOfWeek } from 'date-fns';
+import { addWeeks, endOfWeek, format, isAfter, isBefore, isValid, parseISO, startOfWeek } from 'date-fns';
 
 export type DeloadSummary = {
   /** Days explicitly logged with `isDeload: true`. */
@@ -13,6 +13,11 @@ export type DeloadSummary = {
  * A full calendar week (Mon–Sun) with zero entries counts as a deload even if
  * it was not logged as one. Only weeks that both start after `start` and end
  * on/before `today` are considered, so the current partial week never counts.
+ *
+ * Rest weeks are counted only from the user's FIRST logged day onward. A week
+ * before anyone ever trained is not recovery, it is prehistory — counting it
+ * showed "12 deloads in the last 3 months" on a brand-new account with zero
+ * sessions (fixed 2026-09).
  */
 export function summarizeDeloads(
   logs: Array<{ date: string; isDeload?: boolean }>,
@@ -22,10 +27,16 @@ export function summarizeDeloads(
   const deloadDays = logs.filter(l => l.isDeload === true).length;
 
   const loggedDates = new Set(logs.map(l => l.date));
+  if (loggedDates.size === 0) return { deloadDays, restWeeks: 0, total: deloadDays };
+
+  // ISO date strings sort lexicographically, so the first entry is the earliest.
+  const firstLogged = parseISO([...loggedDates].sort()[0]);
+  const scanFrom = isValid(firstLogged) && isAfter(firstLogged, start) ? firstLogged : start;
+
   let restWeeks = 0;
-  // First complete week that starts on/after `start`.
-  let weekStart = startOfWeek(start, { weekStartsOn: 1 });
-  if (isBefore(weekStart, start)) weekStart = addWeeks(weekStart, 1);
+  // First complete week that starts on/after `scanFrom`.
+  let weekStart = startOfWeek(scanFrom, { weekStartsOn: 1 });
+  if (isBefore(weekStart, scanFrom)) weekStart = addWeeks(weekStart, 1);
 
   while (true) {
     const weekEnd = endOfWeek(weekStart, { weekStartsOn: 1 });

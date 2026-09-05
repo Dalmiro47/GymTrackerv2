@@ -4,8 +4,8 @@ import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebaseConfig';
 import { useAuth } from '@/contexts/AuthContext';
 import { useI18n } from '@/contexts/LanguageContext';
-import type { TranslationKey } from '@/i18n';
 import type { UserProfile, Goal, GenderOption } from '@/lib/types.gym';
+import { GOAL_OPTIONS, GENDER_OPTIONS } from '@/lib/profileOptions';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,24 +18,6 @@ import { friendlyErrorMessage } from '@/lib/errorMessages';
 
 const clampSession = (n?: number) =>
   typeof n === 'number' ? Math.min(180, Math.max(20, Math.round(n))) : undefined;
-
-// Stored values stay English (they are data keys the coach prompts read);
-// only the labels are translated.
-const GOAL_OPTIONS: Array<{ value: Goal; label: TranslationKey }> = [
-  { value: 'Hypertrophy', label: 'goal.hypertrophy' },
-  { value: 'Strength', label: 'goal.strength' },
-  { value: 'Strength+Hypertrophy', label: 'goal.strengthHypertrophy' },
-  { value: 'Fat Loss', label: 'goal.fatLoss' },
-  { value: 'General Fitness', label: 'goal.general' },
-];
-
-const GENDER_OPTIONS: Array<{ value: GenderOption; label: TranslationKey }> = [
-  { value: 'Man', label: 'gender.man' },
-  { value: 'Woman', label: 'gender.woman' },
-  { value: 'Nonbinary', label: 'gender.nonbinary' },
-  { value: 'Self-describe', label: 'gender.selfDescribe' },
-  { value: 'Prefer not to say', label: 'gender.declineToState' },
-];
 
 // `language` is owned by the avatar menu (LanguageContext persists it on its
 // own). It is dropped from this form so a save can never write back a stale
