@@ -1,5 +1,5 @@
 import type { NavItem } from '@/types';
-import { LayoutDashboard, Dumbbell, ListChecks, ClipboardEdit, User } from 'lucide-react';
+import { LayoutDashboard, Dumbbell, ListChecks, ClipboardEdit } from 'lucide-react';
 
 export const siteConfig = {
   name: "DDS Gym Tracker",
@@ -12,6 +12,9 @@ export const siteConfig = {
   },
 };
 
+// Primary navigation (BottomNav on mobile, AppSidebar on desktop).
+// /profile is deliberately NOT here — it is reached from the avatar menu
+// in the app bar (see <UserNav />).
 export const navItems: NavItem[] = [
   {
     title: 'Dashboard',
@@ -36,11 +39,5 @@ export const navItems: NavItem[] = [
     href: '/routines',
     icon: ListChecks,
     label: 'Routines',
-  },
-  {
-    title: 'Profile',
-    href: '/profile',
-    icon: User,
-    label: 'Profile',
   },
 ];

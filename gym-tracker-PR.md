@@ -2,14 +2,14 @@
 claude --dangerously-skip-permissions 
 
 ## Pull Request to Github 
-git switch -c ref/increase-overload
+git switch -c ref/app-ui1
 
 ## Do ALL THE CHANGES 
 
 ## Pull Request to Github 
 git add -A 
 git commit -m "ref: refactor chat text box to make it Linkedin-style" 
-git push -u origin ref/increase-overload
+git push -u origin ref/app-ui1
 
 ## Make local main match GitHub
 
@@ -24,4 +24,8 @@ git rev-parse HEAD
 git rev-parse origin/main 
  
 ## After merge, delete the branch
-git branch -D ref/increase-overload
+git branch -D ref/app-ui1
+
+
+## To kill ports in use: 
+taskkill /PID 20704 /F
