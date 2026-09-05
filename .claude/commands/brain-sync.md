@@ -105,7 +105,7 @@ Capture the current state of this project as a milestone thought in Open Brain M
 
    - **source**: `claude_code`
 
-   - **topics**: 3–5 relevant tags (e.g. `["Gym Tracker", "AI Coach", "Firestore", "Playwright"]`)
+   - **topics**: 3–5 relevant tags (e.g. `["Gym Tracker", "AI Coach", "Firestore", "PWA"]`)
 
    - **action_items**: Open TODOs or next steps from this session
 

@@ -11,6 +11,8 @@ import { cn } from '@/lib/utils';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useVisualViewport } from '@/hooks/use-visual-viewport';
 import { useCoachChat, type ChatMessage } from '@/hooks/use-coach-chat';
+import { useI18n } from '@/contexts/LanguageContext';
+import type { TranslationKey } from '@/i18n';
 import type { LogDayContext, RoutineReviewContext, DashboardContext } from '@/lib/ai/context-builders';
 
 type ChatMode = 'log-day' | 'routine-review' | 'dashboard';
@@ -29,24 +31,25 @@ type CoachChatSheetProps = {
   logDate?: string;
 };
 
-const MODE_CONFIG = {
+// Translation keys per mode; resolved through `t` at render time.
+const MODE_CONFIG: Record<ChatMode, { title: TranslationKey; description: TranslationKey; placeholder: TranslationKey; emptyText: TranslationKey }> = {
   'log-day': {
-    title: 'Coach de Entrenamiento',
-    description: 'Pregunta sobre tu entrenamiento de hoy',
-    placeholder: 'Ej: "Que peso deberia usar hoy?"',
-    emptyText: 'Preguntale al coach sobre tu entrenamiento de hoy',
+    title: 'coach.logDay.title',
+    description: 'coach.logDay.description',
+    placeholder: 'coach.logDay.placeholder',
+    emptyText: 'coach.logDay.empty',
   },
   'routine-review': {
-    title: 'Coach de Programacion',
-    description: 'Analisis de tu programa de entrenamiento',
-    placeholder: 'Ej: "Como puedo mejorar mi rutina?"',
-    emptyText: 'Preguntale al coach sobre tu programacion y rutinas',
+    title: 'coach.routine.title',
+    description: 'coach.routine.description',
+    placeholder: 'coach.routine.placeholder',
+    emptyText: 'coach.routine.empty',
   },
   dashboard: {
-    title: 'Coach Semanal',
-    description: 'Tu panorama de entrenamiento semanal',
-    placeholder: 'Ej: "En que me enfoco esta semana?"',
-    emptyText: 'Preguntale al coach sobre tu progreso semanal',
+    title: 'coach.dashboard.title',
+    description: 'coach.dashboard.description',
+    placeholder: 'coach.dashboard.placeholder',
+    emptyText: 'coach.dashboard.empty',
   },
 };
 
@@ -69,6 +72,7 @@ export function CoachChatSheet({ mode, context, loadContext, suggestedPrompts, l
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  const { t } = useI18n();
   const config = MODE_CONFIG[mode];
 
   const isMobile = useIsMobile();
@@ -252,7 +256,7 @@ export function CoachChatSheet({ mode, context, loadContext, suggestedPrompts, l
           button hugs the bottom edge instead of floating 7rem up over content. */}
       <button
         onClick={() => setOpen((v) => !v)}
-        aria-label="AI Coach"
+        aria-label={t('coach.button')}
         className={cn(
           "pressable fixed right-4 md:right-6 z-50 flex items-center justify-center gap-2 bg-primary text-primary-foreground rounded-full shadow-lg hover:opacity-90 transition-opacity font-semibold text-sm",
           "h-14 w-14 md:h-auto md:w-auto md:px-4 md:py-2.5",
@@ -261,7 +265,7 @@ export function CoachChatSheet({ mode, context, loadContext, suggestedPrompts, l
         )}
       >
         <Sparkles className="h-5 w-5 md:h-4 md:w-4" />
-        <span className="hidden md:inline">AI Coach</span>
+        <span className="hidden md:inline">{t('coach.button')}</span>
       </button>
 
       {open && (
@@ -283,8 +287,8 @@ export function CoachChatSheet({ mode, context, loadContext, suggestedPrompts, l
               <div className="flex items-center gap-2">
                 <Sparkles className="h-5 w-5 text-primary" />
                 <div>
-                  <p className="text-sm font-semibold leading-tight">{config.title}</p>
-                  <p className="text-xs text-muted-foreground">{config.description}</p>
+                  <p className="text-sm font-semibold leading-tight">{t(config.title)}</p>
+                  <p className="text-xs text-muted-foreground">{t(config.description)}</p>
                 </div>
               </div>
               <div className="flex items-center gap-1">
@@ -312,7 +316,7 @@ export function CoachChatSheet({ mode, context, loadContext, suggestedPrompts, l
                       <Skeleton className="h-4 w-1/2" />
                       <Skeleton className="h-4 w-2/3" />
                       <p className="text-xs text-muted-foreground text-center mt-2">
-                        Cargando datos de entrenamiento...
+                        {t('coach.loadingContext')}
                       </p>
                     </div>
                   )}
@@ -320,10 +324,10 @@ export function CoachChatSheet({ mode, context, loadContext, suggestedPrompts, l
                   {!isLoadingContext && messages.length === 0 && (
                     <div className="flex flex-col items-center justify-center py-12 text-center">
                       <Sparkles className="h-10 w-10 text-muted-foreground/40 mb-3" />
-                      <p className="text-sm text-muted-foreground">{config.emptyText}</p>
+                      <p className="text-sm text-muted-foreground">{t(config.emptyText)}</p>
                       {noContext && (
                         <p className="text-xs text-muted-foreground/60 mt-2">
-                          No data available for the coach.
+                          {t('coach.noData')}
                         </p>
                       )}
                       {resolvedContext && suggestedPrompts && suggestedPrompts.length > 0 && (
@@ -380,7 +384,7 @@ export function CoachChatSheet({ mode, context, loadContext, suggestedPrompts, l
                       ref={textareaRef}
                       value={input}
                       onChange={(e) => setInput(e.target.value)}
-                      placeholder={config.placeholder}
+                      placeholder={t(config.placeholder)}
                       disabled={isStreaming || noContext || isLoadingContext}
                       className={cn(
                         'resize-none overflow-y-auto overscroll-contain pr-10',
@@ -392,7 +396,7 @@ export function CoachChatSheet({ mode, context, loadContext, suggestedPrompts, l
                     <button
                       type="button"
                       onClick={() => setComposerExpanded((v) => !v)}
-                      aria-label={composerExpanded ? 'Reducir el cuadro de texto' : 'Ampliar el cuadro de texto'}
+                      aria-label={composerExpanded ? t('coach.collapse') : t('coach.expand')}
                       className="absolute right-1.5 top-1.5 rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                     >
                       {composerExpanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
@@ -449,18 +453,19 @@ function MessageBubble({
 
 // ─── Markdown Renderer ───────────────────────────────────────────────
 
-function stripThinking(text: string): string {
+function stripThinking(text: string, fallback: string): string {
   let result = text.replace(/<think>[\s\S]*?<\/think>\n?/g, '');
   const openIdx = result.indexOf('<think>');
   if (openIdx !== -1) result = result.slice(0, openIdx);
-  return result.trim() || "Couldn't generate a reply. Please try again.";
+  return result.trim() || fallback;
 }
 
 function SegmentRenderer({ content }: { content: string }) {
+  const { t } = useI18n();
   if (!content) {
     return <span className="text-xl animate-pulse">🤔</span>;
   }
-  return <div className="space-y-1">{renderMarkdown(stripThinking(content))}</div>;
+  return <div className="space-y-1">{renderMarkdown(stripThinking(content, t('coach.couldntGenerate')))}</div>;
 }
 
 function renderInline(text: string): React.ReactNode {

@@ -13,6 +13,7 @@ import {
 } from 'firebase/auth';
 import { app } from '@/lib/firebaseConfig'; // Ensure app is initialized
 import { useToast } from '@/hooks/use-toast';
+import { t } from '@/i18n';
 
 interface AuthContextType {
   user: AppUserProfile | null;
@@ -70,8 +71,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (code !== 'auth/popup-closed-by-user' && code !== 'auth/cancelled-popup-request') {
         console.error("Error during Google sign-in:", error);
         toast({
-          title: "Sign-in error",
-          description: "Couldn't sign in with Google. Please try again.",
+          title: t('auth.signInErrorTitle'),
+          description: t('auth.signInErrorDesc'),
           variant: "destructive",
         });
       }
@@ -87,8 +88,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setIsLoading(false);
       console.error("Error during sign-out:", error);
       toast({
-        title: "Sign-out error",
-        description: "Couldn't sign out. Please try again.",
+        title: t('auth.signOutErrorTitle'),
+        description: t('auth.signOutErrorDesc'),
         variant: "destructive",
       });
     }

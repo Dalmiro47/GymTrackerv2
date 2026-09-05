@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { AvailableExercisesSelector } from '@/components/routines/AvailableExercisesSelector';
+import { useI18n } from '@/contexts/LanguageContext';
 
 interface ReplaceExerciseDialogProps {
   isOpen: boolean;
@@ -30,6 +31,7 @@ export function ReplaceExerciseDialog({
   onReplaceExercise,
   initialMuscleGroup,
 }: ReplaceExerciseDialogProps) {
+  const { t } = useI18n();
 
   // Adapter function
   const handleSelectionChange = (exerciseId: string) => {
@@ -47,8 +49,8 @@ export function ReplaceExerciseDialog({
         onOpenAutoFocus={(e) => e.preventDefault()} // STOP MOBILE KEYBOARD
       >
         <DialogHeader className="shrink-0 p-4 pb-2">
-          <DialogTitle>Replace Exercise</DialogTitle>
-          <DialogDescription>Select a different exercise from your library.</DialogDescription>
+          <DialogTitle>{t('replaceDialog.title')}</DialogTitle>
+          <DialogDescription>{t('replaceDialog.description')}</DialogDescription>
         </DialogHeader>
 
         <div className="flex-grow overflow-hidden p-4 pt-2">
@@ -65,7 +67,7 @@ export function ReplaceExerciseDialog({
 
         <DialogFooter className="shrink-0 border-t bg-card/40 p-3">
           <Button type="button" variant="outline" onClick={() => setIsOpen(false)}>
-            Cancel
+            {t('common.cancel')}
           </Button>
         </DialogFooter>
       </DialogContent>

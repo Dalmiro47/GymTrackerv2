@@ -20,6 +20,7 @@ import { cn } from '@/lib/utils';
 import type { LoggedExercise, LoggedSet, MuscleGroup, SetStructure } from '@/types';
 import { LoggedExerciseCard } from '@/components/training-log/LoggedExerciseCard';
 import { RoutineGroupConnector } from '@/components/training-log/RoutineGroupConnector';
+import { useI18n } from '@/contexts/LanguageContext';
 
 // Get the effective structure for an exercise (override, then routine default, then normal)
 function effectiveOf(ex: { setStructure?: SetStructure; setStructureOverride?: SetStructure | null } | undefined): SetStructure {
@@ -75,6 +76,7 @@ export const ExerciseList = React.memo(function ExerciseList({
   onUpdateSetStructureOverride,
   onAddAt,
 }: ExerciseListProps) {
+  const { t } = useI18n();
   const rowIds = React.useMemo(() => exercises.map(ex => ex.id), [exercises]);
 
   return (
@@ -137,7 +139,7 @@ export const ExerciseList = React.memo(function ExerciseList({
                                 className="h-8 rounded-full border-dashed bg-background px-3 text-[12px] font-medium text-muted-foreground hover:border-solid hover:text-foreground"
                             >
                                 <PlusCircle className="h-3.5 w-3.5" />
-                                Add exercise here
+                                {t('log.addExerciseHere')}
                             </Button>
                         </div>
                         <div className="absolute inset-0 flex items-center" aria-hidden="true">
@@ -163,7 +165,7 @@ export const ExerciseList = React.memo(function ExerciseList({
               className="h-9 shrink-0 rounded-full border-dashed px-3.5 text-[13px] font-medium text-muted-foreground hover:border-solid hover:text-foreground"
           >
               <PlusCircle className="h-4 w-4" />
-              Add another exercise
+              {t('log.addAnotherExercise')}
           </Button>
           <Separator className="flex-1" />
       </div>

@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { useAuth } from '@/contexts/AuthContext';
+import { useI18n } from '@/contexts/LanguageContext';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, FileSpreadsheet, FileText } from 'lucide-react';
 import { db } from '@/lib/firebaseConfig';
@@ -88,9 +89,13 @@ const headers: (keyof ExportRow)[] = [
   'reps','weight','notes','exercise_setup','created_at'
 ];
 
+/** Thrown when the row count exceeds what Excel can open; mapped to a translated toast. */
+const EXCEL_ROW_LIMIT_ERROR = 'EXCEL_ROW_LIMIT';
+
 
 export function ExportLogsDialog({ isOpen, setIsOpen }: ExportLogsDialogProps) {
   const { firebaseUser } = useAuth();
+  const { t } = useI18n();
   const { toast } = useToast();
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadFormat, setDownloadFormat] = useState<'xlsx' | 'csv' | null>(null);
@@ -155,7 +160,7 @@ export function ExportLogsDialog({ isOpen, setIsOpen }: ExportLogsDialogProps) {
 
   const handleDownload = async (format: 'xlsx' | 'csv') => {
     if (!firebaseUser) {
-      toast({ title: 'Error', description: 'You must be logged in to export data.', variant: 'destructive' });
+      toast({ title: t('common.error'), description: t('export.mustLogin'), variant: 'destructive' });
       return;
     }
 
@@ -186,8 +191,8 @@ export function ExportLogsDialog({ isOpen, setIsOpen }: ExportLogsDialogProps) {
 
         if (allRows.length > 200000 && format === 'xlsx') {
             toast({
-                title: "Large Export Detected",
-                description: "Over 200,000 rows loaded. For very large exports, the CSV option is recommended to avoid browser memory issues.",
+                title: t('export.largeTitle'),
+                description: t('export.largeDesc'),
                 variant: "default",
                 duration: 5000,
             });
@@ -195,7 +200,7 @@ export function ExportLogsDialog({ isOpen, setIsOpen }: ExportLogsDialogProps) {
       }
 
       if (allRows.length === 0) {
-        toast({ title: 'No Data', description: 'There are no workout logs to export.' });
+        toast({ title: t('export.noDataTitle'), description: t('export.noDataDesc') });
         setIsDownloading(false);
         setDownloadFormat(null);
         return;
@@ -210,7 +215,7 @@ export function ExportLogsDialog({ isOpen, setIsOpen }: ExportLogsDialogProps) {
         blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
       } else {
         if (allRows.length > 1048576) {
-          throw new Error('Excel has a 1,048,576 row limit. Please use CSV for larger exports.');
+          throw new Error(EXCEL_ROW_LIMIT_ERROR);
         }
         const XLSX = await import('xlsx');
         const ws = XLSX.utils.json_to_sheet(allRows, { header: headers as string[] });
@@ -228,12 +233,15 @@ export function ExportLogsDialog({ isOpen, setIsOpen }: ExportLogsDialogProps) {
       document.body.removeChild(link);
       URL.revokeObjectURL(link.href);
 
-      toast({ title: 'Success', description: 'Your workout logs have been downloaded.' });
+      toast({ title: t('export.successTitle'), description: t('export.successDesc') });
       setIsOpen(false);
 
     } catch (error: any) {
       console.error('Export failed:', error);
-      toast({ title: 'Export Failed', description: error.message || 'Could not download your logs.', variant: 'destructive' });
+      const description = error?.message === EXCEL_ROW_LIMIT_ERROR
+        ? t('export.excelLimit')
+        : t('export.failedDesc');
+      toast({ title: t('export.failedTitle'), description, variant: 'destructive' });
     } finally {
       setIsDownloading(false);
       setDownloadFormat(null);
@@ -244,10 +252,9 @@ export function ExportLogsDialog({ isOpen, setIsOpen }: ExportLogsDialogProps) {
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogContent aria-busy={isDownloading}>
         <DialogHeader>
-          <DialogTitle>Export Workout Data</DialogTitle>
+          <DialogTitle>{t('export.title')}</DialogTitle>
           <DialogDescription>
-            Download a complete history of your workout logs. This may take a moment for large histories.
-            If Excel fails on very large files, try the CSV option.
+            {t('export.description')}
           </DialogDescription>
         </DialogHeader>
 
@@ -263,8 +270,8 @@ export function ExportLogsDialog({ isOpen, setIsOpen }: ExportLogsDialogProps) {
             ) : (
               <FileSpreadsheet className="mb-1 text-success" />
             )}
-            <span className="text-[15px] font-semibold">Excel (.xlsx)</span>
-            <span className="text-[12px] font-normal text-muted-foreground">Best for analysis</span>
+            <span className="text-[15px] font-semibold">{t('export.excel')}</span>
+            <span className="text-[12px] font-normal text-muted-foreground">{t('export.excelHint')}</span>
           </Button>
           <Button
             onClick={() => handleDownload('csv')}
@@ -277,14 +284,14 @@ export function ExportLogsDialog({ isOpen, setIsOpen }: ExportLogsDialogProps) {
             ) : (
               <FileText className="mb-1 text-primary" />
             )}
-            <span className="text-[15px] font-semibold">CSV (smaller file)</span>
-             <span className="text-[12px] font-normal text-muted-foreground">Best for compatibility</span>
+            <span className="text-[15px] font-semibold">{t('export.csv')}</span>
+             <span className="text-[12px] font-normal text-muted-foreground">{t('export.csvHint')}</span>
           </Button>
         </div>
 
         <DialogFooter>
           <Button variant="ghost" onClick={() => setIsOpen(false)} disabled={isDownloading}>
-            Cancel
+            {t('common.cancel')}
           </Button>
         </DialogFooter>
       </DialogContent>

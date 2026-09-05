@@ -2,13 +2,15 @@
 import type { LucideIcon } from 'lucide-react';
 import type { SetStructure } from './setStructure';
 import type { MuscleGroup } from '@/lib/constants';
+import type { TranslationKey } from '@/i18n';
 
 // Re-export commonly used domain types so '@/types' is a single import point.
 export type { SetStructure } from './setStructure';
 export type { MuscleGroup } from '@/lib/constants';
 
 export type NavItem = {
-  title: string;
+  /** Translation key (see src/i18n) — render with `t(item.title)`. */
+  title: TranslationKey;
   href: string;
   icon: LucideIcon;
   label?: string;

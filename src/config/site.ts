@@ -14,30 +14,27 @@ export const siteConfig = {
 
 // Primary navigation (BottomNav on mobile, AppSidebar on desktop).
 // /profile is deliberately NOT here — it is reached from the avatar menu
-// in the app bar (see <UserNav />).
+// in the app bar (see <UserNav />). `title` is a translation key: render it
+// through `t(item.title)`.
 export const navItems: NavItem[] = [
   {
-    title: 'Dashboard',
+    title: 'nav.dashboard',
     href: '/dashboard',
     icon: LayoutDashboard,
-    label: 'Dashboard',
   },
   {
-    title: 'Training Log',
+    title: 'nav.log',
     href: '/log',
     icon: ClipboardEdit,
-    label: 'Training Log',
   },
   {
-    title: 'Exercises',
+    title: 'nav.exercises',
     href: '/exercises',
     icon: Dumbbell,
-    label: 'Exercises',
   },
   {
-    title: 'Routines',
+    title: 'nav.routines',
     href: '/routines',
     icon: ListChecks,
-    label: 'Routines',
   },
 ];

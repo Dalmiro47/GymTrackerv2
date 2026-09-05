@@ -5,6 +5,8 @@ import { format } from 'date-fns';
 import { getAuth } from 'firebase/auth';
 import { app } from '@/lib/firebaseConfig';
 import { useAuth } from '@/contexts/AuthContext';
+import { useI18n } from '@/contexts/LanguageContext';
+import type { TranslationKey } from '@/i18n';
 import type { LogDayContext, RoutineReviewContext, DashboardContext } from '@/lib/ai/context-builders';
 
 export type ChatMessage = {
@@ -20,6 +22,15 @@ const today = () => format(new Date(), 'yyyy-MM-dd');
 // mode keys on the selected log date so each day keeps its own conversation.
 const STORAGE_KEY = (mode: ChatMode, uid: string, date?: string) =>
   `coach-chat-${uid}-${mode}-${mode === 'log-day' && date ? date : today()}`;
+
+// Error `code`s from /api/coach/chat → message in the user's language.
+const ERROR_CODE_KEYS: Record<string, TranslationKey> = {
+  unauthenticated: 'coach.err.unauthenticated',
+  bad_request: 'coach.err.badRequest',
+  not_configured: 'coach.err.notConfigured',
+  busy: 'coach.err.busy',
+  unreachable: 'coach.err.unreachable',
+};
 
 function stripThinking(text: string): string {
   let result = text.replace(/<think>[\s\S]*?<\/think>\n?/g, '');
@@ -69,6 +80,7 @@ function saveToStorage(key: string, mode: ChatMode, uid: string, messages: ChatM
  */
 export function useCoachChat(mode: ChatMode, logDate?: string) {
   const { user } = useAuth();
+  const { language, t } = useI18n();
   const uid = user?.id ?? 'anon';
   const storageKey = STORAGE_KEY(mode, uid, logDate);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -127,13 +139,15 @@ export function useCoachChat(mode: ChatMode, logDate?: string) {
                 : m
             ),
             context,
+            language,
           }),
           signal: abort.signal,
         });
 
         if (!res.ok) {
           const errBody = await res.json().catch(() => null);
-          throw new Error(errBody?.error || `Error ${res.status}`);
+          const key = ERROR_CODE_KEYS[String(errBody?.code ?? '')];
+          throw new Error(key ? t(key) : t('coach.err.http', { status: res.status }));
         }
 
         // Read the SSE stream and append deltas to the assistant bubble
@@ -177,7 +191,7 @@ export function useCoachChat(mode: ChatMode, logDate?: string) {
             const updated = [...prev];
             updated[updated.length - 1] = {
               role: 'assistant',
-              content: 'No reply from the coach. Please try again.',
+              content: t('coach.noReply'),
             };
             return updated;
           });
@@ -192,7 +206,7 @@ export function useCoachChat(mode: ChatMode, logDate?: string) {
           );
           return;
         }
-        const msg = err instanceof Error ? err.message : 'Error desconocido.';
+        const msg = err instanceof Error ? err.message : t('coach.unknownError');
         setError(msg);
         // Remove the empty bubble on error
         persistMessages((prev) =>
@@ -206,7 +220,7 @@ export function useCoachChat(mode: ChatMode, logDate?: string) {
         abortRef.current = null;
       }
     },
-    [messages, isStreaming, mode, persistMessages],
+    [messages, isStreaming, mode, persistMessages, language, t],
   );
 
   const clearChat = useCallback(() => {

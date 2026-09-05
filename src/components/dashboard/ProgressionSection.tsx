@@ -18,6 +18,9 @@ import { serializeDashboardContext, type DashboardDeloadSummary } from '@/lib/ai
 import { subWeeks, parseISO, differenceInCalendarDays } from 'date-fns';
 import { Loader2, TrendingUp, Minus, TrendingDown, HelpCircle, LineChart, ChevronDown, Info } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useI18n } from '@/contexts/LanguageContext';
+import { muscleGroupLabel, type TranslationKey } from '@/i18n';
+import { displayExerciseName } from '@/lib/exerciseDisplay';
 
 // How far back to look. WINDOW_SESSIONS picks the last few sessions out of this.
 // 26 weeks so weeksSincePr can surface long plateaus instead of capping near
@@ -26,20 +29,20 @@ import { cn } from '@/lib/utils';
 // date-indexed, so widening it needs no new Firestore index.
 const LOOKBACK_WEEKS = 26;
 
-type RowMeta = { label: string; icon: React.ElementType; tone: string; badge: string };
+type RowMeta = { label: TranslationKey; icon: React.ElementType; tone: string; badge: string };
 
 function getMeta(item: ProgressionResult): RowMeta {
   switch (item.status) {
     case 'progressing':
       return {
-        label: 'Progressing',
+        label: 'progression.status.progressing',
         icon: TrendingUp,
         tone: 'text-success',
         badge: 'border-success/30 bg-success/10 text-success',
       };
     case 'regressing':
       return {
-        label: 'Regressing',
+        label: 'progression.status.regressing',
         icon: TrendingDown,
         tone: 'text-destructive',
         badge: 'border-destructive/30 bg-destructive/10 text-destructive',
@@ -48,13 +51,13 @@ function getMeta(item: ProgressionResult): RowMeta {
       // Amber alarm only for key lifts; steady accessories stay neutral.
       return item.isKey
         ? {
-            label: 'Plateau',
+            label: 'progression.status.plateau',
             icon: Minus,
             tone: 'text-chart-4',
             badge: 'border-chart-4/30 bg-chart-4/10 text-chart-4',
           }
         : {
-            label: 'Plateau',
+            label: 'progression.status.plateau',
             icon: Minus,
             tone: 'text-muted-foreground',
             badge: 'border-border bg-muted/40 text-muted-foreground',
@@ -62,18 +65,12 @@ function getMeta(item: ProgressionResult): RowMeta {
     case 'insufficient':
     default:
       return {
-        label: 'Not enough data',
+        label: 'progression.status.insufficient',
         icon: HelpCircle,
         tone: 'text-muted-foreground',
         badge: 'border-border bg-muted/40 text-muted-foreground',
       };
   }
-}
-
-function prLabel(item: ProgressionResult): string | null {
-  if (item.weeksSincePr === null) return null;
-  if (item.weeksSincePr <= 0) return 'PR this week';
-  return `${item.weeksSincePr}w since PR`;
 }
 
 function Sparkline({ values, className }: { values: number[]; className?: string }) {
@@ -125,16 +122,22 @@ function Sparkline({ values, className }: { values: number[]; className?: string
 }
 
 function ProgressionRow({ item }: { item: ProgressionResult }) {
+  const { t, language } = useI18n();
   const meta = getMeta(item);
   const Icon = meta.icon;
-  const recency = prLabel(item);
+  const recency =
+    item.weeksSincePr === null
+      ? null
+      : item.weeksSincePr <= 0
+        ? t('progression.prThisWeek')
+        : t('progression.weeksSincePr', { n: item.weeksSincePr });
 
   return (
     <li className="flex min-h-[56px] flex-col justify-center gap-2 border-b border-border/70 py-3 sm:flex-row sm:items-center sm:gap-4 sm:py-2.5">
       {/* Name — on mobile this takes the full row width so it no longer truncates. */}
       <div className="min-w-0 sm:flex-1">
-        <p className="truncate text-[15px] font-medium leading-snug">{item.name}</p>
-        <p className="truncate text-[12px] text-muted-foreground">{item.muscleGroup}</p>
+        <p className="truncate text-[15px] font-medium leading-snug">{displayExerciseName(item, language)}</p>
+        <p className="truncate text-[12px] text-muted-foreground">{muscleGroupLabel(item.muscleGroup, language)}</p>
       </div>
 
       {/* Meta cluster — spread on mobile, packed to the right on wider screens. */}
@@ -148,7 +151,7 @@ function ProgressionRow({ item }: { item: ProgressionResult }) {
             <p className="whitespace-nowrap text-[15px] font-semibold leading-none tabular-nums">
               {item.metricKind === 'reps' ? (
                 <>
-                  {item.pr.reps} <span className="text-[12px] font-normal text-muted-foreground">reps</span>
+                  {item.pr.reps} <span className="text-[12px] font-normal text-muted-foreground">{t('progression.repsUnit')}</span>
                 </>
               ) : (
                 <>
@@ -158,9 +161,9 @@ function ProgressionRow({ item }: { item: ProgressionResult }) {
               )}
             </p>
           ) : (
-            <p className="text-[15px] text-muted-foreground">—</p>
+            <p className="text-[15px] text-muted-foreground">-</p>
           )}
-          <p className={cn('mt-1 text-[12px] font-medium tabular-nums', meta.tone)}>{recency ?? '—'}</p>
+          <p className={cn('mt-1 text-[12px] font-medium tabular-nums', meta.tone)}>{recency ?? '-'}</p>
         </div>
 
         <span
@@ -170,7 +173,7 @@ function ProgressionRow({ item }: { item: ProgressionResult }) {
           )}
         >
           <Icon className="h-3 w-3" />
-          {meta.label}
+          {t(meta.label)}
         </span>
       </div>
     </li>
@@ -190,11 +193,12 @@ function CollapsibleRows({
   onToggle: () => void;
   showLabel: string;
 }) {
+  const { t } = useI18n();
   return (
     <div className="mt-1">
       <Button variant="ghost" size="sm" className="w-full text-muted-foreground" onClick={onToggle}>
         <ChevronDown className={cn('mr-1 h-4 w-4 transition-transform', open && 'rotate-180')} />
-        {open ? 'Hide' : showLabel}
+        {open ? t('common.hide') : showLabel}
       </Button>
       {open && (
         <ul className="grid grid-cols-1 xl:grid-cols-2 xl:gap-x-10">
@@ -210,6 +214,7 @@ function CollapsibleRows({
 export function ProgressionSection() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const { t, language } = useI18n();
   const [isLoading, setIsLoading] = useState(true);
   const [results, setResults] = useState<ProgressionResult[]>([]);
   const [deload, setDeload] = useState<DashboardDeloadSummary | null>(null);
@@ -253,7 +258,7 @@ export function ProgressionSection() {
         if (!cancelled) {
           setResults([]);
           setDeload(null);
-          toast({ title: 'Load error', description: friendlyErrorMessage(err, "Couldn't load your progression. Please try again."), variant: 'destructive' });
+          toast({ title: t('common.loadErrorTitle'), description: friendlyErrorMessage(err, t('progression.loadError')), variant: 'destructive' });
         }
       })
       .finally(() => {
@@ -262,6 +267,8 @@ export function ProgressionSection() {
     return () => {
       cancelled = true;
     };
+    // `t` is intentionally excluded: a language switch must not refetch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, toast]);
 
   const sorted = useMemo(() => sortProgression(results), [results]);
@@ -278,9 +285,11 @@ export function ProgressionSection() {
   const inactive = useMemo(() => sorted.filter(r => !r.isActive), [sorted]);
 
   // Dashboard-scoped coach context (reuses the same coach window/wiring).
+  // `language` is a dep because the serializer localizes default exercise names.
   const coachContext = useMemo(
     () => serializeDashboardContext(sorted, deload ?? undefined),
-    [sorted, deload],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sorted, deload, language],
   );
 
   // Starter chips: focus, the top actionable active key lift (regressing →
@@ -290,10 +299,10 @@ export function ProgressionSection() {
       activeVisible.find(r => r.isKey && r.status === 'regressing') ??
       activeVisible.find(r => r.isKey && r.status === 'plateau');
     const dynamic = topKey
-      ? `Why is ${topKey.name} stalling?`
-      : 'How is my overall progression trending?';
-    return ['What should I focus on this week?', dynamic, 'Am I ready for a deload?'];
-  }, [activeVisible]);
+      ? t('coach.prompts.stalling', { name: displayExerciseName(topKey, language) })
+      : t('coach.prompts.trend');
+    return [t('coach.prompts.focus'), dynamic, t('coach.prompts.deload')];
+  }, [activeVisible, t, language]);
 
   return (
     <>
@@ -303,10 +312,10 @@ export function ProgressionSection() {
           <div className="space-y-1.5">
             <CardTitle className="flex items-center gap-2">
               <LineChart className="h-5 w-5 text-primary" />
-              Progression
+              {t('progression.title')}
             </CardTitle>
             <CardDescription>
-              Per-exercise trend over your last {LOOKBACK_WEEKS} weeks of training.
+              {t('progression.description', { n: LOOKBACK_WEEKS })}
             </CardDescription>
           </div>
           <Popover>
@@ -315,28 +324,25 @@ export function ProgressionSection() {
                 variant="ghost"
                 size="icon"
                 className="h-10 w-10 shrink-0 text-muted-foreground"
-                aria-label="How to read this section"
+                aria-label={t('progression.howToRead')}
               >
                 <Info className="h-4 w-4" />
               </Button>
             </PopoverTrigger>
             <PopoverContent align="end" className="w-72 space-y-2 text-xs leading-relaxed">
               <p>
-                The number shown is your <strong>best set (PR)</strong> for that exercise — the
-                actual weight × reps you lifted (or your best reps, for bodyweight moves).
+                {t('progression.info1.pre')}<strong>{t('progression.info1.strong')}</strong>{t('progression.info1.post')}
               </p>
               <p>
-                <strong>&quot;Xw since PR&quot;</strong> is how many weeks since you last beat that
-                best set.
+                <strong>{t('progression.info2.strong')}</strong>{t('progression.info2.post')}
               </p>
               <p>
-                <span className="font-medium text-success">Green</span> is a recent PR,{' '}
-                <span className="font-medium text-chart-4">amber</span> is a key lift with no recent
-                PR, <span className="font-medium text-destructive">red</span> is a drop.
+                <span className="font-medium text-success">{t('progression.info3.green')}</span>{t('progression.info3.greenText')}
+                <span className="font-medium text-chart-4">{t('progression.info3.amber')}</span>{t('progression.info3.amberText')}
+                <span className="font-medium text-destructive">{t('progression.info3.red')}</span>{t('progression.info3.redText')}
               </p>
               <p>
-                <span className="font-medium text-muted-foreground">Grey</span> means an accessory or
-                not enough data yet.
+                <span className="font-medium text-muted-foreground">{t('progression.info4.grey')}</span>{t('progression.info4.text')}
               </p>
             </PopoverContent>
           </Popover>
@@ -362,9 +368,9 @@ export function ProgressionSection() {
                 <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
                   <LineChart className="h-6 w-6" />
                 </div>
-                <p className="font-headline text-[20px] font-semibold leading-tight">No active exercises.</p>
+                <p className="font-headline text-[20px] font-semibold leading-tight">{t('progression.noActive')}</p>
                 <p className="mt-1 text-[13px] text-muted-foreground">
-                  Log a session and your current trends will show up here.
+                  {t('progression.noActiveHint')}
                 </p>
               </div>
             )}
@@ -375,7 +381,7 @@ export function ProgressionSection() {
                 items={activeInsufficient}
                 open={showInsufficient}
                 onToggle={() => setShowInsufficient(v => !v)}
-                showLabel={`Show ${activeInsufficient.length} more`}
+                showLabel={t('progression.showMore', { n: activeInsufficient.length })}
               />
             )}
 
@@ -385,7 +391,7 @@ export function ProgressionSection() {
                 items={inactive}
                 open={showInactive}
                 onToggle={() => setShowInactive(v => !v)}
-                showLabel={`Show ${inactive.length} inactive`}
+                showLabel={t('progression.showInactive', { n: inactive.length })}
               />
             )}
           </>

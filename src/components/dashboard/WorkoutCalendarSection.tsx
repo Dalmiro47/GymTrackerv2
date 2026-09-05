@@ -17,11 +17,17 @@ import { Loader2, CalendarIcon, ListChecks, ExternalLink, PlusCircle, Flame, Cal
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
+import { useI18n } from '@/contexts/LanguageContext';
+import { capitalize } from '@/i18n';
+import { displayExerciseFields } from '@/lib/exerciseDisplay';
+
+type I18n = Pick<ReturnType<typeof useI18n>, 't' | 'tn' | 'locale'>;
 
 function getMonthlySummaryMessage(
   logCount: number,
   displayedMonth: Date,
-  today: Date
+  today: Date,
+  { t, tn, locale }: I18n,
 ): string {
   const sameMonth =
     displayedMonth.getFullYear() === today.getFullYear() &&
@@ -29,24 +35,16 @@ function getMonthlySummaryMessage(
 
   // Current month → keep the existing motivating copy
   if (sameMonth) {
-    if (logCount === 0) {
-      return "No workouts yet this month—your future self is waiting. Let’s get moving! 💪";
-    }
-    if (logCount <= 5) {
-      return `Great start! You’ve logged ${logCount} session${logCount > 1 ? "s" : ""} this month. Keep the momentum going!`;
-    }
-    return `Wow—${logCount} sessions already! You’re turning gains into a habit. Keep crushing it! 🚀`;
+    if (logCount === 0) return t('dashboard.summary.currentNone');
+    if (logCount <= 5) return tn('dashboard.summary.currentFew', logCount);
+    return t('dashboard.summary.currentMany', { n: logCount });
   }
 
   // Past (or non-current) month → use past-tense summary
-  const monthLabel = format(displayedMonth, "MMMM yyyy");
-  if (logCount === 0) {
-    return `No workouts logged in ${monthLabel}.`;
-  }
-  if (logCount <= 5) {
-    return `You logged ${logCount} session${logCount > 1 ? "s" : ""} in ${monthLabel}. Solid effort.`;
-  }
-  return `You logged ${logCount} sessions in ${monthLabel}—nice consistency!`;
+  const month = format(displayedMonth, t('date.monthYear'), { locale });
+  if (logCount === 0) return t('dashboard.summary.pastNone', { month });
+  if (logCount <= 5) return tn('dashboard.summary.pastFew', logCount, { month });
+  return t('dashboard.summary.pastMany', { n: logCount, month });
 }
 
 /**
@@ -54,8 +52,8 @@ function getMonthlySummaryMessage(
  * when every set shares a weight, otherwise "10 × 32 · 8 × 30 kg". Purely a
  * display transform of the same sets the detailed list already showed.
  */
-function formatSetsLine(sets: LoggedSet[]): string {
-  if (sets.length === 0) return 'No sets recorded';
+function formatSetsLine(sets: LoggedSet[], t: I18n['t']): string {
+  if (sets.length === 0) return t('dashboard.noSets');
   const weights = Array.from(new Set(sets.map(s => s.weight)));
   const reps = (s: LoggedSet) => (s.reps ?? '–');
   if (weights.length === 1) {
@@ -67,15 +65,16 @@ function formatSetsLine(sets: LoggedSet[]): string {
 }
 
 /** Per-set detail, kept reachable on the compact row via title/aria. */
-function describeSets(sets: LoggedSet[]): string {
-  if (sets.length === 0) return 'No sets recorded';
+function describeSets(sets: LoggedSet[], t: I18n['t']): string {
+  if (sets.length === 0) return t('dashboard.noSets');
   return sets
-    .map((s, i) => `Set ${i + 1}: ${s.reps ?? '-'} reps @ ${s.weight ?? '-'} kg`)
+    .map((s, i) => t('dashboard.setDetail', { n: i + 1, reps: s.reps ?? '-', weight: s.weight ?? '-' }))
     .join('; ');
 }
 
 export function WorkoutCalendarSection() {
   const { user } = useAuth();
+  const { t, tn, locale, language } = useI18n();
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
   const [displayedMonth, setDisplayedMonth] = useState<Date>(startOfMonth(new Date()));
   const [selectedLog, setSelectedLog] = useState<WorkoutLog | null>(null);
@@ -111,10 +110,12 @@ export function WorkoutCalendarSection() {
       console.error('Failed to load month dates:', err);
       setLoggedDayStrings([]);
       setDeloadDayStrings([]);
-      toast({ title: 'Load error', description: friendlyErrorMessage(err, "Couldn't load the calendar. Please try again."), variant: 'destructive' });
+      toast({ title: t('common.loadErrorTitle'), description: friendlyErrorMessage(err, t('dashboard.loadCalendarError')), variant: 'destructive' });
     } finally {
       setIsLoadingLoggedDays(false);
     }
+    // `t` is intentionally excluded: a language switch must not refetch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, displayedMonth, toast]);
 
   // Initial + on month change
@@ -143,9 +144,10 @@ export function WorkoutCalendarSection() {
       .catch(err => {
         if (cancelled) return;
         console.error('Failed to load 3-month window:', err);
-        toast({ title: 'Load error', description: friendlyErrorMessage(err, "Couldn't load your stats. Please try again."), variant: 'destructive' });
+        toast({ title: t('common.loadErrorTitle'), description: friendlyErrorMessage(err, t('dashboard.loadStatsError')), variant: 'destructive' });
       });
     return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, today, toast]);
 
   // Fetch details for the selected day (run when selectedDate changes)
@@ -163,12 +165,13 @@ export function WorkoutCalendarSection() {
       } catch (e) {
         console.error('Error fetching selected log:', e);
         setSelectedLog(null);
-        toast({ title: 'Load error', description: friendlyErrorMessage(e, "Couldn't load that day's workout. Please try again."), variant: 'destructive' });
+        toast({ title: t('common.loadErrorTitle'), description: friendlyErrorMessage(e, t('dashboard.loadDayError')), variant: 'destructive' });
       } finally {
         setIsLoadingLogDetails(false);
       }
     };
     load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDate, user?.id, toast]);
 
   const daysWithLogs = useMemo(() => loggedDayStrings.map(d => parseISO(d)).filter(d => !isNaN(d.getTime())), [loggedDayStrings]);
@@ -192,8 +195,8 @@ export function WorkoutCalendarSection() {
   };
   
   const monthlySummaryMessage = useMemo(
-    () => getMonthlySummaryMessage(logsInCurrentDisplayedMonth, displayedMonth, today),
-    [logsInCurrentDisplayedMonth, displayedMonth, today]
+    () => getMonthlySummaryMessage(logsInCurrentDisplayedMonth, displayedMonth, today, { t, tn, locale }),
+    [logsInCurrentDisplayedMonth, displayedMonth, today, t, tn, locale]
   );
 
   const noRecentDeload = deloadCount3mo === 0;
@@ -206,22 +209,22 @@ export function WorkoutCalendarSection() {
         <div className="surface p-3.5">
           <div className="eyebrow flex items-center gap-1.5">
             <CalendarCheck2 className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate">Sessions</span>
+            <span className="truncate">{t('dashboard.sessions')}</span>
           </div>
           <p className="mt-2 font-headline text-[36px] font-bold leading-none tabular-nums">
             {isLoadingLoggedDays ? '–' : logsInCurrentDisplayedMonth}
           </p>
-          <p className="mt-1.5 truncate text-[12px] text-muted-foreground">{format(displayedMonth, 'MMMM')}</p>
+          <p className="mt-1.5 truncate text-[12px] text-muted-foreground">{capitalize(format(displayedMonth, 'MMMM', { locale }))}</p>
         </div>
         <div className="surface p-3.5">
           <div className="eyebrow flex items-center gap-1.5">
             <Flame className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate">This week</span>
+            <span className="truncate">{t('dashboard.thisWeek')}</span>
           </div>
           <p className="mt-2 font-headline text-[36px] font-bold leading-none tabular-nums">
             {sessionsThisWeek === null ? '–' : sessionsThisWeek}
           </p>
-          <p className="mt-1.5 truncate text-[12px] text-muted-foreground">since Monday</p>
+          <p className="mt-1.5 truncate text-[12px] text-muted-foreground">{t('dashboard.sinceMonday')}</p>
         </div>
         <div className={cn(
           "surface p-3.5",
@@ -232,7 +235,7 @@ export function WorkoutCalendarSection() {
             noRecentDeload && "text-destructive"
           )}>
             <BatteryLow className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate">Deloads</span>
+            <span className="truncate">{t('dashboard.deloads')}</span>
           </div>
           <p className={cn(
             "mt-2 font-headline text-[36px] font-bold leading-none tabular-nums",
@@ -244,7 +247,7 @@ export function WorkoutCalendarSection() {
             "mt-1.5 truncate text-[12px]",
             noRecentDeload ? "font-medium text-destructive" : "text-muted-foreground"
           )}>
-            {noRecentDeload ? "none in 3 months" : "last 3 months"}
+            {noRecentDeload ? t('dashboard.noneIn3Months') : t('dashboard.last3Months')}
           </p>
         </div>
       </div>
@@ -277,9 +280,9 @@ export function WorkoutCalendarSection() {
         {/* Right Column: Workout Details */}
         <Card className="animate-enter enter-3 flex flex-col">
             <CardHeader className="pb-3">
-              <p className="eyebrow">Workout Details</p>
+              <p className="eyebrow">{t('dashboard.workoutDetails')}</p>
               <CardTitle>
-                {selectedDate ? format(selectedDate, 'MMMM do, yyyy') : "Select a day"}
+                {selectedDate ? capitalize(format(selectedDate, t('date.long'), { locale })) : t('dashboard.selectDay')}
               </CardTitle>
             </CardHeader>
             <CardContent className="flex-grow flex flex-col">
@@ -292,45 +295,48 @@ export function WorkoutCalendarSection() {
                   <div className="space-y-4">
                     {selectedLog.routineName && (
                       <p className="text-[13px]">
-                        <span className="font-semibold">Routine:</span> {selectedLog.routineName}
+                        <span className="font-semibold">{t('dashboard.routine')}</span> {selectedLog.routineName}
                       </p>
                     )}
                     {selectedLog.notes && selectedLog.notes.trim() !== '' && (
-                       <p className="text-[13px]"><span className="font-semibold">Overall Notes:</span> {selectedLog.notes}</p>
+                       <p className="text-[13px]"><span className="font-semibold">{t('dashboard.overallNotes')}</span> {selectedLog.notes}</p>
                     )}
                     <div>
                       <h4 className="eyebrow mb-2 flex items-center">
                         <ListChecks className="mr-2 h-3.5 w-3.5 text-primary" />
-                        Logged Exercises
+                        {t('dashboard.loggedExercises')}
                       </h4>
                       {selectedLog.exercises.length > 0 ? (
                         <ul className="space-y-2">
-                          {selectedLog.exercises.map((exercise) => (
+                          {selectedLog.exercises.map((exercise) => {
+                            const shown = displayExerciseFields(exercise, language);
+                            return (
                             <li key={exercise.id} className="rounded-md bg-muted/40 p-3">
-                              <p className="font-headline text-[18px] font-semibold leading-tight">{exercise.name}</p>
+                              <p className="font-headline text-[18px] font-semibold leading-tight">{shown.name}</p>
                               <p
                                 className="mt-1 text-[13px] tabular-nums text-muted-foreground"
-                                title={describeSets(exercise.sets)}
-                                aria-label={`${exercise.name} — ${describeSets(exercise.sets)}`}
+                                title={describeSets(exercise.sets, t)}
+                                aria-label={`${shown.name}: ${describeSets(exercise.sets, t)}`}
                               >
-                                {formatSetsLine(exercise.sets)}
+                                {formatSetsLine(exercise.sets, t)}
                               </p>
-                              {exercise.exerciseSetup && (
-                                <p className="mt-1 text-[12px] text-muted-foreground">Setup: {exercise.exerciseSetup}</p>
+                              {shown.exerciseSetup && (
+                                <p className="mt-1 text-[12px] text-muted-foreground">{t('dashboard.setup')} {shown.exerciseSetup}</p>
                               )}
-                              {exercise.notes && <p className="mt-1 text-[12px]">Notes: {exercise.notes}</p>}
+                              {exercise.notes && <p className="mt-1 text-[12px]">{t('dashboard.notes')} {exercise.notes}</p>}
                             </li>
-                          ))}
+                            );
+                          })}
                         </ul>
                       ) : (
-                        <p className="text-[13px] text-muted-foreground">No exercises were recorded for this day.</p>
+                        <p className="text-[13px] text-muted-foreground">{t('dashboard.noExercisesForDay')}</p>
                       )}
                     </div>
                     {selectedDate && isValid(selectedDate) && (
                       <Link href={`/log?date=${format(selectedDate, 'yyyy-MM-dd')}`} className="block">
                           <Button variant="outline" size="sm" className="mt-4 w-full">
                               <ExternalLink className="mr-2 h-4 w-4" />
-                              View/Edit Full Log for this Day
+                              {t('dashboard.viewEditLog')}
                           </Button>
                       </Link>
                     )}
@@ -341,12 +347,12 @@ export function WorkoutCalendarSection() {
                   <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
                     <CalendarIcon className="h-6 w-6" />
                   </div>
-                  <p className="font-headline text-[20px] font-semibold leading-tight">Rest day — nothing logged.</p>
-                  <p className="mt-1 text-[13px] text-muted-foreground">Pick another day, or start a session for this one.</p>
+                  <p className="font-headline text-[20px] font-semibold leading-tight">{t('dashboard.restDay')}</p>
+                  <p className="mt-1 text-[13px] text-muted-foreground">{t('dashboard.restDayHint')}</p>
                    <Link href={`/log?date=${format(selectedDate, 'yyyy-MM-dd')}`}>
                         <Button size="sm" className="mt-4">
                             <PlusCircle className="mr-2 h-4 w-4" />
-                            Log Workout for this Day
+                            {t('dashboard.logWorkoutForDay')}
                         </Button>
                     </Link>
                 </div>
@@ -355,7 +361,7 @@ export function WorkoutCalendarSection() {
                     <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
                       <CalendarIcon className="h-6 w-6" />
                     </div>
-                    <p className="text-[13px] font-medium text-muted-foreground">Select a day on the calendar to see its workout.</p>
+                    <p className="text-[13px] font-medium text-muted-foreground">{t('dashboard.selectDayHint')}</p>
                 </div>
               )}
             </CardContent>

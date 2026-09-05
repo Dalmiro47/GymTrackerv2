@@ -23,6 +23,10 @@ import { inferWarmupTemplate, roundToGymHalf } from '@/lib/utils';
 import { isBetterPR, formatPR, pickBestSet } from '@/lib/pr';
 import { setUnsavedChanges } from '@/lib/unsavedChanges';
 import { friendlyErrorMessage } from '@/lib/errorMessages';
+// Module-level `t`: these toasts fire from async handlers, and the hook must not
+// re-create its callbacks (and refetch) on a language switch.
+import { t } from '@/i18n';
+import { displayExerciseName } from '@/lib/exerciseDisplay';
 
 
 const DEFAULT_DELOAD_PARAMS = {
@@ -272,7 +276,7 @@ export const useTrainingLog = (initialDate: Date) => {
 
     } catch (error: any) {
         console.error('[useTrainingLog] loadLogForDate failed:', error);
-        toast({ title: "Load error", description: friendlyErrorMessage(error, "Couldn't load that day's workout."), variant: "destructive" });
+        toast({ title: t('common.loadErrorTitle'), description: friendlyErrorMessage(error, t('log.toast.loadDay')), variant: "destructive" });
         const empty = makeEmptyLog(dateId);
         setOriginalLogState(empty);
         setSavedSnapshot(empty);
@@ -286,13 +290,13 @@ export const useTrainingLog = (initialDate: Date) => {
       setIsLoadingRoutines(true);
       fetchUserRoutines(user.id)
         .then(setAvailableRoutines)
-        .catch(error => { console.error('[useTrainingLog] routines load failed:', error); toast({ title: "Load error", description: friendlyErrorMessage(error, "Couldn't load your routines."), variant: "destructive" }); })
+        .catch(error => { console.error('[useTrainingLog] routines load failed:', error); toast({ title: t('common.loadErrorTitle'), description: friendlyErrorMessage(error, t('log.toast.loadRoutines')), variant: "destructive" }); })
         .finally(() => setIsLoadingRoutines(false));
 
       setIsLoadingExercises(true);
       fetchAllUserExercises(user.id)
         .then(setAvailableExercises)
-        .catch(error => { console.error('[useTrainingLog] exercises load failed:', error); toast({ title: "Load error", description: friendlyErrorMessage(error, "Couldn't load your exercises."), variant: "destructive" }); })
+        .catch(error => { console.error('[useTrainingLog] exercises load failed:', error); toast({ title: t('common.loadErrorTitle'), description: friendlyErrorMessage(error, t('log.toast.loadExercises')), variant: "destructive" }); })
         .finally(() => setIsLoadingExercises(false));
       
     } else {
@@ -492,8 +496,8 @@ export const useTrainingLog = (initialDate: Date) => {
     // exercises as "Added"; this guards the other entry points.
     if (originalLogState?.exercises.some(ex => ex.exerciseId === exercise.id)) {
       toast({
-        title: "Already in today's log",
-        description: `${exercise.name} is already logged for this day. Add sets to the existing entry instead.`,
+        title: t('log.toast.alreadyLoggedTitle'),
+        description: t('log.toast.alreadyLoggedDesc', { name: displayExerciseName(exercise) }),
       });
       return;
     }
@@ -650,7 +654,7 @@ export const useTrainingLog = (initialDate: Date) => {
   
   const saveCurrentLog = async () => {
     if (!user?.id || !currentLog) {
-      toast({ title: "Error", description: "No user or log data to save.", variant: "destructive" });
+      toast({ title: t('common.error'), description: t('log.toast.noDataSave'), variant: "destructive" });
       return;
     }
     setIsSavingLog(true);
@@ -722,7 +726,7 @@ export const useTrainingLog = (initialDate: Date) => {
           setSavedSnapshot(finalLogToSave);
           setDeloadApplied(finalLogToSave.deloadApplied ?? false);
           await refreshMonthFlags();
-          toast({ title: "Log Saved", description: `Workout for ${formattedDateId} saved.` });
+          toast({ title: t('log.toast.savedTitle'), description: t('log.toast.savedDesc', { date: formattedDateId }) });
       } else {
           const existingLogDocument = await fetchLogService(user.id, finalLogToSave.id);
           if (existingLogDocument) {
@@ -732,16 +736,16 @@ export const useTrainingLog = (initialDate: Date) => {
               ));
               await refreshMonthFlags();
               setSavedSnapshot(finalLogToSave);
-              toast({ title: "Log Cleared", description: `Empty log for ${formattedDateId} was cleared.`});
+              toast({ title: t('log.toast.clearedTitle'), description: t('log.toast.clearedDesc', { date: formattedDateId }) });
           } else {
               setSavedSnapshot(finalLogToSave);
-              toast({ title: "Log Not Saved", description: "Log is empty."});
+              toast({ title: t('log.toast.notSavedTitle'), description: t('log.toast.notSavedDesc') });
           }
       }
 
     } catch (error: any) {
       console.error('[useTrainingLog] saveCurrentLog failed:', error);
-      toast({ title: "Save error", description: friendlyErrorMessage(error, "Couldn't save your workout. Check your connection and try again."), variant: "destructive" });
+      toast({ title: t('common.saveErrorTitle'), description: friendlyErrorMessage(error, t('log.toast.saveError')), variant: "destructive" });
     } finally {
       setIsSavingLog(false);
     }
@@ -756,7 +760,7 @@ export const useTrainingLog = (initialDate: Date) => {
 
   const deleteCurrentLog = async () => {
     if (!user?.id || !currentLog) {
-      toast({ title: "Error", description: "No user or log data to delete.", variant: "destructive" });
+      toast({ title: t('common.error'), description: t('log.toast.noDataDelete'), variant: "destructive" });
       return;
     }
     setIsDeletingLog(true);
@@ -781,11 +785,11 @@ export const useTrainingLog = (initialDate: Date) => {
       setIsDeload(false);
       setDeloadApplied(false);
 
-      toast({ title: "Log Deleted", description: `Workout for ${logIdToDelete} has been deleted.` });
+      toast({ title: t('log.toast.deletedTitle'), description: t('log.toast.deletedDesc', { date: logIdToDelete }) });
       await refreshMonthFlags();
     } catch (error: any) {
       console.error('[useTrainingLog] deleteCurrentLog failed:', error);
-      toast({ title: "Delete error", description: friendlyErrorMessage(error, "Couldn't delete the workout. Please try again."), variant: "destructive" });
+      toast({ title: t('common.deleteErrorTitle'), description: friendlyErrorMessage(error, t('log.toast.deleteError')), variant: "destructive" });
       if (user?.id) { 
         await loadLogForDate(selectedDate);
       }

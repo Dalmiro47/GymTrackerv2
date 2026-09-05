@@ -8,6 +8,7 @@ import { Logo } from '../Logo';
 import { Button } from '@/components/ui/button';
 import { X } from 'lucide-react';
 import { confirmDiscardUnsavedChanges } from '@/lib/unsavedChanges';
+import { useI18n } from '@/contexts/LanguageContext';
 
 interface AppSidebarProps {
   isOpen: boolean;
@@ -20,6 +21,7 @@ interface AppSidebarProps {
  */
 export function AppSidebar({ isOpen, setIsOpen }: AppSidebarProps) {
   const pathname = usePathname();
+  const { t } = useI18n();
 
   return (
     <>
@@ -60,7 +62,7 @@ export function AppSidebar({ isOpen, setIsOpen }: AppSidebarProps) {
               size="icon"
               className="md:hidden text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
               onClick={() => setIsOpen(false)}
-              aria-label="Close sidebar"
+              aria-label={t('sidebar.close')}
             >
               <X className="h-5 w-5" />
             </Button>
@@ -92,7 +94,7 @@ export function AppSidebar({ isOpen, setIsOpen }: AppSidebarProps) {
                 aria-current={isActive ? "page" : undefined}
               >
                 <item.icon className={cn("h-5 w-5 shrink-0", isActive && "text-sidebar-primary")} />
-                <span className="truncate">{item.title}</span>
+                <span className="truncate">{t(item.title)}</span>
               </Link>
             );
           })}

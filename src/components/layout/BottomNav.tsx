@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { navItems } from "@/config/site";
 import { confirmDiscardUnsavedChanges } from "@/lib/unsavedChanges";
+import { useI18n } from "@/contexts/LanguageContext";
 
 /**
  * Mobile-only tab bar (thumb zone). Desktop keeps <AppSidebar />.
@@ -13,10 +14,11 @@ import { confirmDiscardUnsavedChanges } from "@/lib/unsavedChanges";
  */
 export function BottomNav() {
   const pathname = usePathname();
+  const { t } = useI18n();
 
   return (
     <nav
-      aria-label="Primary"
+      aria-label={t('nav.primary')}
       className="glass fixed inset-x-0 bottom-0 z-40 border-t border-border md:hidden"
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
     >
@@ -34,7 +36,7 @@ export function BottomNav() {
                   }
                 }}
                 aria-current={isActive ? "page" : undefined}
-                aria-label={item.title}
+                aria-label={t(item.title)}
                 className={cn(
                   "pressable relative flex h-full min-h-[44px] flex-col items-center justify-center gap-0.5 transition-colors",
                   isActive ? "text-primary" : "text-muted-foreground"
@@ -42,7 +44,7 @@ export function BottomNav() {
               >
                 <item.icon size={22} className="shrink-0" />
                 <span className="max-w-full truncate whitespace-nowrap px-0.5 text-[11px] font-medium leading-none">
-                  {item.title}
+                  {t(item.title)}
                 </span>
                 <span
                   aria-hidden

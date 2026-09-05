@@ -12,6 +12,8 @@ import {
 import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/contexts/LanguageContext";
+import { capitalize } from "@/i18n";
 
 export interface WeekStripProps {
   selectedDate: Date;
@@ -43,6 +45,7 @@ export function WeekStrip({
   onVisibleMonthChange,
   className,
 }: WeekStripProps) {
+  const { t, language, locale } = useI18n();
   // The week currently shown. Follows `selectedDate`, but paging moves it alone.
   const [anchor, setAnchor] = React.useState<Date>(selectedDate);
 
@@ -112,10 +115,10 @@ export function WeekStrip({
       <div className="flex items-end justify-between gap-3">
         <div className="min-w-0">
           <p className="eyebrow">
-            {isToday ? "Today" : format(selectedDate, "EEEE")}
+            {isToday ? t('common.today') : format(selectedDate, "EEEE", { locale })}
           </p>
           <p className="mt-1 font-headline text-[34px] font-bold leading-none tracking-tight">
-            {format(selectedDate, "d MMM")}
+            {capitalize(format(selectedDate, t('date.dayMonth'), { locale }))}
           </p>
         </div>
 
@@ -123,7 +126,7 @@ export function WeekStrip({
           <button
             type="button"
             onClick={() => page(-7)}
-            aria-label="Previous week"
+            aria-label={t('week.prev')}
             className="pressable inline-flex h-11 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <ChevronLeft className="h-4 w-4" />
@@ -132,7 +135,7 @@ export function WeekStrip({
             type="button"
             onClick={() => page(7)}
             disabled={!canGoForward}
-            aria-label="Next week"
+            aria-label={t('week.next')}
             className="pressable inline-flex h-11 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-30"
           >
             <ChevronRight className="h-4 w-4" />
@@ -140,7 +143,7 @@ export function WeekStrip({
           <button
             type="button"
             onClick={onOpenMonth}
-            aria-label="Pick a day from the month"
+            aria-label={t('week.pickDay')}
             className="pressable inline-flex h-11 w-11 items-center justify-center rounded-full border border-border bg-card text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           >
             <CalendarDays className="h-[18px] w-[18px]" />
@@ -168,7 +171,7 @@ export function WeekStrip({
               type="button"
               disabled={isFuture}
               onClick={() => onSelect(day)}
-              aria-label={day.toLocaleDateString(undefined, {
+              aria-label={day.toLocaleDateString(language, {
                 weekday: "long",
                 year: "numeric",
                 month: "long",
@@ -191,7 +194,7 @@ export function WeekStrip({
                   isSelected ? "text-primary-foreground/80" : "text-muted-foreground"
                 )}
               >
-                {format(day, "EEEEE")}
+                {format(day, "EEEEE", { locale })}
               </span>
               <span className="font-headline text-[20px] font-semibold leading-none tabular-nums">
                 {format(day, "d")}

@@ -4,6 +4,7 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
 import type { WarmupTemplate, WarmupStepSpec } from '@/types';
+import { t } from '@/i18n';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -131,6 +132,11 @@ export interface WarmupStep {
   note?: string;
 }
 
+// The built-in BODYWEIGHT template stores the English label 'Bodyweight'; show it
+// in the active language. User-authored override labels pass through untouched.
+const labelForSpec = (label?: string) =>
+  !label || label === 'Bodyweight' ? t('warmup.bodyweight') : label;
+
 export function computeWarmup(input: WarmupInput): WarmupStep[] {
   const { template, workingWeight, isLowerBodyBarbell, overrideSteps } = input;
 
@@ -146,7 +152,7 @@ export function computeWarmup(input: WarmupInput): WarmupStep[] {
   // Special "Empty Bar" step for lower body barbell exercises
   if (template === 'HEAVY_BARBELL' && isLowerBodyBarbell) {
     results.push({
-      label: 'Empty Bar',
+      label: t('warmup.emptyBar'),
       weightTotal: 20,
       reps: '10-15',
       rest: '45s'
@@ -159,16 +165,16 @@ export function computeWarmup(input: WarmupInput): WarmupStep[] {
       if (template === 'BODYWEIGHT') {
          if (workingWeight === 0) {
             // Rule 1: No weight logged -> Simple variation (Light/assisted)
-            results.push({ label: 'Light/assisted', weightTotal: 0, reps: '10-12', rest: '45s', note: spec.note });
+            results.push({ label: t('warmup.lightAssisted'), weightTotal: 0, reps: '10-12', rest: '45s', note: spec.note });
          } else {
              // Rule 2: Weight is logged -> Standard "Bodyweight" set before adding load
-             results.push({ label: spec.label || 'Bodyweight', weightTotal: 0, reps: spec.reps, rest: spec.rest, note: spec.note });
+             results.push({ label: labelForSpec(spec.label), weightTotal: 0, reps: spec.reps, rest: spec.rest, note: spec.note });
          }
          return;
       }
-      
+
       // Default for other templates
-      results.push({ label: spec.label || 'Bodyweight', weightTotal: 0, reps: spec.reps, rest: spec.rest, note: spec.note });
+      results.push({ label: labelForSpec(spec.label), weightTotal: 0, reps: spec.reps, rest: spec.rest, note: spec.note });
       return;
     }
 
@@ -181,7 +187,7 @@ export function computeWarmup(input: WarmupInput): WarmupStep[] {
         // Rule 2 continued: If weight logged, apply percentage to added weight
         if (workingWeight <= 0) return; // Skip added weight sets if no weight is logged
         baseWeight = workingWeight; // The logged weight IS the added weight
-        note = `(of ${workingWeight}kg added)`;
+        note = t('warmup.ofAdded', { weight: workingWeight });
       }
       
       const rawWeight = baseWeight * spec.percent;

@@ -2,11 +2,10 @@
 // app-wide navigation (sidebar links), plus a beforeunload guard for tab close /
 // refresh. Kept deliberately simple: no router interception, no context.
 
+import { t } from '@/i18n';
+
 let dirty = false;
 let listenerAttached = false;
-
-export const UNSAVED_CHANGES_MESSAGE =
-  'You have unsaved changes in your workout. Leave without saving?';
 
 const onBeforeUnload = (e: BeforeUnloadEvent) => {
   if (!dirty) return;
@@ -33,5 +32,5 @@ export function hasUnsavedChanges() {
 /** True when it is OK to proceed (nothing unsaved, or the user confirmed). */
 export function confirmDiscardUnsavedChanges(): boolean {
   if (!dirty || typeof window === 'undefined') return true;
-  return window.confirm(UNSAVED_CHANGES_MESSAGE);
+  return window.confirm(t('unsaved.message'));
 }

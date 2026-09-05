@@ -37,7 +37,8 @@ export type SeedResult = { addedCount: number; bumpedSeedVersion: boolean };
  * This function is idempotent and versioned. It will:
  * 1. Check a `seedVersion` on the user's profile.
  * 2. Only run if the user's version is less than the current version or if new defaults are missing.
- * 3. Respect a `deletedDefaultIds` array ("tombstones") in the user's profile to not re-add deleted defaults.
+ * 3. Respect a `deletedDefaultIds` array ("tombstones") in the user's profile to not re-add deleted defaults —
+ *    unless the library is completely empty, in which case the tombstones are stale and get cleared.
  * 4. Fetch all existing exercise IDs to avoid overwriting.
  * 5. Create only the default exercises that are missing and not tombstoned.
  * 6. Update the `seedVersion` on the user's profile if necessary.
@@ -58,11 +59,19 @@ export async function ensureExercisesSeeded(
     const profileSnap = await getDoc(profileRef);
     const profile = profileSnap.exists() ? profileSnap.data() : {};
     const prevSeedVersion: number = profile.seedVersion ?? 0;
-    const deletedDefaultIds: string[] = profile.deletedDefaultIds ?? [];
+    const storedTombstones: string[] = profile.deletedDefaultIds ?? [];
 
     const existingIds = new Set<string>();
     const existingSnap = await getDocs(exercisesCol);
     existingSnap.forEach(d => existingIds.add(d.id));
+
+    // An EMPTY library is a fresh start, whatever the profile doc says: a new
+    // user must get every default. Tombstones only make sense relative to a
+    // library the user has actually built, so stale ones (a profile doc that
+    // outlived a wiped exercises collection) are cleared instead of hiding
+    // defaults from someone who has nothing.
+    const freshStart = existingIds.size === 0 && storedTombstones.length > 0;
+    const deletedDefaultIds = freshStart ? [] : storedTombstones;
 
     const missing = defaultExercises.filter(
       ex => !existingIds.has(ex.id) && !deletedDefaultIds.includes(ex.id)
@@ -70,7 +79,7 @@ export async function ensureExercisesSeeded(
 
     const bumpedSeedVersion = prevSeedVersion < CURRENT_SEED_VERSION;
 
-    if (missing.length === 0 && !bumpedSeedVersion) {
+    if (missing.length === 0 && !bumpedSeedVersion && !freshStart) {
       seededUserIds.add(userId);
       return { addedCount: 0, bumpedSeedVersion: false };
     }
@@ -82,9 +91,16 @@ export async function ensureExercisesSeeded(
       const ref = doc(exercisesCol, id);
       batch.set(ref, stripUndefinedDeep(payload));
     }
-    
-    if (bumpedSeedVersion) {
-      batch.set(profileRef, { seedVersion: CURRENT_SEED_VERSION }, { merge: true });
+
+    if (bumpedSeedVersion || freshStart) {
+      batch.set(
+        profileRef,
+        {
+          seedVersion: CURRENT_SEED_VERSION,
+          ...(freshStart ? { deletedDefaultIds: [] } : {}),
+        },
+        { merge: true }
+      );
     }
 
     await batch.commit();

@@ -6,6 +6,8 @@ import { Edit3, Trash2, GripVertical, History } from 'lucide-react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { cn } from '@/lib/utils';
+import { useI18n } from '@/contexts/LanguageContext';
+import { displayExerciseName } from '@/lib/exerciseDisplay';
 
 interface RoutineCardProps {
   routine: Routine;
@@ -15,6 +17,7 @@ interface RoutineCardProps {
 }
 
 export function RoutineCard({ routine, onEdit, onDelete, onViewHistory }: RoutineCardProps) {
+  const { t, tn, language } = useI18n();
   const {
     attributes,
     listeners,
@@ -32,8 +35,8 @@ export function RoutineCard({ routine, onEdit, onDelete, onViewHistory }: Routin
   };
 
   return (
-    <Card 
-      ref={setNodeRef} 
+    <Card
+      ref={setNodeRef}
       style={style}
       className={cn(
         "flex h-full flex-col overflow-hidden rounded-lg transition-colors hover:border-primary/40",
@@ -48,42 +51,42 @@ export function RoutineCard({ routine, onEdit, onDelete, onViewHistory }: Routin
             {/* ListChecks icon removed */}
         </div>
         <CardDescription className="text-[12px] text-muted-foreground">
-            {routine.exercises.length} exercise{routine.exercises.length === 1 ? '' : 's'}
+            {tn('exercises.count', routine.exercises.length)}
         </CardDescription>
         <button
           type="button"
           {...attributes}
           {...listeners}
           className="absolute right-2 top-2 flex h-10 w-10 cursor-grab items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          aria-label={`Drag to reorder ${routine.name}`}
+          aria-label={t('card.dragToReorder', { name: routine.name })}
         >
           <GripVertical className="h-[18px] w-[18px]" />
         </button>
       </CardHeader>
       <CardContent className="flex-grow pb-3">
         <CardDescription className="line-clamp-3 text-[13px] leading-snug">
-          {routine.description || "No description available."}
+          {routine.description || t('routines.noDescription')}
         </CardDescription>
         {routine.exercises.length > 0 && (
           <div className="mt-3">
-            <p className="eyebrow mb-1.5">Exercises</p>
+            <p className="eyebrow mb-1.5">{t('common.exercises')}</p>
             <ul className="space-y-1 text-[13px] text-muted-foreground">
               {routine.exercises.slice(0, 8).map(ex => (
-                <li key={ex.id} className="truncate">{ex.name}</li>
+                <li key={ex.id} className="truncate">{displayExerciseName(ex, language)}</li>
               ))}
-              {routine.exercises.length > 8 && <li>…and {routine.exercises.length - 8} more</li>}
+              {routine.exercises.length > 8 && <li>{t('routines.andMore', { n: routine.exercises.length - 8 })}</li>}
             </ul>
           </div>
         )}
       </CardContent>
       <CardFooter className="flex justify-end gap-1 border-t p-2">
-        <Button variant="ghost" size="icon" className="h-10 w-10" onClick={() => onViewHistory(routine)} aria-label={`History for ${routine.name}`}>
+        <Button variant="ghost" size="icon" className="h-10 w-10" onClick={() => onViewHistory(routine)} aria-label={t('routines.historyFor', { name: routine.name })}>
           <History className="h-4 w-4" />
         </Button>
-        <Button variant="ghost" size="icon" className="h-10 w-10" onClick={() => onEdit(routine)} aria-label={`Edit ${routine.name}`}>
+        <Button variant="ghost" size="icon" className="h-10 w-10" onClick={() => onEdit(routine)} aria-label={t('routines.edit', { name: routine.name })}>
           <Edit3 className="h-4 w-4" />
         </Button>
-        <Button variant="ghost" size="icon" onClick={() => onDelete(routine.id)} aria-label={`Delete ${routine.name}`} className="h-10 w-10 text-muted-foreground hover:bg-destructive/10 hover:text-destructive">
+        <Button variant="ghost" size="icon" onClick={() => onDelete(routine.id)} aria-label={t('routines.deleteAria', { name: routine.name })} className="h-10 w-10 text-muted-foreground hover:bg-destructive/10 hover:text-destructive">
           <Trash2 className="h-4 w-4" />
         </Button>
       </CardFooter>

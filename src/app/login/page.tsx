@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Logo } from "@/components/Logo";
 import { useAuth } from "@/contexts/AuthContext";
+import { useI18n } from "@/contexts/LanguageContext";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { Loader2 } from "lucide-react";
@@ -23,6 +24,7 @@ const GoogleIcon = () => (
 
 export default function LoginPage() {
   const { loginWithGoogle, isAuthenticated, isLoading } = useAuth();
+  const { t } = useI18n();
   const router = useRouter();
 
   useEffect(() => {
@@ -56,20 +58,20 @@ export default function LoginPage() {
           <div className="mb-6 flex justify-center">
             <Logo iconSize={30} textSize="text-[26px]" />
           </div>
-          <CardTitle className="text-[28px]">Welcome Back</CardTitle>
+          <CardTitle className="text-[28px]">{t('login.welcome')}</CardTitle>
           <CardDescription className="text-[15px]">
-            Sign in to continue to DDS Gym Tracker.
+            {t('login.subtitle')}
           </CardDescription>
         </CardHeader>
         <CardContent className="pb-8">
           <Button
             onClick={handleGoogleSignIn}
             className="w-full"
-            aria-label="Sign in with Google"
+            aria-label={t('login.google')}
             disabled={isLoading}
           >
             {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <GoogleIcon />}
-            Sign in with Google
+            {t('login.google')}
           </Button>
         </CardContent>
       </Card>

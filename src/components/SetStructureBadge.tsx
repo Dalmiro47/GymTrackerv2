@@ -1,15 +1,18 @@
 
 "use client";
 
-import { SET_STRUCTURE_COLORS, SET_STRUCTURE_LABEL, type SetStructure } from '@/types/setStructure';
+import { SET_STRUCTURE_COLORS, type SetStructure } from '@/types/setStructure';
+import { useI18n } from '@/contexts/LanguageContext';
+import { setStructureLabel } from '@/i18n';
 
 export function SetStructureBadge({ value }: { value: SetStructure }) {
+  const { language } = useI18n();
   if (!value || value === 'normal') {
     return null; // Don't render anything for "normal" to keep UI clean
   }
-  
+
   const styles = SET_STRUCTURE_COLORS[value];
-  
+
   return (
     <span style={{
       display: 'inline-flex',
@@ -30,7 +33,7 @@ export function SetStructureBadge({ value }: { value: SetStructure }) {
       maxWidth: 'max-content',
       flex: '0 0 auto',
     }}>
-      {SET_STRUCTURE_LABEL[value]}
+      {setStructureLabel(value, language)}
     </span>
   );
 }
