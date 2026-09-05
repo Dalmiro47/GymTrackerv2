@@ -70,7 +70,7 @@ users/{userId}/
 
 ### AI Coach
 
-The Coach is a contextual chat embedded in `/log` (workout coaching) and `/routines` (program analysis). It uses Groq (model: `qwen/qwen3.6-27b`, with `reasoning_effort: 'none'`) via a vendor-agnostic LLM provider interface.
+The Coach is a contextual chat embedded in `/log` (workout coaching) and `/routines` (program analysis). It uses Groq (model: `qwen/qwen3.6-27b`, with `reasoning_effort: 'none'`) via a vendor-agnostic LLM provider interface. The client sends the profile `language` with every request and the system prompt forces replies in it (see Internationalization) — the coach never follows the language the user happens to type in.
 
 **Key files:**
 - `src/lib/ai/llm-provider.ts` — `LLMProvider` interface + `GroqProvider` (OpenAI-compatible REST)
@@ -82,18 +82,27 @@ The Coach is a contextual chat embedded in `/log` (workout coaching) and `/routi
 
 **To extend AI features:** Add a new mode in `context-builders.ts` + `chat-prompts.ts`, then use `CoachChatSheet` with `mode="your-mode"`.
 
+### Internationalization (EN / ES-LatAm, 2026-09)
+
+- The language is a **profile setting**: `language?: 'en' | 'es'` on `users/{uid}/profile/profile` (`src/lib/types.gym.ts`), switched from the avatar menu (Language submenu next to Theme, `UserNav`) and applied instantly. `LanguageProvider` (`src/contexts/LanguageContext.tsx`) owns the persistence (`setLanguage` merges the field into the profile doc), mirrors it to localStorage (`gt-lang`) for the next visit, reloads it from the profile doc on sign-in, and sets `<html lang>`. `CoachProfileForm` strips `language` from its state so a profile save can never overwrite a later switch
+- Dictionaries live in `src/i18n/en.ts` (source of truth) and `src/i18n/es.ts` (typed `Record<keyof typeof en, string>`, so a missing key fails `typecheck`). Components use `const { t, tn, locale, language } = useI18n()`; `tn('exercises.count', n)` picks the `_one`/`_other` key. Non-React code (toasts inside memoised fetchers/hooks, `friendlyErrorMessage`, `unsavedChanges`, warm-up labels, routine-history phrasing) uses the module-level `t`/`tn` from `@/i18n`, which the provider keeps in sync — use it deliberately there so a language switch doesn't re-create fetch callbacks and refetch
+- **Stored values stay English**: muscle groups (`"Chest"`), set structures (`'superset'`), goals, genders, warm-up templates are data keys. Display them through `muscleGroupLabel()` / `setStructureLabel()` / `warmupTemplateLabel()` or the option maps in `CoachProfileForm`; never translate what gets written to Firestore
+- **Seeded default exercises** are also stored English (deterministic ids = slug of the English name; denormalized `name` copies in logs/routines/history snapshots; `inferWarmupTemplate` keys off English words). `src/lib/defaultExercises.es.ts` holds their Spanish name/targetNotes/setup/overload, applied at DISPLAY time by `src/lib/exerciseDisplay.ts` (`displayExerciseName` / `displayExerciseFields`, per field, only while the stored value still equals the seeded English one). Anything that renders, searches, sorts, or sends an exercise name to the coach goes through it — it resolves by `id` / `exerciseId`, so past logs, routines, progression, and history localize with no migration. The edit dialog pre-fills the displayed text; `ExerciseClientPage` maps untouched fields back to the stored English on save, otherwise "save without changes" would turn a default into a Spanish-named custom exercise. `routineHistory` diffs emit display names (snapshots keep stored names — they are hashed). User-named exercises are shown as-is
+- Dates: pass `{ locale }` to date-fns `format`, use the `date.*` pattern keys for long/short forms, `capitalize()` for standalone Spanish month/day names, and `locale={locale}` on `Calendar`
+- `/api/coach/chat` returns `{ code, error }`; the client maps `code` to a translated message (`use-coach-chat.ts`), so never rely on the English `error` text in the UI
+
 ### UI Stack
 
 - **shadCN/UI** components in `src/components/ui/` (Radix primitives + Tailwind)
 - **Tailwind** with CSS variable theming — colors/fonts defined in `src/app/globals.css` and `tailwind.config.ts`
-- **Design tokens ("Chalk & Iron", 2026-09)**: dark-first; single brand accent is `--primary` (sky, the PWA icon's dumbbell); `--warning` (amber) is the deload/plateau signal (`--chart-4` kept identical); `--accent` is a NEUTRAL gray wired to shadcn ghost/outline hovers — never use `bg-accent`/`text-accent` for brand actions (the pre-redesign code did, and it caused the color chaos). No Tailwind palette classes (`text-blue-600` etc.) outside the token system. Off-scale opacities (`bg-primary/12`) are silently dropped by Tailwind — use /10, /15, /20
+- **Design tokens ("Chalk & Iron", 2026-09)**: dark-first — dark is the DEFAULT theme for a user who never picked one (`DEFAULT_THEME` in `ThemeContext`, mirrored in `THEME_INIT_SCRIPT`; `system` is an explicit opt-in from the avatar menu); single brand accent is `--primary` (sky, the PWA icon's dumbbell); `--warning` (amber) is the deload/plateau signal (`--chart-4` kept identical); `--accent` is a NEUTRAL gray wired to shadcn ghost/outline hovers — never use `bg-accent`/`text-accent` for brand actions (the pre-redesign code did, and it caused the color chaos). No Tailwind palette classes (`text-blue-600` etc.) outside the token system. Off-scale opacities (`bg-primary/12`) are silently dropped by Tailwind — use /10, /15, /20
 - Fonts: Hanken Grotesk (`font-body`) + Big Shoulders Display (`font-headline`, dates/stats/day numbers/exercise names). Utilities in `globals.css`: `.surface .eyebrow .pressable .glass .animate-enter .enter-1..6 .no-scrollbar`; CSS-only motion with a reduced-motion guard. The iOS 16px `!important` rule covers `input, select, textarea` only (adding `button` flattens every chip)
 - **Shell**: mobile nav is `BottomNav` (tab bar, `--bottomnav-height`); the sidebar is desktop-only; pages can inject app-bar buttons via `AppBarActions`; the Training Log's Save/Delete instead sit in a floating dock centred in the content column at the AI Coach button's height (z-40, under the coach backdrop). Pickers use `ResponsiveSheet` — a floating panel centred in the viewport at every breakpoint (it wraps `Dialog`, not `Sheet`). `Dialog`/`AlertDialog` open with NO entry animation on purpose: the edge-slide sheet and the zoom/slide/blur combo both read as laggy on device, and directional entry (sliding in from the half of the screen you pressed) was tried and rejected — the coach window's plain appear is the reference feel. Do not re-add `animate-in`/`zoom`/`slide`/`backdrop-blur` to these overlays. `DialogTitle` uses the BODY font — `font-headline` (condensed Big Shoulders) reads squashed on a short title (2026-09) `WorkoutCalendar` + `WeekStrip` are shared pure-UI components (dashboard + log). `DialogHeader` reserves `pr-10` for the restyled close button; a header that sets its own padding must restate `pr-12`, otherwise tailwind-merge drops it and the title runs under the X (found 2026-09)
 - **PWA** enabled in production only (configured in `next.config.ts`)
 
 ### Key Types
 
-All domain types are in `src/types/index.ts` — `Exercise`, `Routine`, `WorkoutLog`, `SetEntry`, `UserProfile`, etc. Set structure variants (straight sets, drop sets, supersets, etc.) are in `src/types/setStructure.ts`.
+All domain types are in `src/types/index.ts` — `Exercise`, `Routine`, `WorkoutLog`, `SetEntry`, `UserProfile`, etc. Set structure variants (straight sets, drop sets, supersets, etc.) are in `src/types/setStructure.ts`. The coach-profile shape (goal, constraints, `language`) is `UserProfile` in `src/lib/types.gym.ts`. `NavItem.title` is a translation key.
 
 ### Build Notes
 
@@ -107,7 +116,7 @@ All domain types are in `src/types/index.ts` — `Exercise`, `Routine`, `Workout
 - Exercise identity = name + muscleGroup, never name alone. `dedupeExercisesByNameAndMuscle` feeds the shared picker (routines + Training Log's Add Exercise); keying on name alone silently hid "Dips" (Triceps) behind "Dips" (Chest) — the user only noticed by renaming one (fixed 2026-08)
 - `LoggedExercise.id` (composite row id, `${exerciseId}-${date}-${ts}`, used by dnd-kit) is NOT `LoggedExercise.exerciseId` (library `Exercise.id`). Comparing a library exercise against row ids never matches, so the filter silently becomes a no-op that still *looks* correct — this shipped a broken "exclude already-logged" filter in the Replace picker (fixed 2026-08)
 - Firestore reads in `src/services/` are memoized via `src/lib/sessionCache.ts` (per-user keys, 5-min TTL, promise-deduped). Any NEW write path in these services must call `invalidateCache` with the matching prefix (`exercises:{uid}`, `routines:{uid}`, `wl:{uid}`) or pages will silently serve stale data (added 2026-08)
-- `AvailableExercisesSelector` renders the muscle-group grid and the filtered list from ONE tree with ONE search `<Input>`. Splitting them into two `return`s (or two components) remounts the input on the first keystroke, dropping focus and closing the mobile keyboard — invisible on desktop and to Playwright (fixed 2026-08)
+- `AvailableExercisesSelector` renders the muscle-group grid and the filtered list from ONE tree with ONE search `<Input>`. Splitting them into two `return`s (or two components) remounts the input on the first keystroke, dropping focus and closing the mobile keyboard — invisible on desktop and to automated tests (fixed 2026-08)
 - `LoggedExerciseCard`'s card border is the set-structure channel (`SET_STRUCTURE_COLORS` / `--ss-*` tokens). Per-card *state* cues must not add a ring there — a rep-goal ring shipped as two competing outlines on superset cards. State lives in a full-bleed band inside `CardContent` instead, always mounted with only its colors toggling, so a cue that flips mid-typing can't remount the set inputs (fixed 2026-08)
 - Groq reasoning models spend `max_completion_tokens` on hidden `<think>` tokens BEFORE writing the answer, so leaving reasoning on silently truncates replies mid-sentence (`finish_reason: length`) instead of erroring. `qwen/qwen3.6-27b` burned the full 1500-token budget on a one-line question; `reasoning_effort: 'none'` (Groq accepts only `none` | `default`) is required in `llm-provider.ts` for any budget this small (fixed 2026-08)
 - Deload persistence: a log saved with `isDeload` stores the *already-reduced* sets plus `deloadApplied: true`; `currentLog` transforms the baseline ONLY when `isDeload && !deloadApplied`. Dropping that guard re-reduces stored sets on every reload (the original compounding bug in a new coat) (added 2026-08)
@@ -120,27 +129,18 @@ All domain types are in `src/types/index.ts` — `Exercise`, `Routine`, `Workout
 - Do not add scope (refactors, extra configurability) unless explicitly asked
 - When proposing UX changes, separate effects/polish (welcome) from structural/layout changes (require explicit approval)
 
-## Playwright
-- Never run Playwright tests unless explicitly instructed with the phrase "run playwright"
-- Never add Playwright test runs to the default dev workflow or pre-commit hooks
-- Tests live in /tests/playwright/ and are only executed on demand
-- Always use assertion/test spec mode (pass/fail) — never screenshot-only mode
-- Screenshot approach is prohibited: Claude reads test output directly, no human review loop needed
-
 ## Custom Commands
-- `/playwright` — runs Playwright test suite for current feature; creates spec if none exists; auto-corrects until all pass
 - `/brain-sync` — captures current session state to Open Brain MCP as a meeting_debrief thought
 
 ## Session Workflow
 1. Work on feature/fix
-2. Run `/playwright` when implementation is done
-3. Run `/brain-sync` before ending the session
+2. Run `/brain-sync` before ending the session
 
 ## Agent Guardrails (non-negotiable)
 Keep this file between 200–300 lines max. Every line must earn its keep.
 
 ### Error Handling
-- Every server call must handle failure with a clear, friendly message in English (the UI language; the AI Coach replies in whatever language the user writes) — never a blank screen or unhandled crash. Use `friendlyErrorMessage()` from `src/lib/errorMessages.ts`; never interpolate `error.message` into a toast
+- Every server call must handle failure with a clear, friendly message in the user's profile language (EN or ES — every user-facing string goes through `src/i18n`, never a hardcoded literal) — never a blank screen or unhandled crash. Use `friendlyErrorMessage()` from `src/lib/errorMessages.ts`; never interpolate `error.message` into a toast
 - Loading states must always be visible to the user during async operations
 
 ### Security

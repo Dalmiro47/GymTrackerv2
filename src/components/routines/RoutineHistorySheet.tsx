@@ -28,6 +28,9 @@ import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { SetStructureBadge } from '@/components/SetStructureBadge';
 import { cn } from '@/lib/utils';
+import { useI18n } from '@/contexts/LanguageContext';
+import { muscleGroupLabel } from '@/i18n';
+import { displayExerciseName } from '@/lib/exerciseDisplay';
 
 /**
  * Entries rendered per page. The full history is fetched in one go (a routine has
@@ -51,6 +54,7 @@ interface RoutineHistorySheetProps {
  * resolution for exercises since deleted from the library.
  */
 export function RoutineHistorySheet({ userId, routine, isOpen, setIsOpen }: RoutineHistorySheetProps) {
+  const { t, tn, locale } = useI18n();
   const [timeline, setTimeline] = useState<RoutineVersionWithDiff[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -92,14 +96,14 @@ export function RoutineHistorySheet({ userId, routine, isOpen, setIsOpen }: Rout
         <DialogHeader className="shrink-0 space-y-1 border-b px-4 py-3 pr-12 text-left">
           <DialogTitle className="flex items-center gap-2">
             <History className="h-5 w-5 shrink-0 text-primary" />
-            <span className="truncate">History · {routine?.name}</span>
+            <span className="truncate">{t('history.title', { name: routine?.name ?? '' })}</span>
           </DialogTitle>
           <DialogDescription>
             {isLoading
-              ? 'Loading changes…'
+              ? t('history.loading')
               : timeline.length > 0 && oldest
-                ? `${timeline.length} ${timeline.length === 1 ? 'entry' : 'entries'} since ${format(new Date(oldest.version.createdAtMs), 'MMM d, yyyy')}`
-                : 'Changes you make to this routine are recorded here.'}
+                ? tn('history.entriesSince', timeline.length, { date: format(new Date(oldest.version.createdAtMs), t('date.short'), { locale }) })
+                : t('history.recordedHere')}
           </DialogDescription>
         </DialogHeader>
 
@@ -119,11 +123,11 @@ export function RoutineHistorySheet({ userId, routine, isOpen, setIsOpen }: Rout
             {!isLoading && error && (
               <Alert variant="destructive">
                 <AlertTriangle className="h-4 w-4" />
-                <AlertTitle>Couldn&apos;t load this routine&apos;s history.</AlertTitle>
+                <AlertTitle>{t('history.loadFailed')}</AlertTitle>
                 <AlertDescription className="space-y-3">
-                  <p className="text-xs">Check your connection and try again.</p>
+                  <p className="text-xs">{t('history.checkConnection')}</p>
                   <Button variant="outline" size="sm" onClick={loadHistory}>
-                    Retry
+                    {t('common.retry')}
                   </Button>
                 </AlertDescription>
               </Alert>
@@ -135,10 +139,10 @@ export function RoutineHistorySheet({ userId, routine, isOpen, setIsOpen }: Rout
                   <History className="h-6 w-6" />
                 </div>
                 <p className="font-headline text-[20px] font-semibold leading-tight">
-                  No changes recorded yet.
+                  {t('history.noChanges')}
                 </p>
                 <p className="mt-1 max-w-[240px] text-[13px] text-muted-foreground">
-                  Edits you make to this routine from now on will show up here.
+                  {t('history.noChangesHint')}
                 </p>
               </div>
             )}
@@ -169,8 +173,8 @@ export function RoutineHistorySheet({ userId, routine, isOpen, setIsOpen }: Rout
                       className="w-full"
                       onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}
                     >
-                      Load {Math.min(remaining, PAGE_SIZE)} more
-                      <span className="ml-1 text-muted-foreground">({remaining} older)</span>
+                      {t('history.loadMore', { n: Math.min(remaining, PAGE_SIZE) })}
+                      <span className="ml-1 text-muted-foreground">{t('history.older', { n: remaining })}</span>
                     </Button>
                   </div>
                 )}
@@ -196,6 +200,7 @@ function TimelineEntry({
   isExpanded: boolean;
   onToggle: () => void;
 }) {
+  const { t, language, locale } = useI18n();
   const { version, changes, hasGapBefore } = entry;
   const markers = markersForSnapshot(changes);
   const removed = removedExercisesFor(changes);
@@ -214,17 +219,17 @@ function TimelineEntry({
 
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <time className="text-[12px] font-medium tabular-nums text-muted-foreground">
-          {format(new Date(version.createdAtMs), 'MMM d, yyyy')}
+          {format(new Date(version.createdAtMs), t('date.short'), { locale })}
         </time>
-        {isCurrent && !isDeletion && <Badge className="h-6 px-2 text-[11px]">Current</Badge>}
+        {isCurrent && !isDeletion && <Badge className="h-6 px-2 text-[11px]">{t('history.current')}</Badge>}
         {version.changeType === 'created' && (
-          <Badge variant="secondary" className="h-6 px-2 text-[11px]">Created</Badge>
+          <Badge variant="secondary" className="h-6 px-2 text-[11px]">{t('history.created')}</Badge>
         )}
         {isDeletion && (
-          <Badge variant="destructive" className="h-6 px-2 text-[11px]">Deleted</Badge>
+          <Badge variant="destructive" className="h-6 px-2 text-[11px]">{t('history.deleted')}</Badge>
         )}
         {version.source === 'exercise-cascade' && (
-          <Badge variant="outline" className="h-6 px-2 text-[11px]">Library edit</Badge>
+          <Badge variant="outline" className="h-6 px-2 text-[11px]">{t('history.libraryEdit')}</Badge>
         )}
       </div>
 
@@ -232,7 +237,7 @@ function TimelineEntry({
 
       {hasGapBefore && (
         <p className="mt-1 text-[11px] text-muted-foreground/70">
-          Some earlier changes may not have been recorded.
+          {t('history.gap')}
         </p>
       )}
 
@@ -242,14 +247,17 @@ function TimelineEntry({
         aria-expanded={isExpanded}
         className="mt-1.5 inline-flex min-h-[32px] items-center gap-1 rounded-md text-[13px] text-muted-foreground transition-colors hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
-        View routine
+        {t('history.viewRoutine')}
         <ChevronDown className={cn('h-3 w-3 transition-transform', isExpanded && 'rotate-180')} />
       </button>
 
       {isExpanded && (
         <ul className="mt-2 space-y-1 rounded-md bg-muted/40 p-2.5">
           {version.snapshot.exercises.map((ex, i) => {
-            const marker = markers.get(ex.name);
+            // Change names are already display names (see diffRoutineSnapshots),
+            // so the marker lookup must use the same form.
+            const shownName = displayExerciseName(ex, language);
+            const marker = markers.get(shownName);
             return (
               <li key={`${ex.id}-${i}`} className="flex items-center gap-2 text-xs">
                 <span
@@ -263,8 +271,8 @@ function TimelineEntry({
                 >
                   {marker === 'added' ? '+' : marker === 'replaced' ? '↻' : marker === 'modified' ? '·' : ''}
                 </span>
-                <span className="min-w-0 flex-1 truncate">{ex.name}</span>
-                <span className="shrink-0 text-[10px] text-muted-foreground">{ex.muscleGroup}</span>
+                <span className="min-w-0 flex-1 truncate">{shownName}</span>
+                <span className="shrink-0 text-[10px] text-muted-foreground">{muscleGroupLabel(ex.muscleGroup, language)}</span>
                 <SetStructureBadge value={ex.setStructure} />
               </li>
             );
@@ -273,11 +281,11 @@ function TimelineEntry({
             <li key={`removed-${i}`} className="flex items-center gap-2 text-xs text-muted-foreground">
               <span className="w-3 shrink-0 text-center font-semibold" aria-hidden>−</span>
               <span className="min-w-0 flex-1 truncate line-through">{ex.name}</span>
-              <span className="shrink-0 text-[10px]">{ex.muscleGroup}</span>
+              <span className="shrink-0 text-[10px]">{muscleGroupLabel(ex.muscleGroup, language)}</span>
             </li>
           ))}
           {version.snapshot.exercises.length === 0 && removed.length === 0 && (
-            <li className="text-xs text-muted-foreground">No exercises in this version.</li>
+            <li className="text-xs text-muted-foreground">{t('history.noExercisesInVersion')}</li>
           )}
         </ul>
       )}

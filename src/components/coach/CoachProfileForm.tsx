@@ -3,6 +3,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebaseConfig';
 import { useAuth } from '@/contexts/AuthContext';
+import { useI18n } from '@/contexts/LanguageContext';
+import type { TranslationKey } from '@/i18n';
 import type { UserProfile, Goal, GenderOption } from '@/lib/types.gym';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -17,8 +19,33 @@ import { friendlyErrorMessage } from '@/lib/errorMessages';
 const clampSession = (n?: number) =>
   typeof n === 'number' ? Math.min(180, Math.max(20, Math.round(n))) : undefined;
 
-export function CoachProfileForm({ initial, title = 'Profile' }: { initial: UserProfile; title?: string }) {
+// Stored values stay English (they are data keys the coach prompts read);
+// only the labels are translated.
+const GOAL_OPTIONS: Array<{ value: Goal; label: TranslationKey }> = [
+  { value: 'Hypertrophy', label: 'goal.hypertrophy' },
+  { value: 'Strength', label: 'goal.strength' },
+  { value: 'Strength+Hypertrophy', label: 'goal.strengthHypertrophy' },
+  { value: 'Fat Loss', label: 'goal.fatLoss' },
+  { value: 'General Fitness', label: 'goal.general' },
+];
+
+const GENDER_OPTIONS: Array<{ value: GenderOption; label: TranslationKey }> = [
+  { value: 'Man', label: 'gender.man' },
+  { value: 'Woman', label: 'gender.woman' },
+  { value: 'Nonbinary', label: 'gender.nonbinary' },
+  { value: 'Self-describe', label: 'gender.selfDescribe' },
+  { value: 'Prefer not to say', label: 'gender.declineToState' },
+];
+
+// `language` is owned by the avatar menu (LanguageContext persists it on its
+// own). It is dropped from this form so a save can never write back a stale
+// value over a switch made after the page loaded.
+const withoutLanguage = ({ language: _language, ...rest }: UserProfile): UserProfile => rest;
+
+export function CoachProfileForm({ initial: rawInitial, title }: { initial: UserProfile; title?: string }) {
   const { user } = useAuth();
+  const { t } = useI18n();
+  const initial = useMemo(() => withoutLanguage(rawInitial), [rawInitial]);
   const [form, setForm] = useState<UserProfile>(initial);
   const [baseline, setBaseline] = useState<UserProfile>(initial); // for dirty check
   const [saving, setSaving] = useState(false);
@@ -53,8 +80,8 @@ export function CoachProfileForm({ initial, title = 'Profile' }: { initial: User
     } catch (error) {
       console.error('[CoachProfileForm] save failed:', error);
       toast({
-        title: 'Save error',
-        description: friendlyErrorMessage(error, "Couldn't save your profile. Check your connection and try again."),
+        title: t('common.saveErrorTitle'),
+        description: friendlyErrorMessage(error, t('profile.saveErrorDesc')),
         variant: 'destructive',
       });
     } finally {
@@ -65,29 +92,27 @@ export function CoachProfileForm({ initial, title = 'Profile' }: { initial: User
   return (
     <Card className="animate-enter enter-1">
       <CardHeader className="border-b">
-        <CardTitle>{title}</CardTitle>
+        <CardTitle>{title ?? t('userNav.profile')}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-6 pt-6">
-       <p className="eyebrow">Training targets</p>
+       <p className="eyebrow">{t('profile.trainingTargets')}</p>
        <div className="!mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
         {/* Goal */}
         <div className="space-y-1.5">
-          <Label>Goal</Label>
+          <Label>{t('profile.goal')}</Label>
           <Select value={form.goal} onValueChange={(v) => setForm({ ...form, goal: v as Goal })}>
-            <SelectTrigger><SelectValue placeholder="Goal" /></SelectTrigger>
+            <SelectTrigger><SelectValue placeholder={t('profile.goal')} /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="Hypertrophy">Hypertrophy</SelectItem>
-              <SelectItem value="Strength">Strength</SelectItem>
-              <SelectItem value="Strength+Hypertrophy">Strength + Hypertrophy</SelectItem>
-              <SelectItem value="Fat Loss">Fat Loss</SelectItem>
-              <SelectItem value="General Fitness">General Fitness</SelectItem>
+              {GOAL_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>{t(opt.label)}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
 
         {/* Days/week target */}
         <div className="space-y-1.5">
-          <Label>Days/week target</Label>
+          <Label>{t('profile.daysPerWeek')}</Label>
           <Input
             type="number"
             value={form.daysPerWeekTarget ?? ''}
@@ -101,7 +126,7 @@ export function CoachProfileForm({ initial, title = 'Profile' }: { initial: User
 
         {/* Approx. time per session */}
         <div className="space-y-1.5">
-          <Label>Approx. time per session (min)</Label>
+          <Label>{t('profile.sessionTime')}</Label>
           <Input
             type="number"
             inputMode="numeric"
@@ -116,14 +141,14 @@ export function CoachProfileForm({ initial, title = 'Profile' }: { initial: User
                 sessionTimeTargetMin: Number.isFinite(n as number) ? (n as number) : undefined,
               });
             }}
-            placeholder="e.g. 60"
+            placeholder={t('profile.sessionTimePlaceholder')}
           />
         </div>
 
         <div className="space-y-1.5 sm:col-span-2">
-          <Label>Constraints</Label>
+          <Label>{t('profile.constraints')}</Label>
           <Input
-            placeholder="e.g., Lower back sensitivity, Home gym"
+            placeholder={t('profile.constraintsPlaceholder')}
             value={(form.constraints || []).join(', ')}
             onChange={(e) =>
               setForm({
@@ -137,10 +162,10 @@ export function CoachProfileForm({ initial, title = 'Profile' }: { initial: User
         </div>
        </div>
 
-       <p className="eyebrow border-t pt-5">About you</p>
+       <p className="eyebrow border-t pt-5">{t('profile.aboutYou')}</p>
        <div className="!mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">
-          <Label>Age</Label>
+          <Label>{t('profile.age')}</Label>
           <Input
             type="number"
             value={form.age ?? ''}
@@ -153,15 +178,17 @@ export function CoachProfileForm({ initial, title = 'Profile' }: { initial: User
 
         {/* Gender (col 1) */}
         <div className="space-y-1.5">
-          <Label>Gender</Label>
+          <Label>{t('profile.gender')}</Label>
           <Select
             value={gender}
             onValueChange={(v) => {
               const g = v as GenderOption;
               setForm(prev => {
                 const next = { ...prev, gender: g };
+                // Always start blank: a leftover value from an older profile doc
+                // must not be prefilled into the self-describe field.
                 if (g === 'Self-describe') {
-                  if (next.genderSelfDescribe == null) next.genderSelfDescribe = '';
+                  next.genderSelfDescribe = '';
                 } else {
                   delete (next as any).genderSelfDescribe;
                 }
@@ -169,13 +196,11 @@ export function CoachProfileForm({ initial, title = 'Profile' }: { initial: User
               });
             }}
           >
-            <SelectTrigger><SelectValue placeholder="Select gender" /></SelectTrigger>
+            <SelectTrigger><SelectValue placeholder={t('profile.selectGender')} /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="Man">Man</SelectItem>
-              <SelectItem value="Woman">Woman</SelectItem>
-              <SelectItem value="Nonbinary">Nonbinary</SelectItem>
-              <SelectItem value="Self-describe">Prefer to self-describe</SelectItem>
-              <SelectItem value="Prefer not to say">Decline to state</SelectItem>
+              {GENDER_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>{t(opt.label)}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
@@ -183,9 +208,11 @@ export function CoachProfileForm({ initial, title = 'Profile' }: { initial: User
         {/* Self-describe (col 2, same row as Gender when selected) */}
         {form.gender === 'Self-describe' && (
           <div className="space-y-1.5">
-            <Label>Please self-describe</Label>
+            <Label>{t('profile.selfDescribe')}</Label>
             <Input
-              placeholder="Enter your gender"
+              name="gender-self-describe"
+              autoComplete="off"
+              placeholder={t('profile.selfDescribePlaceholder')}
               value={form.genderSelfDescribe ?? ''}
               onChange={(e) => setForm({ ...form, genderSelfDescribe: e.target.value })}
             />
@@ -195,14 +222,14 @@ export function CoachProfileForm({ initial, title = 'Profile' }: { initial: User
 
         <div className="!mt-6 flex items-center gap-3 border-t pt-4">
           <Button onClick={save} disabled={saving || !isDirty} className="h-11 min-w-[150px]">
-            {saving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving…</> : 'Save profile'}
+            {saving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> {t('common.saving')}</> : t('profile.saveButton')}
           </Button>
           {saved ? (
             <span className="flex items-center gap-1 text-[13px] text-success" aria-live="polite">
-              <CheckCircle2 className="h-4 w-4" /> Saved
+              <CheckCircle2 className="h-4 w-4" /> {t('profile.saved')}
             </span>
           ) : isDirty ? (
-            <span className="text-[13px] text-muted-foreground" aria-live="polite">Unsaved changes</span>
+            <span className="text-[13px] text-muted-foreground" aria-live="polite">{t('common.unsavedChanges')}</span>
           ) : null}
         </div>
       </CardContent>

@@ -1,5 +1,6 @@
 
 import type { LoggedSet } from '@/types';
+import { t } from '@/i18n';
 
 // keep only valid working sets
 export function validWorkingSets(sets: LoggedSet[]): { reps: number; weight: number }[] {
@@ -35,5 +36,5 @@ export function isBetterPR(candidate: { reps: number; weight: number } | null,
 
 // format for the badge
 export function formatPR(set: { reps: number; weight: number } | null): string {
-  return set ? `PR: ${set.reps}x${Number(set.weight).toString()}kg` : 'PR: N/A';
+  return set ? `PR: ${set.reps}x${Number(set.weight).toString()}kg` : t('pr.na');
 }

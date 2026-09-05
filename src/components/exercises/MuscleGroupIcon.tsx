@@ -1,6 +1,7 @@
 import type { MuscleGroup } from '@/lib/constants';
 import { MUSCLE_GROUP_ICONS } from '@/lib/constants';
 import { cn } from '@/lib/utils';
+import { muscleGroupLabel } from '@/i18n';
 
 interface MuscleGroupIconProps {
   muscleGroup: MuscleGroup;
@@ -10,5 +11,5 @@ interface MuscleGroupIconProps {
 
 export function MuscleGroupIcon({ muscleGroup, className, size = 16 }: MuscleGroupIconProps) {
   const IconComponent = MUSCLE_GROUP_ICONS[muscleGroup] || MUSCLE_GROUP_ICONS.Other;
-  return <IconComponent className={cn("inline-block", className)} size={size} aria-label={muscleGroup}/>;
+  return <IconComponent className={cn("inline-block", className)} size={size} aria-label={muscleGroupLabel(muscleGroup)}/>;
 }

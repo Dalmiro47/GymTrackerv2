@@ -6,10 +6,11 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import type { Exercise, Routine, RoutineData, RoutineExercise, SetStructure } from '@/types';
 import { useToast } from '@/hooks/use-toast';
+import { useI18n } from '@/contexts/LanguageContext';
 
 const exerciseIdentityKey = (ex: { name: string; muscleGroup?: string | null }) =>
   `${ex.name.trim().toLowerCase()}::${String(ex.muscleGroup ?? '').trim().toLowerCase()}`;
-import { Loader2, Plus, ArrowLeft, Check } from 'lucide-react'; 
+import { Loader2, Plus, ArrowLeft, Check } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -29,12 +30,13 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge'; 
 
-const routineFormSchema = z.object({
-  name: z.string().min(3, "Routine name must be at least 3 characters."),
+// Built per render language so the validation message is translated too.
+const makeRoutineFormSchema = (nameMin: string) => z.object({
+  name: z.string().min(3, nameMin),
   description: z.string().optional(),
 });
 
-type RoutineFormData = z.infer<typeof routineFormSchema>;
+type RoutineFormData = z.infer<ReturnType<typeof makeRoutineFormSchema>>;
 
 interface AddEditRoutineDialogProps {
   routineToEdit?: Routine | null;
@@ -56,6 +58,8 @@ export function AddEditRoutineDialog({
   isLoadingExercises,
 }: AddEditRoutineDialogProps) {
   const { toast } = useToast();
+  const { t } = useI18n();
+  const routineFormSchema = useMemo(() => makeRoutineFormSchema(t('routineForm.nameMin')), [t]);
   const { register, handleSubmit, reset, formState: { errors } } = useForm<RoutineFormData>({
     resolver: zodResolver(routineFormSchema),
     defaultValues: {
@@ -163,8 +167,8 @@ export function AddEditRoutineDialog({
   const onSubmit = async (data: RoutineFormData) => {
     if (selectedExerciseObjects.some(ex => ex.isMissing)) {
         toast({
-            title: "Exercises not found",
-            description: "This routine contains exercises that no longer exist in your library. Remove or replace them before saving.",
+            title: t('routineForm.notFoundTitle'),
+            description: t('routineForm.notFoundDesc'),
             variant: "destructive",
         });
         return;
@@ -173,8 +177,8 @@ export function AddEditRoutineDialog({
 
     if (validExercises.length === 0) {
         toast({
-            title: "No Exercises Selected",
-            description: "Please add at least one exercise to your routine.",
+            title: t('routineForm.noExercisesTitle'),
+            description: t('routineForm.noExercisesDesc'),
             variant: "destructive",
         });
         return;
@@ -235,18 +239,16 @@ export function AddEditRoutineDialog({
         <DialogHeader className="z-10 shrink-0 border-b bg-background p-4 pr-12">
           <div className="flex items-center justify-between gap-2">
             <DialogTitle>
-              {isPickerOpen ? 'Select Exercises' : (routineToEdit ? 'Edit Routine' : 'Create Routine')}
+              {isPickerOpen ? t('routineForm.selectExercises') : (routineToEdit ? t('routineForm.editRoutine') : t('routineForm.createRoutine'))}
             </DialogTitle>
             {isPickerOpen && (
                <Badge variant="secondary" className="ml-2 shrink-0">
-                 {selectedExerciseObjects.length} Selected
+                 {t('routineForm.selected', { n: selectedExerciseObjects.length })}
                </Badge>
             )}
           </div>
           <DialogDescription>
-            {isPickerOpen
-              ? 'Search and select exercises to add to your routine.'
-              : 'Organize your routine details below.'}
+            {isPickerOpen ? t('routineForm.pickerDesc') : t('routineForm.formDesc')}
           </DialogDescription>
         </DialogHeader>
 
@@ -264,22 +266,22 @@ export function AddEditRoutineDialog({
             <form id="routine-form" onSubmit={handleSubmit(onSubmit)} className="space-y-6">
               <div className="grid grid-cols-1 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="name">Routine Name</Label>
+                  <Label htmlFor="name">{t('routineForm.name')}</Label>
                   <Input
                     id="name"
                     {...register('name')}
-                    placeholder="e.g., Push Day A"
+                    placeholder={t('routineForm.namePlaceholder')}
                     className="h-11 font-medium"
                     aria-invalid={errors.name ? "true" : "false"}
                   />
                   {errors.name && <p className="text-[13px] text-destructive">{errors.name.message}</p>}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="description">Description (Optional)</Label>
+                  <Label htmlFor="description">{t('routineForm.descriptionLabel')}</Label>
                   <Textarea
                     id="description"
                     {...register('description')}
-                    placeholder="Notes about this routine..."
+                    placeholder={t('routineForm.descriptionPlaceholder')}
                     rows={2}
                   />
                 </div>
@@ -287,19 +289,19 @@ export function AddEditRoutineDialog({
 
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                    <Label className="eyebrow">Exercises ({selectedExerciseObjects.length})</Label>
+                    <Label className="eyebrow">{t('routineForm.exercisesCount', { n: selectedExerciseObjects.length })}</Label>
                 </div>
 
                 <div className="min-h-[100px] rounded-md border bg-card">
                     {selectedExerciseObjects.length === 0 ? (
                         <div className="flex h-32 flex-col items-center justify-center text-[13px] text-muted-foreground">
-                            <p>No exercises added yet.</p>
+                            <p>{t('routineForm.noneAdded')}</p>
                             <Button
                                 type="button"
                                 variant="link"
                                 onClick={(e) => { e.preventDefault(); openPickerAtIndex(null); }}
                             >
-                                Browse Library
+                                {t('routineForm.browseLibrary')}
                             </Button>
                         </div>
                     ) : (
@@ -327,32 +329,32 @@ export function AddEditRoutineDialog({
                     variant="ghost" 
                     onClick={(e) => { e.preventDefault(); setIsPickerOpen(false); }}
                 >
-                    <ArrowLeft className="mr-2 h-4 w-4" /> Back
+                    <ArrowLeft className="mr-2 h-4 w-4" /> {t('common.back')}
                 </Button>
-                <Button 
-                    type="button" 
-                    onClick={handleDoneAdding} 
+                <Button
+                    type="button"
+                    onClick={handleDoneAdding}
                 >
-                    <Check className="mr-2 h-4 w-4" /> Done Adding
+                    <Check className="mr-2 h-4 w-4" /> {t('routineForm.doneAdding')}
                 </Button>
             </>
           ) : (
             <>
-                <Button 
-                    type="button" 
-                    variant="outline" 
-                    onClick={() => setIsOpen(false)} 
+                <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setIsOpen(false)}
                     disabled={isSaving}
                 >
-                    Cancel
+                    {t('common.cancel')}
                 </Button>
-                <Button 
-                    type="submit" 
-                    form="routine-form" 
-                    disabled={isSaving || isLoadingExercises} 
+                <Button
+                    type="submit"
+                    form="routine-form"
+                    disabled={isSaving || isLoadingExercises}
                 >
                     {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                    {isSaving ? "Saving..." : (routineToEdit ? "Save Changes" : "Create Routine")}
+                    {isSaving ? t('routineForm.savingEllipsis') : (routineToEdit ? t('routineForm.saveChanges') : t('routineForm.createRoutine'))}
                 </Button>
             </>
           )}

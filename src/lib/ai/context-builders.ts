@@ -8,6 +8,9 @@ import { parseISO, startOfISOWeek, formatISO } from 'date-fns';
 import { buildCoachFactsCompact, type CoachFactCompact } from '@/lib/analysis';
 import { buildRoutineChangeLog, type RoutineChangeLog } from '@/lib/routineHistory';
 import type { RoutineVersion } from '@/types/routineHistory';
+// Exercise names go to the coach as the user SEES them (seeded defaults in the
+// UI language), so the reply can quote the same names the app shows.
+import { displayExerciseFields, displayExerciseName } from '@/lib/exerciseDisplay';
 
 // ─── Log-Day Context (current workout) ──────────────────────────────
 
@@ -41,17 +44,20 @@ export function serializeLogDayContext(
     isDeload: log.isDeload,
     notes: log.notes,
     profile,
-    exercises: log.exercises.map((ex: LoggedExercise) => ({
-      name: ex.name,
-      muscleGroup: ex.muscleGroup,
-      status: ex.isProvisional ? 'planned' : 'done',
-      sets: ex.sets
-        .filter((s) => s.reps !== null || s.weight !== null)
-        .map((s) => ({ reps: s.reps, weight: s.weight })),
-      personalRecord: ex.currentPR,
-      progressiveOverload: ex.progressiveOverload,
-      setStructure: (ex.setStructureOverride ?? ex.setStructure) as string | undefined,
-    })),
+    exercises: log.exercises.map((ex: LoggedExercise) => {
+      const shown = displayExerciseFields(ex);
+      return {
+        name: shown.name,
+        muscleGroup: ex.muscleGroup,
+        status: ex.isProvisional ? 'planned' : 'done',
+        sets: ex.sets
+          .filter((s) => s.reps !== null || s.weight !== null)
+          .map((s) => ({ reps: s.reps, weight: s.weight })),
+        personalRecord: ex.currentPR,
+        progressiveOverload: shown.progressiveOverload,
+        setStructure: (ex.setStructureOverride ?? ex.setStructure) as string | undefined,
+      };
+    }),
   };
 }
 
@@ -86,7 +92,7 @@ export function serializeDashboardContext(
 ): DashboardContext {
   return {
     exercises: results.map((r) => ({
-      name: r.name,
+      name: displayExerciseName(r),
       muscleGroup: r.muscleGroup,
       status: r.status,
       isKey: r.isKey,
@@ -122,6 +128,7 @@ export type RoutineReviewContext = {
 type RoutineLike = {
   name: string;
   exercises: Array<{
+    id?: string;
     name: string;
     muscleGroup: string;
     setStructure?: SetStructure;
@@ -144,7 +151,7 @@ export function buildRoutineReviewContext(
   const routineSummaries = routines.map((r) => ({
     name: r.name,
     exercises: r.exercises.map((ex) => ({
-      name: ex.name,
+      name: displayExerciseName(ex),
       muscleGroup: ex.muscleGroup,
       setStructure: ex.setStructure ?? 'normal',
     })),
@@ -170,11 +177,12 @@ export function buildRoutineReviewContext(
       week.volumeByMuscle[mg] = (week.volumeByMuscle[mg] || 0) + hardSets;
 
       // Track top lift per exercise
+      const shownName = displayExerciseName(ex);
       for (const s of ex.sets || []) {
         const score = (s.weight ?? 0) * (s.reps ?? 0);
-        const current = week.topLifts.get(ex.name);
+        const current = week.topLifts.get(shownName);
         if (!current || score > current.weight * current.reps) {
-          week.topLifts.set(ex.name, { weight: s.weight ?? 0, reps: s.reps ?? 0 });
+          week.topLifts.set(shownName, { weight: s.weight ?? 0, reps: s.reps ?? 0 });
         }
       }
     }

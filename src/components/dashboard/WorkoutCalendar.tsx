@@ -4,6 +4,7 @@ import * as React from "react";
 
 import { cn } from "@/lib/utils";
 import { Calendar } from "@/components/ui/calendar";
+import { useI18n } from "@/contexts/LanguageContext";
 
 export interface WorkoutCalendarProps {
   selectedDate: Date | undefined;
@@ -31,6 +32,7 @@ export function WorkoutCalendar({
   today,
   className,
 }: WorkoutCalendarProps) {
+  const { t, language, locale } = useI18n();
   return (
     <div className={cn("flex flex-col items-center", className)}>
       <Calendar
@@ -39,6 +41,7 @@ export function WorkoutCalendar({
         onSelect={onSelect}
         month={month}
         onMonthChange={onMonthChange}
+        locale={locale}
         weekStartsOn={1}
         toDate={today}
         disabled={{ after: today }}
@@ -54,15 +57,15 @@ export function WorkoutCalendar({
             const isOutside = !!activeModifiers?.outside;
 
             const label = [
-              date.toLocaleDateString(undefined, {
+              date.toLocaleDateString(language, {
                 year: "numeric",
                 month: "long",
                 day: "numeric",
               }),
-              isDeload ? "— Deload day" : isLogged ? "— Workout logged" : "",
+              isDeload ? t('calendar.deloadDay') : isLogged ? t('calendar.workoutLogged') : "",
             ]
               .filter(Boolean)
-              .join(" ");
+              .join("");
 
             return (
               <span
@@ -95,11 +98,11 @@ export function WorkoutCalendar({
       <div className="mt-3 flex items-center justify-center gap-4 text-[12px] text-muted-foreground">
         <span className="inline-flex items-center gap-1.5">
           <span aria-hidden className="inline-block h-1.5 w-1.5 rounded-full bg-primary" />
-          Logged
+          {t('calendar.logged')}
         </span>
         <span className="inline-flex items-center gap-1.5">
           <span aria-hidden className="inline-block h-1.5 w-1.5 rounded-full bg-warning" />
-          Deload
+          {t('calendar.deload')}
         </span>
       </div>
     </div>

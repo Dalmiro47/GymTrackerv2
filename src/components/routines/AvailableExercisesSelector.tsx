@@ -10,6 +10,9 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { dedupeExercisesByNameAndMuscle } from '@/lib/routineEditing';
+import { useI18n } from '@/contexts/LanguageContext';
+import { muscleGroupLabel } from '@/i18n';
+import { compareByDisplayName, displayExerciseName, exerciseMatchesQuery } from '@/lib/exerciseDisplay';
 
 interface AvailableExercisesSelectorProps {
   allExercises: Exercise[];
@@ -31,6 +34,7 @@ export function AvailableExercisesSelector({
   initialMuscleGroup = null,
   disabledExerciseIds = [],
 }: AvailableExercisesSelectorProps) {
+  const { t, tn, language } = useI18n();
   const [searchTerm, setSearchTerm] = useState('');
   const [activeMuscleGroup, setActiveMuscleGroup] = useState<MuscleGroup | 'All' | null>(initialMuscleGroup);
 
@@ -44,8 +48,8 @@ export function AvailableExercisesSelector({
   // includes the muscle group so a shared name across groups (e.g. "Dips" for Chest and
   // for Triceps) stays visible as two distinct entries.
   const uniqueExercises = useMemo(
-    () => dedupeExercisesByNameAndMuscle(allExercises),
-    [allExercises]
+    () => dedupeExercisesByNameAndMuscle(allExercises).sort(compareByDisplayName(language)),
+    [allExercises, language]
   );
 
   const exerciseCounts = useMemo(() => {
@@ -61,7 +65,7 @@ export function AvailableExercisesSelector({
     let temp = [...uniqueExercises];
     
     if (activeMuscleGroup === null && searchTerm.trim() !== '') {
-       return temp.filter(ex => ex.name.toLowerCase().includes(searchTerm.toLowerCase().trim()));
+       return temp.filter(ex => exerciseMatchesQuery(ex, searchTerm, language));
     }
 
     if (activeMuscleGroup && activeMuscleGroup !== 'All') {
@@ -69,11 +73,10 @@ export function AvailableExercisesSelector({
     }
 
     if (searchTerm.trim() !== '') {
-      const q = searchTerm.toLowerCase().trim();
-      temp = temp.filter(ex => ex.name.toLowerCase().includes(q));
+      temp = temp.filter(ex => exerciseMatchesQuery(ex, searchTerm, language));
     }
     return temp;
-  }, [uniqueExercises, searchTerm, activeMuscleGroup]);
+  }, [uniqueExercises, searchTerm, activeMuscleGroup, language]);
 
   // The muscle-group grid and the filtered list are two views of ONE tree — never two
   // separate `return`s. Typing the first character flips grid -> list; if each view owned
@@ -95,7 +98,7 @@ export function AvailableExercisesSelector({
               }}
           >
               <ArrowLeft className="h-4 w-4" />
-              Categories
+              {t('common.categories')}
           </Button>
         )}
         <div className="relative flex-grow">
@@ -103,8 +106,8 @@ export function AvailableExercisesSelector({
           <Input
             placeholder={
               isGridView || activeMuscleGroup === null || activeMuscleGroup === 'All'
-                ? 'Search all exercises...'
-                : `Search ${activeMuscleGroup} exercises...`
+                ? t('picker.searchAll')
+                : t('picker.searchGroup', { group: muscleGroupLabel(activeMuscleGroup, language) })
             }
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
@@ -124,8 +127,8 @@ export function AvailableExercisesSelector({
                     <Dumbbell className="h-[18px] w-[18px]" />
                 </span>
                 <span className="min-w-0">
-                    <span className="block truncate text-[15px] font-semibold">All Exercises</span>
-                    <span className="block text-[12px] text-muted-foreground tabular-nums">{uniqueExercises.length} items</span>
+                    <span className="block truncate text-[15px] font-semibold">{t('picker.allExercises')}</span>
+                    <span className="block text-[12px] text-muted-foreground tabular-nums">{tn('items.count', uniqueExercises.length)}</span>
                 </span>
             </button>
 
@@ -138,8 +141,8 @@ export function AvailableExercisesSelector({
                   onClick={() => setActiveMuscleGroup(mg)}
                   className="pressable flex min-h-[64px] flex-col justify-center rounded-md border border-border bg-card p-3 text-left transition-colors hover:border-primary/40 hover:bg-accent"
                 >
-                  <span className="truncate text-[15px] font-semibold">{mg}</span>
-                  <span className="text-[12px] text-muted-foreground tabular-nums">{count} exercises</span>
+                  <span className="truncate text-[15px] font-semibold">{muscleGroupLabel(mg, language)}</span>
+                  <span className="text-[12px] text-muted-foreground tabular-nums">{tn('exercises.count', count)}</span>
                 </button>
               );
             })}
@@ -177,15 +180,15 @@ export function AvailableExercisesSelector({
                     >
                       <div className="min-w-0">
                         <p className={cn("truncate text-[15px] font-medium", mode === 'multi' && isSelected && "text-primary")}>
-                            {exercise.name}
+                            {displayExerciseName(exercise, language)}
                         </p>
-                        <p className="text-[12px] text-muted-foreground">{exercise.muscleGroup}</p>
+                        <p className="text-[12px] text-muted-foreground">{muscleGroupLabel(exercise.muscleGroup, language)}</p>
                       </div>
 
                       {isDisabled ? (
                           <Badge variant="secondary" className="shrink-0 gap-1 font-normal">
                               <Check className="h-3 w-3" />
-                              Added
+                              {t('picker.added')}
                           </Badge>
                       ) : mode === 'multi' ? (
                           isSelected ? (
@@ -206,7 +209,7 @@ export function AvailableExercisesSelector({
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center h-32 text-muted-foreground text-sm">
-                <p>No exercises found.</p>
+                <p>{t('picker.noneFound')}</p>
               </div>
             )}
          </ScrollArea>

@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Trash2, ArrowUpCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatWeightHalf, snapToHalf } from '@/lib/rounding';
-
+import { useI18n } from '@/contexts/LanguageContext';
 
 interface SetInputRowProps {
   set: LoggedSet;
@@ -25,6 +25,7 @@ interface SetInputRowProps {
 }
 
 export function SetInputRow({ set, index, onSetChange, onRemoveSet, isProvisional, disabled, weightDisplay, setWeightDisplay, repTarget }: SetInputRowProps) {
+  const { t } = useI18n();
 
   const change = (field: 'reps'|'weight', v: string) => {
     onSetChange(index, field, v); // allow '' to go through -> becomes null in parent
@@ -55,8 +56,8 @@ export function SetInputRow({ set, index, onSetChange, onRemoveSet, isProvisiona
         maxLength={2}
         draggable={false}
         disabled={disabled}
-        placeholder="Reps"
-        aria-label={`Reps for set ${index + 1}`}
+        placeholder={t('common.reps')}
+        aria-label={t('set.repsFor', { n: index + 1 })}
         value={set.reps == null ? '' : String(set.reps)}
         onChange={(e) => {
           const raw = e.target.value;
@@ -104,8 +105,8 @@ export function SetInputRow({ set, index, onSetChange, onRemoveSet, isProvisiona
         maxLength={5}
         draggable={false}
         disabled={disabled}
-        placeholder="Weight"
-        aria-label={`Weight for set ${index + 1}`}
+        placeholder={t('common.weight')}
+        aria-label={t('set.weightFor', { n: index + 1 })}
         value={weightDisplay}
         onChange={(e) => {
           const raw = e.target.value;
@@ -188,7 +189,7 @@ export function SetInputRow({ set, index, onSetChange, onRemoveSet, isProvisiona
       <span className="text-[13px] text-muted-foreground">kg</span>
 
       <Button variant="ghost" size="icon" onClick={onRemoveSet} disabled={disabled}
-        aria-label={`Remove set ${index + 1}`}
+        aria-label={t('set.remove', { n: index + 1 })}
         className="h-11 w-11 rounded-md text-muted-foreground hover:text-destructive">
         <Trash2 className="h-4 w-4" />
       </Button>
@@ -201,7 +202,7 @@ export function SetInputRow({ set, index, onSetChange, onRemoveSet, isProvisiona
         <p className="col-start-2 col-span-5 flex items-center gap-1 text-[11px] font-medium leading-tight text-primary">
           <ArrowUpCircle aria-hidden="true" className="h-3 w-3 shrink-0" />
           <span>
-            Goal: <span className="tabular-nums font-semibold">{repTarget}</span> reps next session
+            {t('set.goal')} <span className="tabular-nums font-semibold">{repTarget}</span> {t('set.goalSuffix')}
           </span>
         </p>
       )}

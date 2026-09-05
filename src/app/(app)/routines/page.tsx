@@ -64,6 +64,10 @@ import { db } from '@/lib/firebaseConfig';
 import { subDays } from 'date-fns';
 import { getLogsSince } from '@/services/trainingLogService';
 import { confirmDiscardUnsavedChanges } from '@/lib/unsavedChanges';
+import { useI18n } from '@/contexts/LanguageContext';
+// Module-level `t` for toasts inside memoised fetchers, so a language switch
+// never re-creates them (and refetches). Render-time text uses the hook.
+import { t } from '@/i18n';
 
 
 export default function RoutinesPage() {
@@ -72,6 +76,7 @@ export default function RoutinesPage() {
   const { toast } = useToast();
   const router = useRouter();
   const isMobile = useIsMobile();
+  const { t: tr } = useI18n();
 
   const [routines, setRoutines] = useState<Routine[]>([]);
   const [allUserExercises, setAllUserExercises] = useState<Exercise[]>([]);
@@ -93,8 +98,8 @@ export default function RoutinesPage() {
     } catch (error: any) {
       console.error("Failed to fetch routines:", error);
       toast({
-        title: "Error Fetching Routines",
-        description: friendlyErrorMessage(error, "Couldn't load your routines. Please try again."),
+        title: t('routines.fetchErrorTitle'),
+        description: friendlyErrorMessage(error, t('routines.fetchErrorDesc')),
         variant: "destructive",
       });
     } finally {
@@ -109,8 +114,8 @@ export default function RoutinesPage() {
       setAllUserExercises(exercises);
     } catch (error: any) {
       toast({
-        title: "Error",
-        description: friendlyErrorMessage(error, "Couldn't load your exercises. Please try again."),
+        title: t('common.error'),
+        description: friendlyErrorMessage(error, t('routines.fetchExercisesError')),
         variant: "destructive",
       });
     } finally {
@@ -147,25 +152,25 @@ export default function RoutinesPage() {
 
   const handleSaveRoutine = async (data: Omit<RoutineData, 'order'>, id?: string) => {
     if (!user?.id) {
-      toast({ title: "Authentication Error", description: "You must be logged in.", variant: "destructive" });
+      toast({ title: t('common.authErrorTitle'), description: t('common.mustBeLoggedIn'), variant: "destructive" });
       return;
     }
     setIsDialogSaving(true);
     try {
-      if (id) { 
+      if (id) {
         await updateRoutine(user.id, id, data);
-        toast({ title: "Routine Updated", description: `${data.name} has been successfully updated.` });
-      } else { 
+        toast({ title: t('routines.updatedTitle'), description: t('routines.updatedDesc', { name: data.name }) });
+      } else {
         await addRoutine(user.id, data);
-        toast({ title: "Routine Created", description: `${data.name} has been successfully created.` });
+        toast({ title: t('routines.createdTitle'), description: t('routines.createdDesc', { name: data.name }) });
       }
-      fetchUserRoutines(user.id); 
+      fetchUserRoutines(user.id);
       setIsDialogOpen(false);
       setRoutineToEdit(null);
     } catch (error: any) {
       toast({
-        title: "Save Error",
-        description: friendlyErrorMessage(error, "Couldn't save the routine. Please try again."),
+        title: t('common.saveErrorTitle'),
+        description: friendlyErrorMessage(error, t('routines.saveError')),
         variant: "destructive",
       });
     } finally {
@@ -179,18 +184,18 @@ export default function RoutinesPage() {
 
   const handleDeleteRoutine = async () => {
     if (!routineToDeleteId || !user?.id) {
-      toast({ title: "Error", description: "Could not delete routine.", variant: "destructive" });
+      toast({ title: t('common.error'), description: t('routines.deleteFailed'), variant: "destructive" });
       return;
     }
-    const routineName = routines.find(r => r.id === routineToDeleteId)?.name || "The routine";
+    const routineName = routines.find(r => r.id === routineToDeleteId)?.name || t('routines.theRoutine');
     setIsLoading(true);
     try {
       await deleteRoutineService(user.id, routineToDeleteId);
-      toast({ title: "Routine Deleted", description: `${routineName} has been removed.` });
+      toast({ title: t('routines.deletedTitle'), description: t('routines.deletedDesc', { name: routineName }) });
       const updatedRoutines = await getRoutines(user.id);
       setRoutines(updatedRoutines);
     } catch (error: any) {
-      toast({ title: "Delete Error", description: friendlyErrorMessage(error, "Couldn't delete the routine. Please try again."), variant: "destructive" });
+      toast({ title: t('common.deleteErrorTitle'), description: friendlyErrorMessage(error, t('routines.deleteError')), variant: "destructive" });
     } finally {
       setRoutineToDeleteId(null);
       setIsLoading(false);
@@ -247,11 +252,11 @@ export default function RoutinesPage() {
       const orderedIds = reorderedRoutines.map(r => r.id);
       try {
         await updateRoutinesOrder(user.id, orderedIds);
-        toast({ title: "Order Saved", description: "Routine order has been updated." });
+        toast({ title: t('routines.orderSavedTitle'), description: t('routines.orderSavedDesc') });
       } catch (error: any) {
         toast({
-          title: "Error Saving Order",
-          description: friendlyErrorMessage(error, "Couldn't save the new order. Please try again."),
+          title: t('routines.orderErrorTitle'),
+          description: friendlyErrorMessage(error, t('routines.orderErrorDesc')),
           variant: "destructive",
         });
         fetchUserRoutines(user.id);
@@ -266,7 +271,7 @@ export default function RoutinesPage() {
     return (
       <div className="flex h-64 items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        <p className="ml-4 text-[15px] font-medium text-muted-foreground">Loading authentication...</p>
+        <p className="ml-4 text-[15px] font-medium text-muted-foreground">{tr('common.loadingAuth')}</p>
       </div>
     );
   }
@@ -274,20 +279,20 @@ export default function RoutinesPage() {
   if (!user && !authContext.isLoading) {
     return (
       <div className="flex h-64 flex-col items-center justify-center">
-        <p className="mb-4 font-headline text-[22px] font-semibold leading-none">Please log in to manage your routines.</p>
-        <Button onClick={() => { if (confirmDiscardUnsavedChanges()) router.push('/login'); }}>Go to Login</Button>
+        <p className="mb-4 font-headline text-[22px] font-semibold leading-none">{tr('routines.loginPrompt')}</p>
+        <Button onClick={() => { if (confirmDiscardUnsavedChanges()) router.push('/login'); }}>{tr('common.goToLogin')}</Button>
       </div>
     );
   }
-  
+
   return (
     <div className="space-y-6">
-      <PageHeader title="Workout Routines" description="Design and manage your custom workout plans. Drag to reorder.">
+      <PageHeader title={tr('routines.title')} description={tr('routines.description')}>
         <div className="flex w-full items-center justify-end gap-3">
             {isOrderSaving && (
                 <div className="flex items-center text-[13px] text-muted-foreground">
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Saving order...
+                    {tr('routines.savingOrder')}
                 </div>
             )}
             <Button
@@ -295,7 +300,7 @@ export default function RoutinesPage() {
                 onClick={handleOpenAddDialog}
                 disabled={isLoading || isOrderSaving || isLoadingExercises}
             >
-            <PlusCircle className="mr-2 h-4 w-4" /> Create Routine
+            <PlusCircle className="mr-2 h-4 w-4" /> {tr('routines.create')}
             </Button>
         </div>
       </PageHeader>
@@ -313,7 +318,7 @@ export default function RoutinesPage() {
       {isLoading && user ? (
         <div className="flex items-center justify-center py-10">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          <p className="ml-3 text-[15px] text-muted-foreground">Loading your routines...</p>
+          <p className="ml-3 text-[15px] text-muted-foreground">{tr('routines.loading')}</p>
         </div>
       ) : routines.length > 0 ? (
         <DndContext
@@ -340,16 +345,16 @@ export default function RoutinesPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
                 <ListChecks className="h-5 w-5 text-primary"/>
-                Your Routines
+                {tr('routines.yourRoutines')}
             </CardTitle>
-            <CardDescription>You haven&apos;t created any routines yet.</CardDescription>
+            <CardDescription>{tr('routines.noneYet')}</CardDescription>
           </CardHeader>
           <CardContent className="py-12 text-center">
             <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
               <ListChecks className="h-6 w-6" />
             </div>
-            <p className="font-headline text-[22px] font-semibold leading-none">No routines found.</p>
-            <p className="mt-2 text-[13px] text-muted-foreground">Click &quot;Create Routine&quot; to get started!</p>
+            <p className="font-headline text-[22px] font-semibold leading-none">{tr('routines.noneFound')}</p>
+            <p className="mt-2 text-[13px] text-muted-foreground">{tr('routines.clickCreate')}</p>
           </CardContent>
         </Card>
       )}
@@ -357,16 +362,15 @@ export default function RoutinesPage() {
       <AlertDialog open={!!routineToDeleteId} onOpenChange={(open) => !open && setRoutineToDeleteId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogTitle>{tr('routines.areYouSure')}</AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete the routine
-              &quot;{routines.find(r => r.id === routineToDeleteId)?.name}&quot;.
+              {tr('routines.deleteDesc', { name: routines.find(r => r.id === routineToDeleteId)?.name ?? '' })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setRoutineToDeleteId(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel onClick={() => setRoutineToDeleteId(null)}>{tr('common.cancel')}</AlertDialogCancel>
             <AlertDialogAction onClick={handleDeleteRoutine} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">
-              Delete
+              {tr('common.delete')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -19,9 +19,13 @@ import { useRouter } from 'next/navigation';
 import { SetStructureBadge } from '../SetStructureBadge';
 import { SetStructurePicker } from '../SetStructurePicker';
 import { SET_STRUCTURE_COLORS } from '@/types/setStructure';
+import { useI18n } from '@/contexts/LanguageContext';
+import { formatPR } from '@/lib/pr';
+import { displayExerciseFields } from '@/lib/exerciseDisplay';
 
 const WarmupPanel: React.FC<{ loggedExercise: LoggedExercise }> = ({ loggedExercise }) => {
     const router = useRouter();
+    const { t, language } = useI18n();
     const workingWeight = useMemo(() => {
         return loggedExercise.sets.reduce((max, set) => Math.max(max, set.weight || 0), 0);
     }, [loggedExercise.sets]);
@@ -38,14 +42,16 @@ const WarmupPanel: React.FC<{ loggedExercise: LoggedExercise }> = ({ loggedExerc
             overrideSteps: loggedExercise.warmupConfig.overrideSteps,
         };
         return computeWarmup(input);
-    }, [loggedExercise.warmupConfig, loggedExercise.name, workingWeight]);
+        // `language` re-runs this so the step labels (module-level `t`) follow a switch.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [loggedExercise.warmupConfig, loggedExercise.name, workingWeight, language]);
 
     if (workingWeight <= 0 && loggedExercise.warmupConfig?.template !== 'BODYWEIGHT') {
-         return <div className="p-4 text-[13px] text-muted-foreground">Enter a working weight to calculate warm-ups.</div>;
+         return <div className="p-4 text-[13px] text-muted-foreground">{t('warmup.enterWeight')}</div>;
     }
 
     if (warmupSteps.length === 0) {
-        return <div className="p-4 text-[13px] text-muted-foreground">No warm-up sets needed for this exercise.</div>
+        return <div className="p-4 text-[13px] text-muted-foreground">{t('warmup.none')}</div>
     }
 
     return (
@@ -53,10 +59,10 @@ const WarmupPanel: React.FC<{ loggedExercise: LoggedExercise }> = ({ loggedExerc
             <Table>
                 <TableHeader>
                     <TableRow>
-                        <TableHead>Set</TableHead>
-                        <TableHead>Weight</TableHead>
-                        <TableHead>Reps</TableHead>
-                        <TableHead>Rest</TableHead>
+                        <TableHead>{t('common.set')}</TableHead>
+                        <TableHead>{t('common.weight')}</TableHead>
+                        <TableHead>{t('common.reps')}</TableHead>
+                        <TableHead>{t('common.rest')}</TableHead>
                     </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -73,9 +79,9 @@ const WarmupPanel: React.FC<{ loggedExercise: LoggedExercise }> = ({ loggedExerc
                 </TableBody>
             </Table>
             <div className="px-4 text-[12px] text-muted-foreground space-y-1">
-                <p>Rest between sets: Warm-ups: 30–90s • Compounds: 2–3 min • Isolations: 1–2 min</p>
+                <p>{t('warmup.restNote')}</p>
                 <Button variant="link" className="p-0 h-auto" onClick={() => router.push(`/exercises?edit=${loggedExercise.exerciseId}`)}>
-                    Edit warm-up settings
+                    {t('warmup.editSettings')}
                 </Button>
             </div>
         </div>
@@ -85,6 +91,7 @@ const WarmupPanel: React.FC<{ loggedExercise: LoggedExercise }> = ({ loggedExerc
 // Centered modal for warm-up sets — styled to match the AI Coach window so it
 // reads as a distinct dialog rather than a full-width sheet glued to the page.
 const WarmupModal: React.FC<{ loggedExercise: LoggedExercise; onClose: () => void }> = ({ loggedExercise, onClose }) => {
+    const { t } = useI18n();
     // Lock body scroll while open
     useEffect(() => {
         document.body.style.overflow = 'hidden';
@@ -111,7 +118,7 @@ const WarmupModal: React.FC<{ loggedExercise: LoggedExercise; onClose: () => voi
             <div
                 role="dialog"
                 aria-modal="true"
-                aria-label="Warm-up sets"
+                aria-label={t('warmup.dialogAria')}
                 className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 flex flex-col rounded-lg border bg-popover text-popover-foreground shadow-2xl"
                 style={{ width: 'min(420px, calc(100vw - 2rem))', maxHeight: 'calc(85dvh)' }}
             >
@@ -120,11 +127,11 @@ const WarmupModal: React.FC<{ loggedExercise: LoggedExercise; onClose: () => voi
                     <div className="flex min-w-0 items-center gap-2">
                         <Flame className="h-5 w-5 shrink-0 text-chart-5" />
                         <div className="min-w-0">
-                            <p className="font-headline text-[20px] font-semibold leading-none">Warm-up Sets</p>
-                            <p className="mt-1 truncate text-[12px] text-muted-foreground">{loggedExercise.name}</p>
+                            <p className="font-headline text-[20px] font-semibold leading-none">{t('warmup.title')}</p>
+                            <p className="mt-1 truncate text-[12px] text-muted-foreground">{displayExerciseFields(loggedExercise).name}</p>
                         </div>
                     </div>
-                    <Button variant="ghost" size="icon" onClick={onClose} className="h-9 w-9 shrink-0 rounded-full" aria-label="Close warm-up">
+                    <Button variant="ghost" size="icon" onClick={onClose} className="h-9 w-9 shrink-0 rounded-full" aria-label={t('warmup.close')}>
                         <X className="h-4 w-4" />
                     </Button>
                 </div>
@@ -173,6 +180,10 @@ export function LoggedExerciseCard({
   isReadOnly = false,
   isSavedForDay = false,
 }: LoggedExerciseCardProps) {
+  const { t, language } = useI18n();
+  // Seeded defaults render in the UI language; `loggedExercise.name` stays the
+  // stored English (the warm-up heuristics and identity depend on it).
+  const shown = useMemo(() => displayExerciseFields(loggedExercise, language), [loggedExercise, language]);
   const [isEditing, setIsEditing] = useState(false);
   const [localSets, setLocalSets] = useState<LoggedSet[]>(loggedExercise.sets);
   const [warmupOpen, setWarmupOpen] = useState(false);
@@ -221,9 +232,13 @@ export function LoggedExerciseCard({
     // The sets themselves are already visible in the inputs below — the chip
     // only needs to say "this is pre-filled" and from when, so it stays short.
     const days = differenceInCalendarDays(new Date(), new Date(pf.lastPerformedDate));
-    const when = days <= 0 ? 'today' : days === 1 ? 'yesterday' : days < 14 ? `${days}d ago` : `${Math.round(days / 7)}w ago`;
-    return `Last session · ${when}`;
-  }, [loggedExercise.prefill, loggedExercise.isProvisional]);
+    const when =
+      days <= 0 ? t('card.when.today')
+      : days === 1 ? t('card.when.yesterday')
+      : days < 14 ? t('card.when.daysAgo', { n: days })
+      : t('card.when.weeksAgo', { n: Math.round(days / 7) });
+    return t('card.lastSession', { when });
+  }, [loggedExercise.prefill, loggedExercise.isProvisional, t]);
 
   // Progressive-overload cue: every set at the top of the exercise's rep range
   // means it's time to add weight; every set under the bottom means the load is
@@ -426,13 +441,13 @@ export function LoggedExerciseCard({
                   {...attributes}
                   {...listeners}
                   className="-ml-2 flex h-11 w-9 shrink-0 cursor-grab touch-none items-center justify-center text-muted-foreground transition-colors hover:text-foreground"
-                  aria-label={`Drag to reorder ${loggedExercise.name}`}
-                  aria-roledescription="Draggable exercise"
+                  aria-label={t('card.dragToReorder', { name: shown.name })}
+                  aria-roledescription={t('card.draggable')}
               >
                 <GripVertical className="h-[18px] w-[18px]" />
               </button>
               <div className="flex min-w-0 flex-col items-start gap-1">
-                  <CardTitle className="font-headline text-[20px] font-semibold leading-tight">{loggedExercise.name}</CardTitle>
+                  <CardTitle className="font-headline text-[20px] font-semibold leading-tight">{shown.name}</CardTitle>
                   <SetStructureBadge value={localStructure} />
               </div>
             </div>
@@ -443,7 +458,7 @@ export function LoggedExerciseCard({
                     size="icon"
                     onClick={() => setWarmupOpen(true)}
                     className="h-10 w-10 rounded-full text-chart-5 hover:text-chart-5"
-                    aria-label={`Warm-up sets for ${loggedExercise.name}`}
+                    aria-label={t('card.warmupFor', { name: shown.name })}
                   >
                       <Flame className="h-4 w-4" />
                   </Button>
@@ -453,7 +468,7 @@ export function LoggedExerciseCard({
                 size="icon"
                 onClick={onReplace}
                 className="h-10 w-10 rounded-full text-muted-foreground hover:text-foreground"
-                aria-label={`Replace ${loggedExercise.name}`}
+                aria-label={t('card.replace', { name: shown.name })}
               >
                 <ArrowLeftRight className="h-4 w-4" />
               </Button>
@@ -462,7 +477,7 @@ export function LoggedExerciseCard({
                 size="icon"
                 onClick={onRemove}
                 className="h-10 w-10 rounded-full text-muted-foreground hover:text-destructive"
-                aria-label={`Remove ${loggedExercise.name}`}
+                aria-label={t('card.remove', { name: shown.name })}
               >
                 <Trash2 className="h-4 w-4" />
               </Button>
@@ -471,21 +486,23 @@ export function LoggedExerciseCard({
           <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 pl-7">
             <span className="inline-flex h-6 items-center gap-1 rounded-full bg-primary/10 px-2 text-[11px] font-medium leading-none text-primary">
               <Dumbbell aria-hidden="true" className="h-3 w-3" />
-              <span className="tabular-nums">{loggedExercise.personalRecordDisplay || 'PR: N/A'}</span>
+              {/* Rendered from `currentPR` (not the cached display string) so the
+                  "N/A" fallback follows the active language. */}
+              <span className="tabular-nums">{formatPR(loggedExercise.currentPR)}</span>
             </span>
             {lastTimeLabel && (
-              <span className="inline-flex h-6 items-center gap-1 rounded-full border border-dashed border-border bg-muted/50 px-2 text-[11px] leading-none text-muted-foreground" title="Sets pre-filled from your last session. Edit a set to log it as done.">
+              <span className="inline-flex h-6 items-center gap-1 rounded-full border border-dashed border-border bg-muted/50 px-2 text-[11px] leading-none text-muted-foreground" title={t('card.prefilledTitle')}>
                 <History aria-hidden="true" className="h-3 w-3" />
                 <span className="tabular-nums">{lastTimeLabel}</span>
               </span>
             )}
-            {loggedExercise.exerciseSetup && (
+            {shown.exerciseSetup && (
                 <span className="inline-flex h-6 items-center gap-1 rounded-full bg-muted px-2 text-[11px] leading-none text-muted-foreground">
                     <Settings2 aria-hidden="true" className="h-3 w-3" />
-                    {loggedExercise.exerciseSetup}
+                    {shown.exerciseSetup}
                 </span>
             )}
-            {loggedExercise.progressiveOverload && (
+            {shown.progressiveOverload && (
               <span
                 className={cn(
                   "inline-flex h-6 items-center gap-1 rounded-full px-2 text-[11px] leading-none",
@@ -495,7 +512,7 @@ export function LoggedExerciseCard({
                 )}
               >
                 <TrendingUp aria-hidden="true" className="h-3 w-3" />
-                {loggedExercise.progressiveOverload}
+                {shown.progressiveOverload}
               </span>
             )}
           </div>
@@ -549,24 +566,23 @@ export function LoggedExerciseCard({
                 <span>
                   {repCue === 'above' ? (
                     <>
-                      <span className="font-semibold">Rep goal reached.</span>{' '}
+                      <span className="font-semibold">{t('card.repGoalReached')}</span>{' '}
                       {weightBump ? (
                         <>
-                          Next session:{' '}
+                          {t('card.nextSession')}{' '}
                           <span className="font-semibold tabular-nums">
                             {formatWeightHalf(weightBump.next)}kg
                           </span>{' '}
                           <span className="tabular-nums">(+{formatWeightHalf(weightBump.step)}kg)</span>.
                         </>
                       ) : (
-                        <>Add weight next session.</>
+                        <>{t('card.addWeightNext')}</>
                       )}
                     </>
                   ) : (
                     <>
-                      <span className="font-semibold">Below your rep range.</span>{' '}
-                      At least one set is under {repRange.min} reps — lower the weight, or update the
-                      range on the exercise if this load is right.
+                      <span className="font-semibold">{t('card.belowRange')}</span>{' '}
+                      {t('card.belowRangeHint', { min: repRange.min })}
                     </>
                   )}
                 </span>
@@ -575,10 +591,10 @@ export function LoggedExerciseCard({
 
             {/* column headers */}
             <div className="eyebrow grid grid-cols-[2.25rem_1fr_auto_1fr_auto_2.75rem] items-center gap-2">
-              <span className="w-full text-center">Set</span>
-              <span className="w-full text-center">Reps</span>
+              <span className="w-full text-center">{t('common.set')}</span>
+              <span className="w-full text-center">{t('common.reps')}</span>
               <span className="invisible select-none w-full text-center" aria-hidden>x</span>
-              <span className="w-full text-center">Weight</span>
+              <span className="w-full text-center">{t('common.weight')}</span>
               <span className="invisible select-none w-full text-center" aria-hidden>kg</span>
               <span className="invisible" aria-hidden />
             </div>
@@ -617,7 +633,7 @@ export function LoggedExerciseCard({
                 disabled={isSavingParentLog || isReadOnly}
               >
                 <PlusCircle className="h-4 w-4" />
-                Add set
+                {t('card.addSet')}
               </Button>
             </div>
           </div>
@@ -627,7 +643,7 @@ export function LoggedExerciseCard({
               onPointerDownCapture={(e) => e.stopPropagation()}
             >
               <span className="eyebrow whitespace-nowrap">
-                Session structure
+                {t('card.sessionStructure')}
               </span>
 
               <SetStructurePicker

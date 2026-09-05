@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { AvailableExercisesSelector } from '@/components/routines/AvailableExercisesSelector';
+import { useI18n } from '@/contexts/LanguageContext';
 
 interface AddExerciseDialogProps {
   isOpen: boolean;
@@ -30,6 +31,7 @@ export function AddExerciseDialog({
   onAddExercise,
   loggedExerciseIds = [],
 }: AddExerciseDialogProps) {
+  const { t } = useI18n();
 
   // Adapter: The selector gives us an ID and boolean. We need to find the object and pass it up.
   const handleSelectionChange = (exerciseId: string) => {
@@ -48,8 +50,8 @@ export function AddExerciseDialog({
         onOpenAutoFocus={(e) => e.preventDefault()} // STOP MOBILE KEYBOARD
       >
         <DialogHeader className="shrink-0 p-4 pb-2">
-          <DialogTitle>Add Exercise</DialogTitle>
-          <DialogDescription>Select an exercise to add to your workout log. Exercises already logged today are marked as added.</DialogDescription>
+          <DialogTitle>{t('addDialog.title')}</DialogTitle>
+          <DialogDescription>{t('addDialog.description')}</DialogDescription>
         </DialogHeader>
 
         <div className="flex-grow overflow-hidden p-4 pt-2">
@@ -65,7 +67,7 @@ export function AddExerciseDialog({
 
         <DialogFooter className="shrink-0 border-t bg-card/40 p-3">
           <Button type="button" variant="outline" onClick={() => setIsOpen(false)}>
-            Cancel
+            {t('common.cancel')}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -2,7 +2,9 @@
 
 import * as React from "react";
 import { cn } from "@/lib/utils";
-import { SET_STRUCTURE_OPTIONS, SET_STRUCTURE_LABEL, type SetStructure } from "@/types/setStructure";
+import { SET_STRUCTURE_OPTIONS, type SetStructure } from "@/types/setStructure";
+import { useI18n } from "@/contexts/LanguageContext";
+import { setStructureLabel } from "@/i18n";
 
 interface SetStructurePickerProps {
   value: SetStructure;
@@ -17,9 +19,10 @@ export function SetStructurePicker({
   disabled,
   className,
 }: SetStructurePickerProps) {
+  const { t, language } = useI18n();
   return (
     <select
-      aria-label="Set structure"
+      aria-label={t('ss.aria')}
       className={cn(
         // chip-shaped, but still a native <select> (best mobile picker there is)
         "h-9 rounded-full border border-border bg-card px-3 text-[13px] font-medium",
@@ -37,7 +40,7 @@ export function SetStructurePicker({
     >
       {SET_STRUCTURE_OPTIONS.map((opt) => (
         <option key={opt} value={opt}>
-          {SET_STRUCTURE_LABEL[opt]}
+          {setStructureLabel(opt, language)}
         </option>
       ))}
     </select>

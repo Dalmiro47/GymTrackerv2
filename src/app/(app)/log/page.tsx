@@ -60,6 +60,7 @@ import { CoachChatSheet } from '@/components/coach/CoachChatSheet';
 import { serializeLogDayContext } from '@/lib/ai/context-builders';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebaseConfig';
+import { useI18n } from '@/contexts/LanguageContext';
 
 /**
  * Stable function identity with an always-fresh body. <ExerciseList /> is memoised and
@@ -78,6 +79,7 @@ function useStableCallback<T extends (...args: never[]) => unknown>(fn: T): T {
 function TrainingLogPageContent() {
   const { user, isLoading: authIsLoading } = useAuth();
   const isMobile = useIsMobile();
+  const { t, tn, locale, language } = useI18n();
 
   const searchParams = useSearchParams();
 
@@ -265,9 +267,11 @@ function TrainingLogPageContent() {
     return currentLog && (currentLog.exercises.length > 0 || (currentLog.notes && currentLog.notes.trim() !== '') || existsOnBackend);
   }, [currentLog, selectedDate, loggedDayStrings, deloadDayStrings]);
 
+  // `language` is a dep because the serializer localizes default exercise names.
   const logDayContext = useMemo(
     () => serializeLogDayContext(currentLog ?? null, userProfile),
-    [currentLog, userProfile],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [currentLog, userProfile, language],
   );
 
   const activeRoutine = useMemo(
@@ -283,13 +287,13 @@ function TrainingLogPageContent() {
 
   const deloadDescription = useMemo(() => {
     if (!currentLog?.deloadParams) {
-        return "Sets reduced by ~50%, weight by ~10%. This log will be excluded from future progression calculations.";
+        return t('log.deloadDescription', { sets: 50, weight: 10 });
     }
     const { volumeMultiplier, intensityMultiplier } = currentLog.deloadParams;
     const setsPercent = Math.round((1 - volumeMultiplier) * 100);
     const weightPercent = Math.round((1 - intensityMultiplier) * 100);
-    return `Sets reduced by ~${setsPercent}%, weight by ~${weightPercent}%. This log will be excluded from future progression calculations.`;
-  }, [currentLog?.deloadParams]);
+    return t('log.deloadDescription', { sets: setsPercent, weight: weightPercent });
+  }, [currentLog?.deloadParams, t]);
 
   if (authIsLoading) {
     return (
@@ -327,7 +331,7 @@ function TrainingLogPageContent() {
         >
           <ListChecks className="h-4 w-4 text-muted-foreground" />
           <span className="max-w-[9rem] truncate">
-            {isLoadingRoutines ? 'Loading…' : (activeRoutine?.name ?? 'Choose routine')}
+            {isLoadingRoutines ? t('common.loading') : (activeRoutine?.name ?? t('log.chooseRoutine'))}
           </span>
           <ChevronDown className="h-4 w-4 opacity-60" />
         </Button>
@@ -347,7 +351,7 @@ function TrainingLogPageContent() {
               )}
             >
               <BatteryLow className="h-4 w-4" />
-              Deload
+              {t('log.deload')}
             </Button>
 
             {/* Explainer lives with the deload control, not in the routine picker. */}
@@ -355,7 +359,7 @@ function TrainingLogPageContent() {
               variant="ghost"
               size="icon"
               onClick={() => setIsDeloadInfoOpen(true)}
-              aria-label="What is deload mode?"
+              aria-label={t('log.whatIsDeload')}
               className="-ml-1 h-10 w-10 shrink-0 rounded-full text-muted-foreground hover:text-foreground"
             >
               <Info className="h-4 w-4" />
@@ -372,7 +376,7 @@ function TrainingLogPageContent() {
             className="h-10 shrink-0 gap-2 rounded-full px-3.5 text-[14px]"
           >
             <Plus className="h-4 w-4" />
-            Add exercise
+            {t('log.addExercise')}
           </Button>
         )}
       </div>
@@ -381,7 +385,7 @@ function TrainingLogPageContent() {
         <div className="flex items-start gap-2 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-[13px] leading-snug">
           <AlertTriangle aria-hidden="true" className="mt-px h-4 w-4 shrink-0 text-warning" />
           <p>
-            <span className="font-semibold text-warning">Deload mode active.</span>{' '}
+            <span className="font-semibold text-warning">{t('log.deloadActive')}</span>{' '}
             <span className="text-muted-foreground">{deloadDescription}</span>
           </p>
         </div>
@@ -391,7 +395,7 @@ function TrainingLogPageContent() {
         {isLoadingLog ? (
           <div className="flex items-center justify-center py-16">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            <p className="ml-3 text-[15px] text-muted-foreground">Loading log data…</p>
+            <p className="ml-3 text-[15px] text-muted-foreground">{t('log.loadingLog')}</p>
           </div>
         ) : currentLog && currentLog.exercises.length > 0 ? (
           <>
@@ -411,9 +415,9 @@ function TrainingLogPageContent() {
           </>
         ) : (
           <div className="surface flex flex-col items-center gap-1 px-4 py-12 text-center">
-            <p className="font-headline text-[22px] font-semibold leading-none">Nothing logged yet</p>
+            <p className="font-headline text-[22px] font-semibold leading-none">{t('log.nothingLogged')}</p>
             <p className="text-[13px] text-muted-foreground">
-              Pick a routine or add an exercise to start this session.
+              {t('log.nothingLoggedHint')}
             </p>
           </div>
         )}
@@ -426,11 +430,11 @@ function TrainingLogPageContent() {
             className="h-9 gap-2 rounded-full px-3 text-[13px] font-medium text-muted-foreground hover:text-foreground"
           >
             <StickyNote className="h-4 w-4" />
-            {showLogNotes ? "Hide" : "Show"} workout notes
+            {showLogNotes ? t('log.hideNotes') : t('log.showNotes')}
           </Button>
           {showLogNotes && (
             <Textarea
-              placeholder="Add any overall notes for this workout session..."
+              placeholder={t('log.notesPlaceholder')}
               value={currentLog?.notes || ''}
               onChange={handleOverallNotesChange}
               rows={3}
@@ -444,7 +448,7 @@ function TrainingLogPageContent() {
       <ResponsiveSheet
         open={isCalendarOpen}
         onOpenChange={setIsCalendarOpen}
-        title="Pick a day"
+        title={t('log.pickDay')}
       >
         {isLoadingLoggedDayStrings ? (
           <div className="flex h-[340px] items-center justify-center" aria-busy="true">
@@ -471,8 +475,8 @@ function TrainingLogPageContent() {
       <ResponsiveSheet
         open={isRoutineSheetOpen}
         onOpenChange={setIsRoutineSheetOpen}
-        title="Routine"
-        description="Start fresh, or load one of your routines into this day."
+        title={t('log.routine')}
+        description={t('log.routineDescription')}
       >
         <div className="space-y-1 pb-2">
           <button
@@ -481,18 +485,18 @@ function TrainingLogPageContent() {
             className="pressable flex min-h-[52px] w-full items-center gap-3 rounded-md border border-transparent px-3 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <X aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" />
-            <span className="flex-1 text-[15px] font-medium">Start fresh</span>
+            <span className="flex-1 text-[15px] font-medium">{t('log.startFresh')}</span>
             {!currentLog?.routineId && <Check aria-hidden="true" className="h-4 w-4 shrink-0 text-primary" />}
           </button>
 
           {isLoadingRoutines ? (
             <div className="flex min-h-[52px] items-center gap-2 px-3 text-[13px] text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
-              Loading routines…
+              {t('log.loadingRoutines')}
             </div>
           ) : availableRoutines.length === 0 ? (
             <p className="px-3 py-6 text-center text-[13px] text-muted-foreground">
-              No routines yet. Create one on the Routines page.
+              {t('log.noRoutines')}
             </p>
           ) : (
             availableRoutines.map(routine => {
@@ -510,7 +514,7 @@ function TrainingLogPageContent() {
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[15px] font-medium">{routine.name}</span>
                     <span className="block text-[12px] text-muted-foreground tabular-nums">
-                      {routine.exercises.length} exercises
+                      {tn('exercises.count', routine.exercises.length)}
                     </span>
                   </span>
                   {isCurrent && <Check aria-hidden="true" className="h-4 w-4 shrink-0 text-primary" />}
@@ -525,7 +529,7 @@ function TrainingLogPageContent() {
       <ResponsiveSheet
         open={isDeloadInfoOpen}
         onOpenChange={setIsDeloadInfoOpen}
-        title="Deload mode"
+        title={t('log.deloadMode')}
       >
         <p className="pb-2 text-[15px] leading-snug text-muted-foreground">{deloadDescription}</p>
       </ResponsiveSheet>
@@ -573,7 +577,7 @@ function TrainingLogPageContent() {
             size="icon"
             onClick={() => setIsDeleteConfirmOpen(true)}
             disabled={!canDeleteLog || isDeletingLog || isLoadingLog || isSavingLog}
-            aria-label="Delete this day's log"
+            aria-label={t('log.deleteDayAria')}
             className="h-11 w-11 shrink-0 rounded-full text-destructive hover:bg-destructive/10 hover:text-destructive"
           >
             {isDeletingLog ? <Loader2 className="h-5 w-5 animate-spin" /> : <Trash2 className="h-5 w-5" />}
@@ -585,12 +589,12 @@ function TrainingLogPageContent() {
             className="h-11 shrink-0 gap-2 rounded-full px-5 text-[15px] font-semibold"
           >
             {isSavingLog ? <Loader2 className="h-5 w-5 animate-spin" /> : <Save className="h-5 w-5" />}
-            Save
+            {t('common.save')}
             {isDirty && !isSavingLog && (
               <span
                 className="h-2 w-2 rounded-full bg-destructive"
-                aria-label="Unsaved changes"
-                title="Unsaved changes"
+                aria-label={t('common.unsavedChanges')}
+                title={t('common.unsavedChanges')}
               />
             )}
           </Button>
@@ -603,20 +607,20 @@ function TrainingLogPageContent() {
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
               <AlertTriangle className="h-5 w-5 text-destructive" />
-              Confirm Deletion
+              {t('common.confirmDeletion')}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete the entire log for {format(selectedDate, 'PPP')}? This action cannot be undone.
+              {t('log.deleteConfirmDesc', { date: format(selectedDate, 'PPP', { locale }) })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDeleteConfirmed}
               disabled={isDeletingLog}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {isDeletingLog ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Delete Log"}
+              {isDeletingLog ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : t('log.deleteLog')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

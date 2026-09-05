@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createLLMProvider, type ChatMessage } from '@/lib/ai/llm-provider';
 import { buildLogDaySystemPrompt, buildRoutineReviewSystemPrompt, buildDashboardSystemPrompt } from '@/lib/ai/chat-prompts';
 import type { LogDayContext, RoutineReviewContext, DashboardContext } from '@/lib/ai/context-builders';
+import { isLanguage, type Language } from '@/i18n';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -9,6 +10,16 @@ export const revalidate = 0;
 type ChatMode = 'log-day' | 'routine-review' | 'dashboard';
 
 const MAX_HISTORY_MESSAGES = 20;
+
+/**
+ * Error responses carry a stable `code` the client maps to a message in the
+ * user's language (see use-coach-chat.ts); `error` is a readable fallback.
+ */
+type CoachErrorCode = 'unauthenticated' | 'bad_request' | 'not_configured' | 'busy' | 'unreachable';
+
+function errorResponse(code: CoachErrorCode, error: string, status: number) {
+  return NextResponse.json({ code, error }, { status });
+}
 
 /**
  * Verifies the Firebase ID token sent by the client so unauthenticated callers
@@ -116,32 +127,30 @@ export async function POST(req: Request) {
   try {
     const isAuthenticated = await verifyFirebaseIdToken(req);
     if (!isAuthenticated) {
-      return NextResponse.json(
-        { error: 'Not signed in. Sign in to talk to the coach.' },
-        { status: 401 },
-      );
+      return errorResponse('unauthenticated', 'Not signed in. Sign in to talk to the coach.', 401);
     }
 
     const body = await req.json();
-    const { mode, messages, context } = body as {
+    const { mode, messages, context, language: rawLanguage } = body as {
       mode: ChatMode;
       messages: Array<{ role: 'user' | 'assistant'; content: string }>;
       context: LogDayContext | RoutineReviewContext | DashboardContext;
+      /** The user's profile language; the coach always replies in it. */
+      language?: unknown;
     };
 
     if (!mode || !messages?.length || !context) {
-      return NextResponse.json(
-        { error: 'Faltan campos requeridos (mode, messages, context).' },
-        { status: 400 },
-      );
+      return errorResponse('bad_request', 'Missing required fields (mode, messages, context).', 400);
     }
+
+    const language: Language = isLanguage(rawLanguage) ? rawLanguage : 'en';
 
     const systemPrompt =
       mode === 'log-day'
-        ? buildLogDaySystemPrompt(context as LogDayContext)
+        ? buildLogDaySystemPrompt(context as LogDayContext, language)
         : mode === 'dashboard'
-          ? buildDashboardSystemPrompt(context as DashboardContext)
-          : buildRoutineReviewSystemPrompt(context as RoutineReviewContext);
+          ? buildDashboardSystemPrompt(context as DashboardContext, language)
+          : buildRoutineReviewSystemPrompt(context as RoutineReviewContext, language);
 
     const trimmedHistory = messages.slice(-MAX_HISTORY_MESSAGES);
     const fullMessages: ChatMessage[] = [
@@ -167,26 +176,17 @@ export async function POST(req: Request) {
     });
   } catch (error: unknown) {
     console.error('Coach chat error:', error);
-    const message = error instanceof Error ? error.message : 'Error interno del servidor.';
+    const message = error instanceof Error ? error.message : 'Internal server error.';
 
     if (message.includes('MISSING_GROQ_API_KEY')) {
-      return NextResponse.json(
-        { error: "The AI service isn't configured. Contact the administrator." },
-        { status: 503 },
-      );
+      return errorResponse('not_configured', "The AI service isn't configured. Contact the administrator.", 503);
     }
 
     // Upstream detail stays in the server log above — never forward raw provider text to the client.
     if (message.includes('GROQ_HTTP_429')) {
-      return NextResponse.json(
-        { error: 'The coach is busy, try again in a moment.' },
-        { status: 429 },
-      );
+      return errorResponse('busy', 'The coach is busy, try again in a moment.', 429);
     }
 
-    return NextResponse.json(
-      { error: "Couldn't reach the coach." },
-      { status: 500 },
-    );
+    return errorResponse('unreachable', "Couldn't reach the coach.", 500);
   }
 }

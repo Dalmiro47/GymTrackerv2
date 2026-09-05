@@ -51,6 +51,11 @@ import {
   DialogTitle as RestoreDialogTitle,
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils'; // Make sure cn is imported
+import { useI18n } from '@/contexts/LanguageContext';
+// Module-level `t`/`tn` for toasts inside memoised fetchers, so a language switch
+// never re-creates them (and refetches). Render-time text uses the hook.
+import { t, tn, muscleGroupLabel } from '@/i18n';
+import { compareByDisplayName, displayExerciseFields, displayExerciseName, exerciseMatchesQuery } from '@/lib/exerciseDisplay';
 
 type HiddenDefault = { id: string; name: string; muscleGroup: string };
 
@@ -58,7 +63,8 @@ export function ExerciseClientPage() {
   const authContext = useAuth();
   const { user } = authContext;
   const { toast } = useToast();
-  const router = useRouter(); 
+  const router = useRouter();
+  const { t: tr, tn: trn, language } = useI18n();
 
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [activeMuscleGroup, setActiveMuscleGroup] = useState<MuscleGroup | 'All' | null>(null);
@@ -90,8 +96,8 @@ export function ExerciseClientPage() {
     } catch (error: any) {
       console.error("Failed to fetch exercises:", error);
       toast({
-        title: "Error Fetching Exercises",
-        description: friendlyErrorMessage(error, "Couldn't load your exercises. Please try again."),
+        title: t('ex.fetchErrorTitle'),
+        description: friendlyErrorMessage(error, t('ex.fetchErrorDesc')),
         variant: "destructive",
       });
     }
@@ -115,15 +121,16 @@ export function ExerciseClientPage() {
           const { addedCount } = await ensureExercisesSeeded(user.id);
           if (!cancelled && addedCount > 0) {
             toast({
-              title: "Library Synced",
-              description: `Added ${addedCount} new default exercise${addedCount > 1 ? 's' : ''} to your library.`,
+              title: t('ex.syncedTitle'),
+              description: tn('ex.syncedDesc', addedCount),
             });
           }
         } catch (err: any) {
           if (!cancelled) {
+            console.error('[ExerciseClientPage] library sync failed:', err);
             toast({
-              title: "Library Sync Failed",
-              description: err.message || "Could not check for default exercises.",
+              title: t('ex.syncFailedTitle'),
+              description: friendlyErrorMessage(err, t('ex.syncFailedDesc')),
               variant: "destructive",
             });
           }
@@ -160,9 +167,13 @@ export function ExerciseClientPage() {
     router.replace('/exercises', { scroll: false });
   }, [searchParams, isLoading, exercises, router]);
 
+  // Firestore orders by the stored (English) name; re-sort by the displayed one
+  // so a Spanish library still reads alphabetically.
   const canonicalExercises = useMemo(() => {
-      return exercises.map(e => ({...e, muscleGroup: assertMuscleGroup(e.muscleGroup as any)}));
-  }, [exercises]);
+      return exercises
+        .map(e => ({...e, muscleGroup: assertMuscleGroup(e.muscleGroup as any)}))
+        .sort(compareByDisplayName(language));
+  }, [exercises, language]);
 
   const exerciseCounts = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -174,8 +185,10 @@ export function ExerciseClientPage() {
   }, [canonicalExercises]);
 
   const displayedExercises = useMemo(() => {
+    // Search hits the stored English name AND the displayed one, so a Spanish
+    // user finds "Press de banca" and an English query still works.
     if (activeMuscleGroup === null && searchTerm.trim() !== '') {
-       return canonicalExercises.filter(ex => ex.name.toLowerCase().includes(searchTerm.toLowerCase().trim()));
+       return canonicalExercises.filter(ex => exerciseMatchesQuery(ex, searchTerm, language));
     }
 
     let temp = [...canonicalExercises];
@@ -185,12 +198,11 @@ export function ExerciseClientPage() {
     }
 
     if (searchTerm.trim() !== '') {
-      const q = searchTerm.toLowerCase().trim();
-      temp = temp.filter(ex => ex.name.toLowerCase().includes(q));
+      temp = temp.filter(ex => exerciseMatchesQuery(ex, searchTerm, language));
     }
-    
+
     return temp;
-  }, [canonicalExercises, searchTerm, activeMuscleGroup]);
+  }, [canonicalExercises, searchTerm, activeMuscleGroup, language]);
 
 
   const handleOpenAddDialog = () => {
@@ -205,22 +217,46 @@ export function ExerciseClientPage() {
 
   const handleSaveExercise = async (formData: ExerciseFormData) => {
     if (!user?.id) {
-      toast({ title: "Authentication Error", description: "You must be logged in to save exercises.", variant: "destructive" });
+      toast({ title: t('common.authErrorTitle'), description: t('ex.authError'), variant: "destructive" });
       return;
     }
 
+    // The edit form is pre-filled with the DISPLAYED (possibly Spanish) text of a
+    // seeded default. A field the user left as-is must be written back as the
+    // stored English canonical, or "saving without changes" would silently turn
+    // a default into a Spanish-named custom exercise.
+    const keepCanonical = (submitted: string | undefined, stored: string | undefined, shown: string | undefined) =>
+      (submitted ?? '').trim() === (shown ?? '').trim() ? (stored ?? '').trim() : (submitted ?? '').trim();
+    const shownBefore = exerciseToEdit ? displayExerciseFields(exerciseToEdit, language) : null;
+    const canonical = exerciseToEdit && shownBefore
+      ? {
+          name: keepCanonical(formData.name, exerciseToEdit.name, shownBefore.name),
+          targetNotes: keepCanonical(formData.targetNotes, exerciseToEdit.targetNotes, shownBefore.targetNotes),
+          exerciseSetup: keepCanonical(formData.exerciseSetup, exerciseToEdit.exerciseSetup, shownBefore.exerciseSetup),
+          progressiveOverload: keepCanonical(formData.progressiveOverload, exerciseToEdit.progressiveOverload, shownBefore.progressiveOverload),
+        }
+      : {
+          name: formData.name.trim(),
+          targetNotes: (formData.targetNotes || '').trim(),
+          exerciseSetup: (formData.exerciseSetup || '').trim(),
+          progressiveOverload: (formData.progressiveOverload || '').trim(),
+        };
+
     // Identity is name + muscleGroup (never name alone): "Dips" (Chest) and
-    // "Dips" (Triceps) may coexist, but two "Dips" (Chest) may not.
+    // "Dips" (Triceps) may coexist, but two "Dips" (Chest) may not. Both the
+    // stored and the displayed name count, so "Press de banca" (Chest) is a
+    // duplicate of the seeded "Bench Press" for a Spanish user.
     const identityKey = (name: string, muscle: string) =>
       `${name.trim().toLowerCase()}::${String(muscle ?? '').trim().toLowerCase()}`;
-    const newKey = identityKey(formData.name, formData.muscleGroup);
+    const newKeys = new Set([identityKey(canonical.name, formData.muscleGroup), identityKey(formData.name, formData.muscleGroup)]);
     const duplicate = exercises.find(
-      ex => ex.id !== exerciseToEdit?.id && identityKey(ex.name, ex.muscleGroup) === newKey
+      ex => ex.id !== exerciseToEdit?.id &&
+        (newKeys.has(identityKey(ex.name, ex.muscleGroup)) || newKeys.has(identityKey(displayExerciseName(ex, language), ex.muscleGroup)))
     );
     if (duplicate) {
       toast({
-        title: "Ejercicio duplicado",
-        description: `Ya existe "${duplicate.name}" en ${duplicate.muscleGroup}. Usa otro nombre o edita el existente.`,
+        title: t('ex.duplicateTitle'),
+        description: t('ex.duplicateDesc', { name: displayExerciseName(duplicate, language), group: muscleGroupLabel(duplicate.muscleGroup) }),
         variant: "destructive",
       });
       return;
@@ -229,18 +265,18 @@ export function ExerciseClientPage() {
     setIsDialogSaving(true);
     try {
       const exercisePayload: ExerciseData = {
-        name: formData.name,
+        name: canonical.name,
         muscleGroup: formData.muscleGroup,
-        targetNotes: (formData.targetNotes || '').trim(),
-        exerciseSetup: (formData.exerciseSetup || '').trim(),
-        progressiveOverload: (formData.progressiveOverload || '').trim(),
-        dataAiHint: formData.name.toLowerCase().split(" ").slice(0,2).join(" ") || 'exercise',
+        targetNotes: canonical.targetNotes,
+        exerciseSetup: canonical.exerciseSetup,
+        progressiveOverload: canonical.progressiveOverload,
+        dataAiHint: canonical.name.toLowerCase().split(" ").slice(0,2).join(" ") || 'exercise',
         warmup: formData.warmup,
       };
 
       if (exerciseToEdit) {
         await updateExercise(user.id, exerciseToEdit.id, exercisePayload);
-        toast({ title: "Exercise Updated", description: `${formData.name} has been successfully updated.` });
+        toast({ title: t('ex.updatedTitle'), description: t('ex.updatedDesc', { name: formData.name }) });
 
         const routines = await getRoutines(user.id);
         const affected = routines.filter(r =>
@@ -255,15 +291,15 @@ export function ExerciseClientPage() {
                 return updateRoutine(user.id!, r.id, { exercises: updatedExercises }, 'exercise-cascade');
             }));
             toast({
-                title: "Routines Synced",
-                description: `Updated ${exercisePayload.name} in ${affected.length} routine(s).`,
+                title: t('ex.routinesSyncedTitle'),
+                description: t('ex.routinesSyncedDesc', { name: exercisePayload.name, count: tn('routines.count', affected.length) }),
             });
         }
 
 
       } else {
         await addExercise(user.id, exercisePayload);
-        toast({ title: "Exercise Added", description: `${formData.name} has been successfully added.` });
+        toast({ title: t('ex.addedTitle'), description: t('ex.addedDesc', { name: formData.name }) });
       }
       
       await fetchUserExercises(user.id);
@@ -273,8 +309,8 @@ export function ExerciseClientPage() {
     } catch (error: any) {
       console.error("Detailed error adding/updating exercise to Firestore: ", error);
       toast({
-        title: "Save Error",
-        description: friendlyErrorMessage(error, `Couldn't save ${formData.name}. Please try again.`),
+        title: t('common.saveErrorTitle'),
+        description: friendlyErrorMessage(error, t('ex.saveError', { name: formData.name })),
         variant: "destructive",
       });
     } finally {
@@ -291,7 +327,7 @@ export function ExerciseClientPage() {
       const affected = routines.filter(r => r.exercises.some(e => e.id === exerciseId));
       setAffectedRoutines(affected);
     } catch (e) {
-      toast({ title: "Error checking routines", description: "Could not verify if exercise is in use.", variant: "destructive" });
+      toast({ title: t('ex.checkRoutinesErrorTitle'), description: t('ex.checkRoutinesErrorDesc'), variant: "destructive" });
     } finally {
       setIsBusyDeleting(false); 
     }
@@ -304,17 +340,18 @@ export function ExerciseClientPage() {
 
   const handleDeleteExercise = async () => {
     if (!exerciseToDeleteId || !user?.id) {
-      toast({ title: "Error", description: "Could not delete exercise. User or Exercise ID missing.", variant: "destructive" });
+      toast({ title: t('common.error'), description: t('ex.deleteMissing'), variant: "destructive" });
       return;
     }
-  
+
     setIsBusyDeleting(true);
-    const exerciseName = exercises.find(ex => ex.id === exerciseToDeleteId)?.name || "The exercise";
-  
+    const toDelete = exercises.find(ex => ex.id === exerciseToDeleteId);
+    const exerciseName = toDelete ? displayExerciseName(toDelete) : t('ex.theExercise');
+
     try {
       // Delete the exercise first: if this fails nothing else has changed.
       await deleteExerciseService(user.id, exerciseToDeleteId);
-      toast({ title: "Exercise Deleted", description: `${exerciseName} has been removed from your library.` });
+      toast({ title: t('ex.deletedTitle'), description: t('ex.deletedDesc', { name: exerciseName }) });
 
       if (affectedRoutines.length > 0) {
         await Promise.all(
@@ -327,14 +364,14 @@ export function ExerciseClientPage() {
             }), 'exercise-cascade')
           )
         );
-        toast({ title: "Routines Updated", description: `${exerciseName} removed from ${affectedRoutines.length} routine(s).` });
+        toast({ title: t('ex.routinesUpdatedTitle'), description: t('ex.routinesUpdatedDesc', { name: exerciseName, count: tn('routines.count', affectedRoutines.length) }) });
       }
-      
+
       await fetchUserExercises(user.id);
       await fetchHiddenDefaults(user.id);
     } catch (error: any) {
       console.error("Failed to delete exercise and update routines:", error);
-      toast({ title: "Delete Error", description: friendlyErrorMessage(error, `Couldn't delete ${exerciseName}. Please try again.`), variant: "destructive" });
+      toast({ title: t('common.deleteErrorTitle'), description: friendlyErrorMessage(error, t('ex.deleteError', { name: exerciseName })), variant: "destructive" });
     } finally {
       setIsBusyDeleting(false);
       closeDeleteDialog();
@@ -360,14 +397,15 @@ export function ExerciseClientPage() {
     try {
       const { addedCount } = await restoreHiddenDefaults(user.id, selectedToRestore);
       toast({
-        title: "Restore Successful",
-        description: addedCount > 0 ? `Restored ${addedCount} default exercise${addedCount > 1 ? 's' : ''}.` : 'No exercises were restored.'
+        title: t('ex.restoreSuccessTitle'),
+        description: addedCount > 0 ? tn('ex.restoredDesc', addedCount) : t('ex.noneRestored'),
       });
       setIsRestoreDialogOpen(false);
       await fetchUserExercises(user.id);
       await fetchHiddenDefaults(user.id);
     } catch(e: any) {
-      toast({ title: 'Restore Failed', description: e.message || 'Could not restore default exercises.', variant: 'destructive'});
+      console.error('[ExerciseClientPage] restore failed:', e);
+      toast({ title: t('ex.restoreFailedTitle'), description: friendlyErrorMessage(e, t('ex.restoreFailedDesc')), variant: 'destructive'});
     } finally {
       setIsRestoring(false);
     }
@@ -379,29 +417,29 @@ export function ExerciseClientPage() {
       <div className="flex h-64 items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
         <p className="ml-4 text-[15px] font-medium text-muted-foreground">
-          {authContext.isLoading ? "Loading authentication..." : "Loading your exercises..."}
+          {authContext.isLoading ? tr('common.loadingAuth') : tr('ex.loading')}
         </p>
       </div>
     );
   }
 
-  if (!user && !authContext.isLoading) { 
+  if (!user && !authContext.isLoading) {
     return (
       <div className="flex h-64 flex-col items-center justify-center">
-        <p className="mb-4 font-headline text-[22px] font-semibold leading-none">Please log in to manage your exercises.</p>
-        <Button onClick={() => router.push('/login')}>Go to Login</Button>
+        <p className="mb-4 font-headline text-[22px] font-semibold leading-none">{tr('ex.loginPrompt')}</p>
+        <Button onClick={() => router.push('/login')}>{tr('common.goToLogin')}</Button>
       </div>
     );
   }
 
   return (
     <>
-      <PageHeader title="Exercise Library" description="Browse, add, and manage your exercises.">
+      <PageHeader title={tr('ex.title')} description={tr('ex.description')}>
          <div className="flex items-center gap-2">
             {hiddenDefaults.length > 0 && (
                 <Button variant="outline" onClick={handleOpenRestoreDialog} className="hidden sm:flex">
                   <History className="mr-2 h-4 w-4" />
-                  Restore Defaults
+                  {tr('ex.restoreDefaults')}
                   <span className="ml-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-secondary text-secondary-foreground text-xs font-bold">
                     {hiddenDefaults.length}
                   </span>
@@ -413,7 +451,7 @@ export function ExerciseClientPage() {
               disabled={isLoading}
             >
               <PlusCircle className="mr-2 h-4 w-4" />
-              Add Exercise
+              {tr('ex.add')}
             </Button>
          </div>
       </PageHeader>
@@ -430,8 +468,8 @@ export function ExerciseClientPage() {
       <Dialog open={isRestoreDialogOpen} onOpenChange={setIsRestoreDialogOpen}>
         <RestoreDialogContent>
           <RestoreDialogHeader>
-            <RestoreDialogTitle>Restore Hidden Default Exercises</RestoreDialogTitle>
-            <RestoreDialogDescription>Select the default exercises you want to add back to your library.</RestoreDialogDescription>
+            <RestoreDialogTitle>{tr('ex.restoreTitle')}</RestoreDialogTitle>
+            <RestoreDialogDescription>{tr('ex.restoreDesc')}</RestoreDialogDescription>
           </RestoreDialogHeader>
 
           <div className="py-2">
@@ -453,9 +491,9 @@ export function ExerciseClientPage() {
                             >
                                 <div className="min-w-0">
                                     <p className={cn("truncate text-[15px] font-medium leading-snug", isSelected && "text-primary")}>
-                                        {ex.name}
+                                        {displayExerciseName(ex, language)}
                                     </p>
-                                    <p className="text-[12px] text-muted-foreground">{ex.muscleGroup}</p>
+                                    <p className="text-[12px] text-muted-foreground">{muscleGroupLabel(ex.muscleGroup, language)}</p>
                                 </div>
 
                                 {isSelected ? (
@@ -471,17 +509,17 @@ export function ExerciseClientPage() {
                     </div>
                 </ScrollArea>
             ) : (
-                <p className="py-4 text-center text-[13px] text-muted-foreground">No hidden default exercises to restore.</p>
+                <p className="py-4 text-center text-[13px] text-muted-foreground">{tr('ex.noHidden')}</p>
             )}
           </div>
 
           <RestoreDialogFooter className="gap-2 sm:gap-0">
             <DialogClose asChild>
-                <Button variant="ghost" disabled={isRestoring}>Cancel</Button>
+                <Button variant="ghost" disabled={isRestoring}>{tr('common.cancel')}</Button>
             </DialogClose>
             <Button onClick={handleConfirmRestore} disabled={isRestoring || selectedToRestore.length === 0}>
                 {isRestoring ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : null}
-                Restore Selected ({selectedToRestore.length})
+                {tr('ex.restoreSelected', { n: selectedToRestore.length })}
             </Button>
           </RestoreDialogFooter>
         </RestoreDialogContent>
@@ -496,7 +534,7 @@ export function ExerciseClientPage() {
                     <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
                     <Input
                         type="search"
-                        placeholder="Search all exercises..."
+                        placeholder={tr('picker.searchAll')}
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                         className="h-11 w-full pl-10"
@@ -516,7 +554,7 @@ export function ExerciseClientPage() {
                             ))}
                         </div>
                     ) : (
-                        <div className="rounded-md border border-dashed bg-muted/40 py-12 text-center text-[13px] text-muted-foreground">No exercises found.</div>
+                        <div className="rounded-md border border-dashed bg-muted/40 py-12 text-center text-[13px] text-muted-foreground">{tr('picker.noneFound')}</div>
                     )
                 ) : (
                     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
@@ -528,8 +566,8 @@ export function ExerciseClientPage() {
                                 <Dumbbell className="h-5 w-5" />
                             </div>
                             <div className="min-w-0">
-                                <span className="block truncate text-[15px] font-semibold leading-snug">All Exercises</span>
-                                <span className="text-[12px] text-muted-foreground">{canonicalExercises.length} items</span>
+                                <span className="block truncate text-[15px] font-semibold leading-snug">{tr('picker.allExercises')}</span>
+                                <span className="text-[12px] text-muted-foreground">{trn('items.count', canonicalExercises.length)}</span>
                             </div>
                         </button>
 
@@ -546,8 +584,8 @@ export function ExerciseClientPage() {
                                         <MuscleGroupIcon muscleGroup={mg} size={20} />
                                     </div>
                                     <div className="min-w-0">
-                                        <span className="block truncate text-[15px] font-semibold leading-snug">{mg}</span>
-                                        <span className="text-[12px] text-muted-foreground">{count} exercise{count === 1 ? '' : 's'}</span>
+                                        <span className="block truncate text-[15px] font-semibold leading-snug">{muscleGroupLabel(mg, language)}</span>
+                                        <span className="text-[12px] text-muted-foreground">{trn('exercises.count', count)}</span>
                                     </div>
                                 </button>
                             );
@@ -572,16 +610,16 @@ export function ExerciseClientPage() {
                             className="px-2 text-muted-foreground hover:text-foreground"
                         >
                             <ArrowLeft className="mr-2 h-4 w-4" />
-                            Categories
+                            {tr('common.categories')}
                         </Button>
                         <h2 className="font-headline text-[22px] font-semibold leading-none tracking-tight">
-                            {activeMuscleGroup === 'All' ? 'All Exercises' : activeMuscleGroup}
+                            {activeMuscleGroup === 'All' ? tr('picker.allExercises') : muscleGroupLabel(activeMuscleGroup, language)}
                         </h2>
                     </div>
                     <div className="relative w-full sm:w-72">
                         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                         <Input
-                            placeholder={`Search ${activeMuscleGroup === 'All' ? '' : activeMuscleGroup}...`}
+                            placeholder={activeMuscleGroup === 'All' ? tr('ex.search') : tr('ex.searchIn', { group: muscleGroupLabel(activeMuscleGroup, language) })}
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                             className="h-11 pl-9"
@@ -602,8 +640,8 @@ export function ExerciseClientPage() {
                     </div>
                 ) : (
                     <div className="rounded-md border border-dashed bg-muted/40 py-12 text-center">
-                        <p className="font-headline text-[22px] font-semibold leading-none text-muted-foreground">No exercises found.</p>
-                        <Button variant="link" onClick={() => setSearchTerm('')}>Clear search</Button>
+                        <p className="font-headline text-[22px] font-semibold leading-none text-muted-foreground">{tr('picker.noneFound')}</p>
+                        <Button variant="link" onClick={() => setSearchTerm('')}>{tr('ex.clearSearch')}</Button>
                     </div>
                 )}
             </div>
@@ -616,43 +654,43 @@ export function ExerciseClientPage() {
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
               <AlertTriangle className="h-5 w-5 shrink-0 text-destructive"/>
-              Confirm Deletion
+              {tr('common.confirmDeletion')}
             </AlertDialogTitle>
           </AlertDialogHeader>
           <AlertDialogDescription asChild>
               <div>
                 {isBusyDeleting ? (
                   <div className="flex items-center justify-center py-4">
-                    <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Checking routines...
+                    <Loader2 className="mr-2 h-5 w-5 animate-spin" /> {tr('ex.checkingRoutines')}
                   </div>
                 ) : affectedRoutines.length > 0 ? (
                     <div className='space-y-3'>
-                      <div className="font-semibold text-foreground">This exercise is used in {affectedRoutines.length} routine(s):</div>
+                      <div className="font-semibold text-foreground">{tr('ex.usedIn', { count: trn('routines.count', affectedRoutines.length) })}</div>
                       <ScrollArea className="max-h-32 w-full rounded-md border p-2">
                         <ul className="list-disc pl-5 text-sm text-muted-foreground">
                           {affectedRoutines.map(r => <li key={r.id}>{r.name}</li>)}
                         </ul>
                       </ScrollArea>
-                      <div>Deleting this exercise will also <span className="font-bold">remove it from these routines</span>.</div>
-                      <div>Are you sure you want to proceed?</div>
+                      <div>{tr('ex.willRemove.pre')}<span className="font-bold">{tr('ex.willRemove.strong')}</span>.</div>
+                      <div>{tr('ex.proceed')}</div>
                     </div>
                 ) : (
                   <div>
-                    This will permanently delete the exercise &quot;{exercises.find(ex => ex.id === exerciseToDeleteId)?.name}&quot;.
+                    {tr('ex.permanentDelete', { name: (() => { const ex = exercises.find(e => e.id === exerciseToDeleteId); return ex ? displayExerciseName(ex, language) : ''; })() })}
                   </div>
                 )}
               </div>
           </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={closeDeleteDialog} disabled={isBusyDeleting}>
-              Cancel
+              {tr('common.cancel')}
             </AlertDialogCancel>
-            <AlertDialogAction 
-              onClick={handleDeleteExercise} 
+            <AlertDialogAction
+              onClick={handleDeleteExercise}
               className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
               disabled={isBusyDeleting}
             >
-              {isBusyDeleting ? <Loader2 className="h-4 w-4 animate-spin"/> : (affectedRoutines.length > 0 ? "Delete Anyway" : "Delete")}
+              {isBusyDeleting ? <Loader2 className="h-4 w-4 animate-spin"/> : (affectedRoutines.length > 0 ? tr('ex.deleteAnyway') : tr('common.delete'))}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -1,6 +1,7 @@
 'use client';
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useI18n } from '@/contexts/LanguageContext';
 import { db } from '@/lib/firebaseConfig';
 import { doc, getDoc } from 'firebase/firestore';
 import type { UserProfile } from '@/lib/types.gym';
@@ -12,6 +13,7 @@ import { friendlyErrorMessage } from '@/lib/errorMessages';
 
 export default function SettingsProfilePage() {
   const { user, isLoading } = useAuth();
+  const { t } = useI18n();
   const { toast } = useToast();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(true);
@@ -29,8 +31,8 @@ export default function SettingsProfilePage() {
         console.error('[SettingsProfilePage] profile load failed:', error);
         if (ignore) return;
         toast({
-          title: 'Load error',
-          description: friendlyErrorMessage(error, "Couldn't load your profile. Showing defaults."),
+          title: t('common.loadErrorTitle'),
+          description: friendlyErrorMessage(error, t('profile.loadErrorDesc')),
           variant: 'destructive',
         });
         // Fall back to defaults so the page never hangs on the spinner.
@@ -40,24 +42,26 @@ export default function SettingsProfilePage() {
       }
     })();
     return () => { ignore = true; };
+    // `t` is intentionally left out: a language switch must not refetch the profile.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, toast]);
 
   if (isLoading || loadingProfile || !profile) {
     return (
       <div className="mx-auto flex w-full max-w-2xl items-center gap-2 py-8 text-[15px] text-muted-foreground">
-        <Loader2 className="h-5 w-5 animate-spin text-primary" /> Loading profile…
+        <Loader2 className="h-5 w-5 animate-spin text-primary" /> {t('profile.loading')}
       </div>
     );
   }
 
-  const first = (user?.name ?? 'Your').split(' ')[0];
-  const title = `${first}'s Profile`;
+  const first = user?.name?.split(' ')[0];
+  const title = first ? t('profile.titleFor', { name: first }) : t('profile.yourProfile');
 
   return (
     <div className="mx-auto w-full max-w-2xl">
       <PageHeader
-        title="Profile Settings"
-        description="Your goals and constraints — the AI Coach uses these to tailor advice."
+        title={t('profile.title')}
+        description={t('profile.description')}
       />
       <CoachProfileForm initial={profile} title={title} />
     </div>

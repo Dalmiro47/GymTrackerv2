@@ -16,11 +16,15 @@ interface ThemeContextType {
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
+/** Dark is the default until the user picks a theme; `system` is an explicit opt-in. */
+export const DEFAULT_THEME: ThemePreference = 'dark';
+
 /**
  * Inline script injected in <head> so the `.dark` class is set BEFORE first paint.
- * Must stay in sync with `resolveTheme` below. Kept dependency-free on purpose.
+ * Must stay in sync with `readStoredTheme` + `resolveTheme` below: no stored
+ * value → dark; 'system' → follow the OS. Kept dependency-free on purpose.
  */
-export const THEME_INIT_SCRIPT = `(function(){try{var t=localStorage.getItem('${THEME_STORAGE_KEY}');var d=t==='dark'||((t===null||t==='system')&&window.matchMedia('(prefers-color-scheme: dark)').matches);if(d)document.documentElement.classList.add('dark');}catch(e){}})();`;
+export const THEME_INIT_SCRIPT = `(function(){try{var t=localStorage.getItem('${THEME_STORAGE_KEY}');var d=t==='dark'||t===null||(t==='system'&&window.matchMedia('(prefers-color-scheme: dark)').matches);if(d)document.documentElement.classList.add('dark');}catch(e){document.documentElement.classList.add('dark');}})();`;
 
 function readStoredTheme(): ThemePreference {
   try {
@@ -29,7 +33,7 @@ function readStoredTheme(): ThemePreference {
   } catch {
     /* storage unavailable (private mode) */
   }
-  return 'system';
+  return DEFAULT_THEME;
 }
 
 function resolveTheme(pref: ThemePreference): 'light' | 'dark' {
@@ -40,9 +44,10 @@ function resolveTheme(pref: ThemePreference): 'light' | 'dark' {
 }
 
 export const ThemeProvider = ({ children }: { children: ReactNode }) => {
-  // Start with 'system' to match SSR; the init script already painted the right class.
-  const [theme, setThemeState] = useState<ThemePreference>('system');
-  const [resolvedTheme, setResolvedTheme] = useState<'light' | 'dark'>('light');
+  // Start with the default (dark); the init script already painted the right
+  // class before hydration, and the stored preference is read on mount.
+  const [theme, setThemeState] = useState<ThemePreference>(DEFAULT_THEME);
+  const [resolvedTheme, setResolvedTheme] = useState<'light' | 'dark'>('dark');
 
   useEffect(() => {
     const stored = readStoredTheme();

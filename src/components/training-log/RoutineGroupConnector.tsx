@@ -2,20 +2,23 @@
 
 import React from 'react';
 import type { SetStructure } from '@/types/setStructure';
-import { SET_STRUCTURE_COLORS, SET_STRUCTURE_LABEL } from '@/types/setStructure';
+import { SET_STRUCTURE_COLORS } from '@/types/setStructure';
 import { Link } from 'lucide-react';
+import { useI18n } from '@/contexts/LanguageContext';
+import { setStructureLabel } from '@/i18n';
 
 interface RoutineGroupConnectorProps {
   structure: SetStructure;
 }
 
 export function RoutineGroupConnector({ structure }: RoutineGroupConnectorProps) {
+  const { t, language } = useI18n();
   const theme = SET_STRUCTURE_COLORS[structure] ?? SET_STRUCTURE_COLORS.normal;
-  
+
   return (
     <div className="relative flex items-center justify-center py-2 -my-3 z-10">
       {/* The Vertical Line - Thicker and more opaque */}
-      <div 
+      <div
         className="absolute inset-y-0 w-1 rounded-full"
         style={{ backgroundColor: theme.border, opacity: 0.6 }}
       />
@@ -33,7 +36,7 @@ export function RoutineGroupConnector({ structure }: RoutineGroupConnectorProps)
             className="text-[10px] font-bold uppercase leading-none tracking-widest"
             style={{ color: theme.text }}
         >
-            {SET_STRUCTURE_LABEL[structure]} Link
+            {t('ss.link', { label: setStructureLabel(structure, language) })}
         </span>
       </div>
     </div>

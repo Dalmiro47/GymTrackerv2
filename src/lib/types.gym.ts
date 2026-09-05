@@ -1,3 +1,5 @@
+import type { Language } from '@/i18n';
+
 export type Goal =
   | 'Hypertrophy'
   | 'Strength'
@@ -24,4 +26,6 @@ export interface UserProfile {
   sessionTimeTargetMin?: number;
   goal: Goal;
   constraints?: string[];
+  /** UI + AI Coach language. Absent = English. */
+  language?: Language;
 }
