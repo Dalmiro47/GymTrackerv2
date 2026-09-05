@@ -28,4 +28,7 @@ export interface UserProfile {
   constraints?: string[];
   /** UI + AI Coach language. Absent = English. */
   language?: Language;
+  /** Set once the first-run onboarding wizard is finished or skipped.
+   *  Its presence is what stops the wizard from ever showing again. */
+  onboardedAt?: unknown;
 }

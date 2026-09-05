@@ -9,7 +9,6 @@ import {
   PlusCircle,
   Trash2,
   AlertTriangle,
-  Info,
   ListChecks,
   BatteryLow,
   Check,
@@ -150,7 +149,6 @@ function TrainingLogPageContent() {
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const [isRoutineSheetOpen, setIsRoutineSheetOpen] = useState(false);
-  const [isDeloadInfoOpen, setIsDeloadInfoOpen] = useState(false);
   // Stable "today" that only changes identity when the local day rolls over
   const today = useToday();
 
@@ -321,54 +319,29 @@ function TrainingLogPageContent() {
         onVisibleMonthChange={(month) => setDisplayedMonth(startOfMonth(month))}
       />
 
-      {/* ONE control rail — routine, deload, add exercise. */}
-      <div className="animate-enter enter-1 -mx-4 flex items-center gap-2 overflow-x-auto px-4 no-scrollbar md:mx-0 md:overflow-visible md:px-0">
+      {/* ONE control rail — routine, add exercise, deload.
+          Single line at every width: only the routine button flexes, so it
+          truncates its name rather than pushing anything off-screen. Deload is
+          icon-only (its active state colours the button and the banner below
+          spells out what it does), which is what buys the room. */}
+      <div className="animate-enter enter-1 flex items-center gap-2">
         <Button
           variant="outline"
           onClick={() => setIsRoutineSheetOpen(true)}
           disabled={controlsDisabled}
-          className="h-10 shrink-0 gap-2 rounded-full px-3.5 text-[14px] font-medium"
+          className="h-10 min-w-0 flex-1 gap-2 rounded-full px-3.5 text-[14px] font-medium md:flex-none"
         >
-          <ListChecks className="h-4 w-4 text-muted-foreground" />
-          <span className="max-w-[9rem] truncate">
+          {/* Decorative only, and the 24px it costs is what makes the rail
+              overflow a 360px phone in Spanish — measured. Back from sm up. */}
+          <ListChecks className="hidden h-4 w-4 shrink-0 text-muted-foreground sm:block" />
+          <span className="truncate md:max-w-[9rem]">
             {isLoadingRoutines ? t('common.loading') : (activeRoutine?.name ?? t('log.chooseRoutine'))}
           </span>
-          <ChevronDown className="h-4 w-4 opacity-60" />
+          <ChevronDown className="h-4 w-4 shrink-0 opacity-60" />
         </Button>
 
-        {hasExercises && (
-          <>
-            <Button
-              variant="outline"
-              aria-pressed={isDeload}
-              onClick={() => setIsDeload(!isDeload)}
-              disabled={isLoadingLog || isSavingLog || isDeletingLog}
-              className={cn(
-                "h-10 shrink-0 gap-2 rounded-full px-3.5 text-[14px] font-medium",
-                isDeload
-                  ? "border-warning/40 bg-warning/15 text-warning hover:bg-warning/20 hover:text-warning"
-                  : "text-muted-foreground"
-              )}
-            >
-              <BatteryLow className="h-4 w-4" />
-              {t('log.deload')}
-            </Button>
-
-            {/* Explainer lives with the deload control, not in the routine picker. */}
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setIsDeloadInfoOpen(true)}
-              aria-label={t('log.whatIsDeload')}
-              className="-ml-1 h-10 w-10 shrink-0 rounded-full text-muted-foreground hover:text-foreground"
-            >
-              <Info className="h-4 w-4" />
-            </Button>
-          </>
-        )}
-
         {/* With a routine loaded, exercises are added from the inline dividers
-            between cards — the rail button is redundant and overflows on mobile. */}
+            between cards — the rail button is redundant there. */}
         {!routineInPlay && (
           <Button
             onClick={() => handleOpenAddDialog(currentLog?.exercises.length ?? 0)}
@@ -377,6 +350,26 @@ function TrainingLogPageContent() {
           >
             <Plus className="h-4 w-4" />
             {t('log.addExercise')}
+          </Button>
+        )}
+
+        {hasExercises && (
+          <Button
+            variant="outline"
+            size="icon"
+            aria-pressed={isDeload}
+            onClick={() => setIsDeload(!isDeload)}
+            disabled={isLoadingLog || isSavingLog || isDeletingLog}
+            title={t('log.deload')}
+            aria-label={t('log.deload')}
+            className={cn(
+              "h-10 w-10 shrink-0 rounded-full",
+              isDeload
+                ? "border-warning/40 bg-warning/15 text-warning hover:bg-warning/20 hover:text-warning"
+                : "text-muted-foreground"
+            )}
+          >
+            <BatteryLow className="h-4 w-4" />
           </Button>
         )}
       </div>
@@ -523,15 +516,6 @@ function TrainingLogPageContent() {
             })
           )}
         </div>
-      </ResponsiveSheet>
-
-      {/* Deload explainer — same copy the old info popover carried. */}
-      <ResponsiveSheet
-        open={isDeloadInfoOpen}
-        onOpenChange={setIsDeloadInfoOpen}
-        title={t('log.deloadMode')}
-      >
-        <p className="pb-2 text-[15px] leading-snug text-muted-foreground">{deloadDescription}</p>
       </ResponsiveSheet>
 
       <AddExerciseDialog

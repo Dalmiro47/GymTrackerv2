@@ -3,6 +3,10 @@ import { createLLMProvider, type ChatMessage } from '@/lib/ai/llm-provider';
 import { buildLogDaySystemPrompt, buildRoutineReviewSystemPrompt, buildDashboardSystemPrompt } from '@/lib/ai/chat-prompts';
 import type { LogDayContext, RoutineReviewContext, DashboardContext } from '@/lib/ai/context-builders';
 import { isLanguage, type Language } from '@/i18n';
+import { isAdminUid } from '@/lib/adminConfig';
+import { DAILY_LIMIT_COACH_CALLS } from '@/lib/limits';
+import { bumpCoachCall, getCoachCallsUsedToday } from '@/lib/usageQuota';
+import { verifyFirebaseIdToken } from '@/lib/verifyIdToken';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -15,40 +19,16 @@ const MAX_HISTORY_MESSAGES = 20;
  * Error responses carry a stable `code` the client maps to a message in the
  * user's language (see use-coach-chat.ts); `error` is a readable fallback.
  */
-type CoachErrorCode = 'unauthenticated' | 'bad_request' | 'not_configured' | 'busy' | 'unreachable';
+type CoachErrorCode =
+  | 'unauthenticated'
+  | 'bad_request'
+  | 'not_configured'
+  | 'busy'
+  | 'unreachable'
+  | 'limit_reached';
 
 function errorResponse(code: CoachErrorCode, error: string, status: number) {
   return NextResponse.json({ code, error }, { status });
-}
-
-/**
- * Verifies the Firebase ID token sent by the client so unauthenticated callers
- * can't consume the Groq quota. Uses the Identity Toolkit REST API to avoid
- * pulling in firebase-admin.
- */
-async function verifyFirebaseIdToken(req: Request): Promise<boolean> {
-  const authHeader = req.headers.get('authorization') ?? '';
-  const idToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
-  if (!idToken) return false;
-
-  const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY;
-  if (!apiKey) return false;
-
-  try {
-    const res = await fetch(
-      `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idToken }),
-      },
-    );
-    if (!res.ok) return false;
-    const data = await res.json();
-    return Array.isArray(data?.users) && data.users.length > 0;
-  } catch {
-    return false;
-  }
 }
 
 /**
@@ -125,9 +105,24 @@ function filterThinkingStream(raw: ReadableStream<Uint8Array>): ReadableStream<U
 
 export async function POST(req: Request) {
   try {
-    const isAuthenticated = await verifyFirebaseIdToken(req);
-    if (!isAuthenticated) {
+    const uid = await verifyFirebaseIdToken(req);
+    if (!uid) {
       return errorResponse('unauthenticated', 'Not signed in. Sign in to talk to the coach.', 401);
+    }
+
+    // Daily quota. The admin account is exempt; when the service account is not
+    // configured `getCoachCallsUsedToday` returns 0 and the limit is inert (a
+    // loud warning is logged at import time) rather than blocking the coach.
+    const unlimited = isAdminUid(uid);
+    if (!unlimited) {
+      const usedToday = await getCoachCallsUsedToday(uid);
+      if (usedToday >= DAILY_LIMIT_COACH_CALLS) {
+        return errorResponse(
+          'limit_reached',
+          `Daily AI limit reached (${DAILY_LIMIT_COACH_CALLS}/day). Come back tomorrow!`,
+          429,
+        );
+      }
     }
 
     const body = await req.json();
@@ -166,6 +161,18 @@ export async function POST(req: Request) {
       temperature: 0.4,
       maxTokens: 1500,
     });
+
+    // Counted only once the provider has accepted the request, so a Groq outage
+    // (which throws above) never costs the user one of their three calls.
+    if (!unlimited) {
+      try {
+        await bumpCoachCall(uid);
+      } catch (error) {
+        // Never fail the reply over bookkeeping — worst case the user gets a
+        // free call and the server log says why.
+        console.error('[coach] failed to record usage:', error);
+      }
+    }
 
     return new Response(filterThinkingStream(rawStream), {
       headers: {

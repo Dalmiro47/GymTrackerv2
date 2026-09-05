@@ -4,6 +4,8 @@ import React from "react";
 import { AppSidebar } from "@/components/layout/AppSidebar";
 import { AppHeader } from "@/components/layout/AppHeader";
 import { BottomNav } from "@/components/layout/BottomNav";
+import { FeedbackButton } from "@/components/feedback/FeedbackButton";
+import { OnboardingGate } from "@/components/onboarding/OnboardingGate";
 import { useRequireAuth } from "@/hooks/use-require-auth";
 import { Loader2 } from "lucide-react";
 
@@ -50,6 +52,12 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       </div>
 
       <BottomNav />
+
+      {/* Sticky on every protected page; bottom-LEFT so it clears the coach FAB. */}
+      <FeedbackButton />
+
+      {/* First-run setup — renders nothing once the user has been onboarded. */}
+      <OnboardingGate />
     </div>
   );
 }

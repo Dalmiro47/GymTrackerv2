@@ -68,7 +68,7 @@ export function CoachChatSheet({ mode, context, loadContext, suggestedPrompts, l
   const [isLoadingContext, setIsLoadingContext] = useState(false);
   const [input, setInput] = useState('');
   const [composerExpanded, setComposerExpanded] = useState(false);
-  const { messages, isStreaming, error, sendMessage, clearChat, stopStreaming } = useCoachChat(mode, logDate);
+  const { messages, isStreaming, error, usage, refreshUsage, sendMessage, clearChat, stopStreaming } = useCoachChat(mode, logDate);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -157,6 +157,12 @@ export function CoachChatSheet({ mode, context, loadContext, suggestedPrompts, l
     return () => document.removeEventListener('touchmove', onTouchMove);
   }, [open, isMobile]);
 
+  // The daily allowance is read when the panel opens (and refreshed after each
+  // send by the hook), so a user who hit the cap on another device sees it here.
+  useEffect(() => {
+    if (open) void refreshUsage();
+  }, [open, refreshUsage]);
+
   // Focus textarea when chat opens
   useEffect(() => {
     if (open) {
@@ -233,6 +239,12 @@ export function CoachChatSheet({ mode, context, loadContext, suggestedPrompts, l
         height: 'min(680px, calc(100dvh - 7rem))',
       };
 
+  // Only shown for a limited account: admin and an unenforced server both
+  // report `unlimited`, and there is no honest number to display for them.
+  const showAllowance =
+    !!usage && !usage.unlimited && typeof usage.remaining === 'number';
+  const outOfCalls = showAllowance && usage!.remaining === 0;
+
   const sendButton = isStreaming ? (
     <Button size="icon" variant="outline" onClick={stopStreaming} className="shrink-0">
       <Square className="h-4 w-4" />
@@ -241,7 +253,7 @@ export function CoachChatSheet({ mode, context, loadContext, suggestedPrompts, l
     <Button
       size="icon"
       onClick={handleSend}
-      disabled={!input.trim() || noContext || isLoadingContext}
+      disabled={!input.trim() || noContext || isLoadingContext || outOfCalls}
       className="shrink-0"
     >
       <Send className="h-4 w-4" />
@@ -288,7 +300,11 @@ export function CoachChatSheet({ mode, context, loadContext, suggestedPrompts, l
                 <Sparkles className="h-5 w-5 text-primary" />
                 <div>
                   <p className="text-sm font-semibold leading-tight">{t(config.title)}</p>
-                  <p className="text-xs text-muted-foreground">{t(config.description)}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {showAllowance
+                      ? t('coach.callsLeft', { remaining: usage!.remaining!, limit: usage!.limit })
+                      : t(config.description)}
+                  </p>
                 </div>
               </div>
               <div className="flex items-center gap-1">
@@ -336,7 +352,7 @@ export function CoachChatSheet({ mode, context, loadContext, suggestedPrompts, l
                             <button
                               key={i}
                               onClick={() => handleSuggested(prompt)}
-                              disabled={isStreaming}
+                              disabled={isStreaming || outOfCalls}
                               className="rounded-full border px-3 py-1.5 text-left text-xs text-foreground transition-colors hover:bg-accent disabled:opacity-50"
                             >
                               {prompt}
@@ -355,6 +371,18 @@ export function CoachChatSheet({ mode, context, loadContext, suggestedPrompts, l
                   <div ref={bottomRef} />
                 </div>
               </ScrollArea>
+
+              {/* Daily cap reached — the composer stays visible but inert, so it
+                  reads as "spent for today" rather than a broken chat. */}
+              {outOfCalls && !composerExpanded && (
+                <div className="shrink-0 px-4 pb-2">
+                  <Alert>
+                    <AlertDescription className="text-xs">
+                      {t('coach.limitReachedBanner', { limit: usage!.limit })}
+                    </AlertDescription>
+                  </Alert>
+                </div>
+              )}
 
               {/* Error */}
               {error && !composerExpanded && (
@@ -385,7 +413,7 @@ export function CoachChatSheet({ mode, context, loadContext, suggestedPrompts, l
                       value={input}
                       onChange={(e) => setInput(e.target.value)}
                       placeholder={t(config.placeholder)}
-                      disabled={isStreaming || noContext || isLoadingContext}
+                      disabled={isStreaming || noContext || isLoadingContext || outOfCalls}
                       className={cn(
                         'resize-none overflow-y-auto overscroll-contain pr-10',
                         composerExpanded ? 'h-full min-h-0' : 'min-h-[44px]',

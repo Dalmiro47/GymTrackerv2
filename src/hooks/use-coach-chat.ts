@@ -23,6 +23,16 @@ const today = () => format(new Date(), 'yyyy-MM-dd');
 const STORAGE_KEY = (mode: ChatMode, uid: string, date?: string) =>
   `coach-chat-${uid}-${mode}-${mode === 'log-day' && date ? date : today()}`;
 
+/** Shape returned by GET /api/coach/usage. `unlimited` covers both the admin
+ *  account and a server with no service account (where `enforced` is false). */
+export type CoachUsage = {
+  unlimited: boolean;
+  enforced: boolean;
+  limit: number;
+  used?: number;
+  remaining?: number;
+};
+
 // Error `code`s from /api/coach/chat → message in the user's language.
 const ERROR_CODE_KEYS: Record<string, TranslationKey> = {
   unauthenticated: 'coach.err.unauthenticated',
@@ -30,6 +40,7 @@ const ERROR_CODE_KEYS: Record<string, TranslationKey> = {
   not_configured: 'coach.err.notConfigured',
   busy: 'coach.err.busy',
   unreachable: 'coach.err.unreachable',
+  limit_reached: 'coach.err.limitReached',
 };
 
 function stripThinking(text: string): string {
@@ -86,7 +97,24 @@ export function useCoachChat(mode: ChatMode, logDate?: string) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [usage, setUsage] = useState<CoachUsage | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+
+  /** Re-reads the daily allowance. Silent on failure — it is a UI affordance,
+   *  never a reason to interrupt the chat. */
+  const refreshUsage = useCallback(async () => {
+    try {
+      const idToken = await getAuth(app).currentUser?.getIdToken();
+      if (!idToken) return;
+      const res = await fetch('/api/coach/usage', {
+        headers: { Authorization: `Bearer ${idToken}` },
+      });
+      if (!res.ok) return;
+      setUsage((await res.json()) as CoachUsage);
+    } catch {
+      /* leave the previous value */
+    }
+  }, []);
 
   // Load persisted history after mount — reading localStorage during the
   // initial render causes a server/client hydration mismatch.
@@ -218,9 +246,11 @@ export function useCoachChat(mode: ChatMode, logDate?: string) {
         // Always reset loading state — without this the UI stays permanently disabled
         setIsStreaming(false);
         abortRef.current = null;
+        // The count moved (or the server just told us it is exhausted).
+        void refreshUsage();
       }
     },
-    [messages, isStreaming, mode, persistMessages, language, t],
+    [messages, isStreaming, mode, persistMessages, language, t, refreshUsage],
   );
 
   const clearChat = useCallback(() => {
@@ -235,5 +265,5 @@ export function useCoachChat(mode: ChatMode, logDate?: string) {
     setIsStreaming(false);
   }, []);
 
-  return { messages, isStreaming, error, sendMessage, clearChat, stopStreaming };
+  return { messages, isStreaming, error, usage, refreshUsage, sendMessage, clearChat, stopStreaming };
 }

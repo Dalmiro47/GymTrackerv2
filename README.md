@@ -67,6 +67,12 @@ Sensitive information like API keys is managed using environment variables.
         NEXT_PUBLIC_FIREBASE_APP_ID=YOUR_FIREBASE_APP_ID
         # NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID= (Optional)
         ```
+    *   **Add the server-side Firebase service account** (Project Settings > Service accounts > Generate new private key). It lets the server write the daily AI-usage counter, which the security rules keep read-only for clients:
+        ```env
+        FIREBASE_CLIENT_EMAIL=firebase-adminsdk-xxxxx@YOUR_PROJECT.iam.gserviceaccount.com
+        FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nMIIE...\n-----END PRIVATE KEY-----\n"
+        ```
+        Keep the double quotes here. In the Vercel dashboard paste the same value **without** them, or the quotes become part of the key. Without these two the app still runs, but daily AI limits are silently not enforced (a banner on `/admin` says so).
     *   **Enable Google Sign-In**: In the Firebase Console, go to "Authentication" (under Build). On the "Sign-in method" tab, enable the "Google" provider. Make sure to add your project's support email.
     *   **Enable Cloud Firestore**: In the Firebase Console, go to "Firestore Database" (under Build). Click "Create database". Start in **test mode** for initial development (it allows open access for 30 days). You will secure this with rules later. Select a Cloud Firestore location.
 
