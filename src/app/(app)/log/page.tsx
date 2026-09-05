@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useEffect, Suspense } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { confirmDiscardUnsavedChanges } from '@/lib/unsavedChanges';
 import { Button } from "@/components/ui/button";
@@ -14,14 +14,14 @@ import {
   BatteryLow,
   Check,
   ChevronDown,
-  MoreHorizontal,
+  Save,
   StickyNote,
   X,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { useTrainingLog } from '@/hooks/useTrainingLog';
-import type { Exercise, MuscleGroup, SetStructure } from '@/types';
-import { LoggedExerciseCard } from '@/components/training-log/LoggedExerciseCard';
+import type { Exercise, LoggedExercise, LoggedSet, MuscleGroup, SetStructure } from '@/types';
+import { ExerciseList } from '@/components/training-log/ExerciseList';
 import { AddExerciseDialog } from '@/components/training-log/AddExerciseDialog';
 import { ReplaceExerciseDialog } from '@/components/training-log/ReplaceExerciseDialog';
 import { format, parseISO, isValid as isDateValid, startOfMonth } from 'date-fns';
@@ -37,15 +37,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-
-import {
-  DndContext,
-  closestCenter,
   useSensor,
   useSensors,
   type DragEndEvent,
@@ -54,8 +45,6 @@ import {
 } from '@dnd-kit/core';
 import {
   arrayMove,
-  SortableContext,
-  verticalListSortingStrategy,
   sortableKeyboardCoordinates,
 } from '@dnd-kit/sortable';
 import { useAuth } from '@/contexts/AuthContext';
@@ -64,31 +53,27 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { useToday } from '@/hooks/use-today';
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
-import { RoutineGroupConnector } from '@/components/training-log/RoutineGroupConnector'; // NEW IMPORT
 import { WeekStrip } from '@/components/training-log/WeekStrip';
 import { WorkoutCalendar } from '@/components/dashboard/WorkoutCalendar';
 import { ResponsiveSheet } from '@/components/ui/responsive-sheet';
-import { AppBarActions } from '@/components/layout/AppBarActions';
 import { CoachChatSheet } from '@/components/coach/CoachChatSheet';
 import { serializeLogDayContext } from '@/lib/ai/context-builders';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebaseConfig';
 
-// Get the effective structure for an exercise (override, then routine default, then normal)
-function effectiveOf(ex: { setStructure?: SetStructure; setStructureOverride?: SetStructure | null } | undefined): SetStructure {
-  if (!ex) return 'normal';
-  return ex.setStructureOverride ?? ex.setStructure ?? 'normal';
+/**
+ * Stable function identity with an always-fresh body. <ExerciseList /> is memoised and
+ * only skips renders when EVERY callback prop keeps its identity, but useTrainingLog
+ * recreates its handlers each render. Callbacks here are only ever invoked from event
+ * handlers (post-commit), so reading the latest body from a ref is safe.
+ */
+function useStableCallback<T extends (...args: never[]) => unknown>(fn: T): T {
+  const ref = useRef(fn);
+  useEffect(() => {
+    ref.current = fn;
+  });
+  return useCallback(((...args: never[]) => ref.current(...args)) as T, []);
 }
-
-// NEW HELPER: Logic for max group size
-const getGroupSize = (type: string) => {
-    const t = type.toLowerCase();
-    if (t === 'superset') return 2;
-    if (t === 'triset') return 3;
-    if (t === 'giant set') return 99;
-    return 1;
-};
-
 
 function TrainingLogPageContent() {
   const { user, isLoading: authIsLoading } = useAuth();
@@ -180,19 +165,29 @@ function TrainingLogPageContent() {
   const loggedDaySet = useMemo(() => new Set(loggedDayStrings), [loggedDayStrings]);
   const deloadDaySet = useMemo(() => new Set(deloadDayStrings), [deloadDayStrings]);
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
+  // dnd-kit memoises each sensor on its options OBJECT identity, so an inline literal
+  // hands <ExerciseList /> a fresh `sensors` array every render and silently defeats its
+  // React.memo. Hoist both option objects.
+  const pointerSensorOptions = useMemo(
+    () => ({
       activationConstraint: isMobile
         ? { delay: 120, tolerance: 6 }
         : { distance: 6 },
     }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
+    [isMobile]
+  );
+  const keyboardSensorOptions = useMemo(
+    () => ({ coordinateGetter: sortableKeyboardCoordinates }),
+    []
+  );
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, pointerSensorOptions),
+    useSensor(KeyboardSensor, keyboardSensorOptions)
   );
 
 
-  function handleDragEnd(event: DragEndEvent) {
+  const handleDragEnd = useStableCallback((event: DragEndEvent) => {
     const { active, over } = event;
     if (!currentLog || !over || active.id === over.id) return;
 
@@ -202,7 +197,7 @@ function TrainingLogPageContent() {
 
     const reordered = arrayMove(currentLog.exercises, oldIndex, newIndex);
     reorderExercisesInLog(reordered);
-  }
+  });
 
   const handleOverallNotesChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     updateOverallLogNotes(e.target.value);
@@ -221,8 +216,6 @@ function TrainingLogPageContent() {
     setIsRoutineSheetOpen(false);
   };
 
-  // Row ids (LoggedExercise.id) — for dnd-kit sorting only.
-  const loggedExerciseIds = useMemo(() => currentLog?.exercises.map(ex => ex.id) || [], [currentLog]);
   // Library ids (Exercise.id) — the identity used to keep an exercise from being logged
   // twice on the same day. Never mix the two: LoggedExercise.id is a composite row id and
   // will never match a library exercise id.
@@ -233,15 +226,29 @@ function TrainingLogPageContent() {
     setIsDeleteConfirmOpen(false);
   };
 
-  const handleOpenAddDialog = (index: number) => {
+  const handleOpenAddDialog = useStableCallback((index: number) => {
     setExerciseInsertionIndex(index);
     setIsAddExerciseDialogOpen(true);
-  };
+  });
 
-  const handleOpenReplaceDialog = (exerciseId: string, muscleGroup: MuscleGroup) => {
+  const handleOpenReplaceDialog = useStableCallback((exerciseId: string, muscleGroup: MuscleGroup) => {
     setExerciseToReplace({ id: exerciseId, muscleGroup });
     setIsReplaceExerciseDialogOpen(true);
-  };
+  });
+
+  const handleUpdateSets = useStableCallback((loggedExercise: LoggedExercise, sets: LoggedSet[]) => {
+    updateExerciseInLog({ ...loggedExercise, sets });
+  });
+
+  const handleRemoveExercise = useStableCallback((rowId: string) => {
+    removeExerciseFromLog(rowId);
+  });
+
+  const handleUpdateSetStructureOverride = useStableCallback(
+    (exerciseId: string, structure: SetStructure | null) => {
+      updateExerciseSetStructureOverride(exerciseId, structure);
+    }
+  );
 
   const handleReplaceExercise = (newExercise: Exercise) => {
     if (exerciseToReplace) {
@@ -270,6 +277,9 @@ function TrainingLogPageContent() {
 
   const controlsDisabled = isLoadingRoutines || isLoadingLog || isSavingLog || isDeletingLog;
   const hasExercises = (currentLog?.exercises.length ?? 0) > 0;
+  // A routine is "in play" only while its exercises are on screen — that is when the
+  // inline "Add exercise here" dividers exist to replace the rail button.
+  const routineInPlay = Boolean(currentLog?.routineId) && hasExercises;
 
   const deloadDescription = useMemo(() => {
     if (!currentLog?.deloadParams) {
@@ -296,44 +306,6 @@ function TrainingLogPageContent() {
 
   return (
     <div className="space-y-5">
-      {/* Save / delete live in the app bar — the page has no bottom action bar. */}
-      <AppBarActions>
-        <Button
-          size="sm"
-          onClick={async () => await saveCurrentLog()}
-          disabled={isSavingLog || isLoadingLog || isDeletingLog}
-          className="h-9 rounded-full px-4"
-        >
-          {isSavingLog && <Loader2 className="h-4 w-4 animate-spin" />}
-          Save
-          {isDirty && !isSavingLog && (
-            <span
-              className="h-2 w-2 rounded-full bg-destructive"
-              aria-label="Unsaved changes"
-              title="Unsaved changes"
-            />
-          )}
-        </Button>
-
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-9 w-9 md:h-9 md:w-9" aria-label="More log actions">
-              <MoreHorizontal className="h-5 w-5" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
-            <DropdownMenuItem
-              disabled={!canDeleteLog || isDeletingLog || isLoadingLog || isSavingLog}
-              onSelect={() => setIsDeleteConfirmOpen(true)}
-              className="text-destructive focus:text-destructive"
-            >
-              <Trash2 className="h-4 w-4" />
-              Delete this day&apos;s log
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </AppBarActions>
-
       <WeekStrip
         className="animate-enter"
         selectedDate={selectedDate}
@@ -361,31 +333,48 @@ function TrainingLogPageContent() {
         </Button>
 
         {hasExercises && (
-          <Button
-            variant="outline"
-            aria-pressed={isDeload}
-            onClick={() => setIsDeload(!isDeload)}
-            disabled={isLoadingLog || isSavingLog || isDeletingLog}
-            className={cn(
-              "h-10 shrink-0 gap-2 rounded-full px-3.5 text-[14px] font-medium",
-              isDeload
-                ? "border-warning/40 bg-warning/15 text-warning hover:bg-warning/20 hover:text-warning"
-                : "text-muted-foreground"
-            )}
-          >
-            <BatteryLow className="h-4 w-4" />
-            Deload
-          </Button>
+          <>
+            <Button
+              variant="outline"
+              aria-pressed={isDeload}
+              onClick={() => setIsDeload(!isDeload)}
+              disabled={isLoadingLog || isSavingLog || isDeletingLog}
+              className={cn(
+                "h-10 shrink-0 gap-2 rounded-full px-3.5 text-[14px] font-medium",
+                isDeload
+                  ? "border-warning/40 bg-warning/15 text-warning hover:bg-warning/20 hover:text-warning"
+                  : "text-muted-foreground"
+              )}
+            >
+              <BatteryLow className="h-4 w-4" />
+              Deload
+            </Button>
+
+            {/* Explainer lives with the deload control, not in the routine picker. */}
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setIsDeloadInfoOpen(true)}
+              aria-label="What is deload mode?"
+              className="-ml-1 h-10 w-10 shrink-0 rounded-full text-muted-foreground hover:text-foreground"
+            >
+              <Info className="h-4 w-4" />
+            </Button>
+          </>
         )}
 
-        <Button
-          onClick={() => handleOpenAddDialog(currentLog?.exercises.length ?? 0)}
-          disabled={isLoadingLog || isSavingLog || isDeletingLog}
-          className="h-10 shrink-0 gap-2 rounded-full px-3.5 text-[14px]"
-        >
-          <Plus className="h-4 w-4" />
-          Add exercise
-        </Button>
+        {/* With a routine loaded, exercises are added from the inline dividers
+            between cards — the rail button is redundant and overflows on mobile. */}
+        {!routineInPlay && (
+          <Button
+            onClick={() => handleOpenAddDialog(currentLog?.exercises.length ?? 0)}
+            disabled={isLoadingLog || isSavingLog || isDeletingLog}
+            className="h-10 shrink-0 gap-2 rounded-full px-3.5 text-[14px]"
+          >
+            <Plus className="h-4 w-4" />
+            Add exercise
+          </Button>
+        )}
       </div>
 
       {isDeload && (
@@ -406,94 +395,19 @@ function TrainingLogPageContent() {
           </div>
         ) : currentLog && currentLog.exercises.length > 0 ? (
           <>
-            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-              <SortableContext items={loggedExerciseIds} strategy={verticalListSortingStrategy}>
-                <div>
-                  {currentLog.exercises.map((loggedEx, index) => {
-                      const currentStructure = effectiveOf(loggedEx);
-                      const nextExercise = currentLog.exercises[index + 1];
-                      const nextStructure = nextExercise ? effectiveOf(nextExercise) : 'normal';
-
-                      // LOGIC: Only link if next is same structure AND we are not at the end of a group size cap
-                      let shouldLink = false;
-
-                      if (nextExercise && currentStructure !== 'normal' && currentStructure === nextStructure) {
-                          // Calculate streak (how many items before this one were the same type?)
-                          let streak = 1;
-                          for (let i = index - 1; i >= 0; i--) {
-                              const prev = currentLog.exercises[i];
-                              if (effectiveOf(prev) === currentStructure) {
-                                  streak++;
-                              } else {
-                                  break;
-                              }
-                          }
-
-                          const maxSize = getGroupSize(currentStructure);
-                          // Link if we haven't hit the max size for this group chunk
-                          if (streak % maxSize !== 0) {
-                              shouldLink = true;
-                          }
-                      }
-
-                    return (
-                    <React.Fragment key={loggedEx.id}>
-                      <div className={cn(!shouldLink && "mb-3")}>
-                          <LoggedExerciseCard
-                            loggedExercise={loggedEx}
-                            onUpdateSets={(sets) => updateExerciseInLog({ ...loggedEx, sets })}
-                            onRemove={() => removeExerciseFromLog(loggedEx.id)}
-                            onReplace={() => handleOpenReplaceDialog(loggedEx.id, loggedEx.muscleGroup)}
-                            isSavingParentLog={isSavingLog || isDeletingLog}
-                            onUpdateSetStructureOverride={updateExerciseSetStructureOverride}
-                            isReadOnly={isDeload}
-                            isSavedForDay={savedExerciseIds.has(loggedEx.id)}
-                          />
-                      </div>
-                      {index < currentLog.exercises.length - 1 && (
-                        shouldLink ? (
-                          <RoutineGroupConnector structure={currentStructure} />
-                        ) : (
-                          // Standard Divider
-                          <div className="relative my-2 group">
-                              <div className="relative z-10 flex items-center justify-center">
-                                  <Button
-                                      onClick={() => handleOpenAddDialog(index + 1)}
-                                      variant="outline"
-                                      size="sm"
-                                      className="h-8 rounded-full border-dashed bg-background px-3 text-[12px] font-medium text-muted-foreground hover:border-solid hover:text-foreground"
-                                  >
-                                      <PlusCircle className="h-3.5 w-3.5" />
-                                      Add exercise here
-                                  </Button>
-                              </div>
-                              <div className="absolute inset-0 flex items-center" aria-hidden="true">
-                                  <div className="w-full border-t border-border" />
-                              </div>
-                          </div>
-                        )
-                      )}
-                    </React.Fragment>
-                    )
-                  })}
-                </div>
-              </SortableContext>
-            </DndContext>
-
-            {/* Final Add Button */}
-            <div className="flex items-center gap-2 pt-1">
-                <Separator className="flex-1" />
-                <Button
-                    onClick={() => handleOpenAddDialog(currentLog.exercises.length)}
-                    variant="outline"
-                    size="sm"
-                    className="h-9 shrink-0 rounded-full border-dashed px-3.5 text-[13px] font-medium text-muted-foreground hover:border-solid hover:text-foreground"
-                >
-                    <PlusCircle className="h-4 w-4" />
-                    Add another exercise
-                </Button>
-                <Separator className="flex-1" />
-            </div>
+            <ExerciseList
+              exercises={currentLog.exercises}
+              sensors={sensors}
+              savedExerciseIds={savedExerciseIds}
+              isBusy={isSavingLog || isDeletingLog}
+              isReadOnly={isDeload}
+              onDragEnd={handleDragEnd}
+              onUpdateSets={handleUpdateSets}
+              onRemove={handleRemoveExercise}
+              onReplace={handleOpenReplaceDialog}
+              onUpdateSetStructureOverride={handleUpdateSetStructureOverride}
+              onAddAt={handleOpenAddDialog}
+            />
           </>
         ) : (
           <div className="surface flex flex-col items-center gap-1 px-4 py-12 text-center">
@@ -605,18 +519,6 @@ function TrainingLogPageContent() {
             })
           )}
         </div>
-
-        <div className="border-t pt-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setIsDeloadInfoOpen(true)}
-            className="h-9 gap-2 rounded-full px-3 text-[13px] font-medium text-muted-foreground hover:text-foreground"
-          >
-            <Info className="h-4 w-4" />
-            What is deload mode?
-          </Button>
-        </div>
       </ResponsiveSheet>
 
       {/* Deload explainer — same copy the old info popover carried. */}
@@ -651,7 +553,51 @@ function TrainingLogPageContent() {
         initialMuscleGroup={exerciseToReplace?.muscleGroup}
       />
 
-      {/* Delete-log confirmation (triggered from the app-bar overflow menu) */}
+      {/* Clears the floating action dock below. */}
+      <div aria-hidden className="h-14" />
+
+      {/* Floating action dock — Save + Delete ride at the same height as the
+          AI Coach button (centred in the content column; the coach hugs the
+          right edge, so the two never overlap). z-40 keeps it under the
+          coach backdrop (z-49) when the chat is open. */}
+      <div
+        className={cn(
+          "pointer-events-none fixed inset-x-0 z-40 flex justify-center px-4",
+          "bottom-[calc(var(--bottomnav-height)+env(safe-area-inset-bottom)+1rem)]",
+          "md:left-[var(--sidebar-width)] md:bottom-6"
+        )}
+      >
+        <div className="glass pointer-events-auto flex items-center gap-2 rounded-full border border-border p-1.5 shadow-lg">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setIsDeleteConfirmOpen(true)}
+            disabled={!canDeleteLog || isDeletingLog || isLoadingLog || isSavingLog}
+            aria-label="Delete this day's log"
+            className="h-11 w-11 shrink-0 rounded-full text-destructive hover:bg-destructive/10 hover:text-destructive"
+          >
+            {isDeletingLog ? <Loader2 className="h-5 w-5 animate-spin" /> : <Trash2 className="h-5 w-5" />}
+          </Button>
+
+          <Button
+            onClick={async () => await saveCurrentLog()}
+            disabled={isSavingLog || isLoadingLog || isDeletingLog}
+            className="h-11 shrink-0 gap-2 rounded-full px-5 text-[15px] font-semibold"
+          >
+            {isSavingLog ? <Loader2 className="h-5 w-5 animate-spin" /> : <Save className="h-5 w-5" />}
+            Save
+            {isDirty && !isSavingLog && (
+              <span
+                className="h-2 w-2 rounded-full bg-destructive"
+                aria-label="Unsaved changes"
+                title="Unsaved changes"
+              />
+            )}
+          </Button>
+        </div>
+      </div>
+
+      {/* Delete-log confirmation (triggered from the floating action dock) */}
       <AlertDialog open={isDeleteConfirmOpen} onOpenChange={setIsDeleteConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
