@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Dumbbell } from 'lucide-react';
+import { AppIcon } from '@/components/AppIcon';
 import { cn } from '@/lib/utils';
 
 interface LogoProps {
@@ -17,7 +17,7 @@ export function Logo({ className, iconSize = 24, textSize = 'text-2xl' }: LogoPr
         className
       )}
     >
-      <Dumbbell className="text-primary shrink-0" size={iconSize} />
+      <AppIcon size={iconSize} />
       <span className={cn('font-headline font-bold tracking-tight whitespace-nowrap', textSize)}>
         DDS Gym Tracker
       </span>
