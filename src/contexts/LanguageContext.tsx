@@ -8,6 +8,7 @@ import {
   DEFAULT_LANGUAGE,
   LANGUAGE_STORAGE_KEY,
   dateLocale,
+  detectLanguage,
   isLanguage,
   setCurrentLanguage,
   translate,
@@ -33,14 +34,15 @@ interface LanguageContextType {
 
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined);
 
-function readStoredLanguage(): Language {
+/** The language this device last used, or `null` if it never picked one. */
+function readStoredLanguage(): Language | null {
   try {
     const v = localStorage.getItem(LANGUAGE_STORAGE_KEY);
     if (isLanguage(v)) return v;
   } catch {
     /* storage unavailable */
   }
-  return DEFAULT_LANGUAGE;
+  return null;
 }
 
 /**
@@ -54,9 +56,10 @@ export const LanguageProvider = ({ children }: { children: ReactNode }) => {
   const { user } = useAuth();
   const [language, setLanguageState] = useState<Language>(DEFAULT_LANGUAGE);
 
-  const applyLanguage = useCallback((next: Language) => {
+  const applyLanguage = useCallback((next: Language, persist = true) => {
     setCurrentLanguage(next);
     setLanguageState(next);
+    if (!persist) return;
     try {
       localStorage.setItem(LANGUAGE_STORAGE_KEY, next);
     } catch {
@@ -72,9 +75,13 @@ export const LanguageProvider = ({ children }: { children: ReactNode }) => {
     await setDoc(doc(db, 'users', uid, 'profile', 'profile'), { language: next }, { merge: true });
   }, [applyLanguage, uid]);
 
-  // Fast path: whatever this device last used.
+  // Fast path: whatever this device last used. A first-time visitor gets a guess
+  // from their locale/time zone instead — not persisted, so it stays a guess
+  // until they (or their profile doc) actually choose.
   useEffect(() => {
-    applyLanguage(readStoredLanguage());
+    const stored = readStoredLanguage();
+    if (stored) applyLanguage(stored);
+    else applyLanguage(detectLanguage(), false);
   }, [applyLanguage]);
 
   // Source of truth: the profile doc, once signed in.

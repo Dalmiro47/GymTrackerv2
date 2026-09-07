@@ -31,6 +31,47 @@ export function isLanguage(value: unknown): value is Language {
   return value === 'en' || value === 'es';
 }
 
+/**
+ * Time zones of Spanish-speaking countries. Used as a *geographic* signal when
+ * the device locale isn't Spanish (an English-set phone used in Mexico), which
+ * is the closest we get to "the country the user is in" without a geo-IP call.
+ */
+const SPANISH_TIME_ZONES = new Set([
+  'Europe/Madrid', 'Atlantic/Canary', 'Africa/Ceuta',
+  'America/Mexico_City', 'America/Cancun', 'America/Merida', 'America/Monterrey',
+  'America/Matamoros', 'America/Chihuahua', 'America/Ciudad_Juarez', 'America/Ojinaga',
+  'America/Mazatlan', 'America/Bahia_Banderas', 'America/Hermosillo', 'America/Tijuana',
+  'America/Bogota', 'America/Lima', 'America/Caracas', 'America/Guayaquil',
+  'America/La_Paz', 'America/Asuncion', 'America/Montevideo', 'America/Santiago',
+  'America/Punta_Arenas', 'Pacific/Easter', 'America/Buenos_Aires',
+  'America/Panama', 'America/Costa_Rica', 'America/Guatemala', 'America/El_Salvador',
+  'America/Tegucigalpa', 'America/Managua', 'America/Havana', 'America/Santo_Domingo',
+  'America/Puerto_Rico',
+]);
+
+function isSpanishTimeZone(zone: string): boolean {
+  return zone.startsWith('America/Argentina/') || SPANISH_TIME_ZONES.has(zone);
+}
+
+/**
+ * Best guess at the language for a visitor who has never chosen one: the device
+ * locale first, then the time zone's country. Browser-only APIs, so it returns
+ * the default during SSR. An explicit choice (localStorage / profile) always wins.
+ */
+export function detectLanguage(): Language {
+  if (typeof window === 'undefined') return DEFAULT_LANGUAGE;
+  try {
+    const tags = navigator.languages?.length ? navigator.languages : [navigator.language];
+    if (tags.some((tag) => tag?.toLowerCase().split('-')[0] === 'es')) return 'es';
+    // Device locale isn't Spanish — fall back to where the device thinks it is.
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (zone && isSpanishTimeZone(zone)) return 'es';
+  } catch {
+    /* Locale/Intl unavailable — keep the default. */
+  }
+  return DEFAULT_LANGUAGE;
+}
+
 let currentLanguage: Language = DEFAULT_LANGUAGE;
 
 export function getLanguage(): Language {
