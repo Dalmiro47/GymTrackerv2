@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Logo } from "@/components/Logo";
 import { InstallGuide } from "@/components/InstallGuide";
+import { LanguageToggle } from "@/components/LanguageToggle";
 import { useAuth } from "@/contexts/AuthContext";
 import { useI18n } from "@/contexts/LanguageContext";
 import { useRouter } from "next/navigation";
@@ -53,7 +54,10 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-[100dvh] flex-col items-center justify-center gap-4 p-4">
+    <div className="flex min-h-[100dvh] flex-col items-center justify-center gap-4 p-4 pt-16">
+      {/* Fixed, not absolute: expanding the install steps makes the page scroll,
+          and an absolute toggle would scroll off the top with it. */}
+      <LanguageToggle className="animate-enter fixed right-4 top-4 z-50" />
       <Card className="animate-enter w-full max-w-sm">
         <CardHeader className="items-center pt-8 text-center">
           <div className="mb-6 flex justify-center">
