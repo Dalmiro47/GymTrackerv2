@@ -471,24 +471,54 @@ function TrainingLogPageContent() {
         title={t('log.routine')}
         description={t('log.routineDescription')}
       >
-        <div className="space-y-1 pb-2">
+        {/* Same row idiom as the exercise picker: a filled surface with an icon
+            chip, a title/subtitle stack and a primary-filled check when chosen. */}
+        <div className="grid grid-cols-1 gap-2 pb-1">
           <button
             type="button"
             onClick={() => handleChooseRoutine('none')}
-            className="pressable flex min-h-[52px] w-full items-center gap-3 rounded-md border border-transparent px-3 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className={cn(
+              "pressable flex min-h-[60px] w-full items-center gap-3 rounded-md border p-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              !currentLog?.routineId
+                ? "border-primary bg-primary/10"
+                : "border-transparent bg-muted/20 hover:bg-accent"
+            )}
           >
-            <X aria-hidden="true" className="h-4 w-4 shrink-0 text-muted-foreground" />
-            <span className="flex-1 text-[15px] font-medium">{t('log.startFresh')}</span>
-            {!currentLog?.routineId && <Check aria-hidden="true" className="h-4 w-4 shrink-0 text-primary" />}
+            <span
+              className={cn(
+                "flex h-9 w-9 shrink-0 items-center justify-center rounded-full",
+                !currentLog?.routineId ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground"
+              )}
+            >
+              <X aria-hidden="true" className="h-[18px] w-[18px]" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span
+                className={cn(
+                  "block truncate text-[15px] font-semibold",
+                  !currentLog?.routineId && "text-primary"
+                )}
+              >
+                {t('log.startFresh')}
+              </span>
+            </span>
+            {!currentLog?.routineId && (
+              <span
+                aria-hidden="true"
+                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground"
+              >
+                <Check className="h-3.5 w-3.5" />
+              </span>
+            )}
           </button>
 
           {isLoadingRoutines ? (
-            <div className="flex min-h-[52px] items-center gap-2 px-3 text-[13px] text-muted-foreground">
+            <div className="flex min-h-[60px] items-center justify-center gap-2 text-[13px] text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
               {t('log.loadingRoutines')}
             </div>
           ) : availableRoutines.length === 0 ? (
-            <p className="px-3 py-6 text-center text-[13px] text-muted-foreground">
+            <p className="px-3 py-8 text-center text-[13px] text-muted-foreground">
               {t('log.noRoutines')}
             </p>
           ) : (
@@ -500,17 +530,36 @@ function TrainingLogPageContent() {
                   type="button"
                   onClick={() => handleChooseRoutine(routine.id)}
                   className={cn(
-                    "pressable flex min-h-[52px] w-full items-center gap-3 rounded-md border px-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                    isCurrent ? "border-primary bg-primary/10" : "border-transparent hover:bg-accent"
+                    "pressable flex min-h-[60px] w-full items-center gap-3 rounded-md border p-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    isCurrent
+                      ? "border-primary bg-primary/10"
+                      : "border-transparent bg-muted/20 hover:bg-accent"
                   )}
                 >
+                  <span
+                    className={cn(
+                      "flex h-9 w-9 shrink-0 items-center justify-center rounded-full",
+                      isCurrent ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground"
+                    )}
+                  >
+                    <ListChecks aria-hidden="true" className="h-[18px] w-[18px]" />
+                  </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[15px] font-medium">{routine.name}</span>
+                    <span className={cn("block truncate text-[15px] font-semibold", isCurrent && "text-primary")}>
+                      {routine.name}
+                    </span>
                     <span className="block text-[12px] text-muted-foreground tabular-nums">
                       {tn('exercises.count', routine.exercises.length)}
                     </span>
                   </span>
-                  {isCurrent && <Check aria-hidden="true" className="h-4 w-4 shrink-0 text-primary" />}
+                  {isCurrent && (
+                    <span
+                      aria-hidden="true"
+                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground"
+                    >
+                      <Check className="h-3.5 w-3.5" />
+                    </span>
+                  )}
                 </button>
               );
             })
