@@ -14,6 +14,7 @@ import {
   getLastNonDeloadPerformance,
   getLastLoggedPerformance,
   saveExercisePerformanceEntries,
+  recheckPersonalRecord,
 } from '@/services/trainingLogService';
 import { getExercises as fetchAllUserExercises } from '@/services/exerciseService';
 import { getRoutines as fetchUserRoutines } from '@/services/routineService';
@@ -699,6 +700,10 @@ export const useTrainingLog = (initialDate: Date) => {
           ...restOfEx,
           personalRecordDisplay: formatPR(currentPR),
           currentPR: currentPR,
+          // The one place that still knows whether this exercise was actually
+          // done: `isProvisional` is derived here and stripped on save, so it is
+          // persisted as `performed` for the PR rescan to read back later.
+          performed: !isProvisional,
           sets,
         };
       });
@@ -750,6 +755,59 @@ export const useTrainingLog = (initialDate: Date) => {
       setIsSavingLog(false);
     }
   };
+
+  /**
+   * Manual PR audit for one exercise, triggered from its card.
+   *
+   * Only ever runs on a press: it reads every log containing the exercise, which
+   * is far too many reads to do on load. The corrected record is folded straight
+   * into the baseline so the chip updates without a refetch — `currentPR` is
+   * UI-only (stripped on save, and outside `persistedShape`), so this cannot
+   * make the log look dirty.
+   */
+  const recheckExercisePR = useCallback(async (exerciseId: string) => {
+    if (!user?.id) return;
+    const stored = availableExercises.find(e => e.id === exerciseId);
+    const name = displayExerciseName({ id: exerciseId, name: stored?.name ?? exerciseId });
+    try {
+      const { previous, next, changed } = await recheckPersonalRecord(user.id, exerciseId);
+      const nextPR = next ? { reps: next.reps, weight: next.weight } : null;
+
+      mutateBaseline((base) => {
+        if (!base) return base;
+        return {
+          ...base,
+          exercises: base.exercises.map(ex =>
+            ex.exerciseId === exerciseId
+              ? { ...ex, currentPR: nextPR, personalRecordDisplay: formatPR(nextPR) }
+              : ex
+          ),
+        };
+      });
+
+      if (!changed) {
+        toast({ title: t('log.toast.prCheckedTitle'), description: t('log.toast.prCheckedDesc', { name }) });
+      } else if (nextPR) {
+        toast({
+          title: t('log.toast.prFixedTitle'),
+          description: t('log.toast.prFixedDesc', {
+            name,
+            previous: formatPR(previous),
+            next: formatPR(nextPR),
+          }),
+        });
+      } else {
+        toast({ title: t('log.toast.prFixedTitle'), description: t('log.toast.prClearedDesc', { name }) });
+      }
+    } catch (error: any) {
+      console.error('[useTrainingLog] recheckExercisePR failed:', error);
+      toast({
+        title: t('common.error'),
+        description: friendlyErrorMessage(error, t('log.toast.prCheckError')),
+        variant: 'destructive',
+      });
+    }
+  }, [user?.id, availableExercises, mutateBaseline, toast]);
 
   const updateOverallLogNotes = (notes: string) => {
     mutateBaseline((base) => {
@@ -821,6 +879,7 @@ export const useTrainingLog = (initialDate: Date) => {
     reorderExercisesInLog,
     updateExerciseInLog,
     updateExerciseSetStructureOverride,
+    recheckExercisePR,
     saveCurrentLog,
     updateOverallLogNotes,
     deleteCurrentLog,

@@ -48,6 +48,7 @@ export interface ExerciseListProps {
   onRemove: (rowId: string) => void;
   onReplace: (rowId: string, muscleGroup: MuscleGroup) => void;
   onUpdateSetStructureOverride: (exerciseId: string, structure: SetStructure | null) => void;
+  onRecheckPR: (exerciseId: string) => Promise<void>;
   onAddAt: (index: number) => void;
 }
 
@@ -74,6 +75,7 @@ export const ExerciseList = React.memo(function ExerciseList({
   onRemove,
   onReplace,
   onUpdateSetStructureOverride,
+  onRecheckPR,
   onAddAt,
 }: ExerciseListProps) {
   const { t } = useI18n();
@@ -121,6 +123,7 @@ export const ExerciseList = React.memo(function ExerciseList({
                       onReplace={() => onReplace(loggedEx.id, loggedEx.muscleGroup)}
                       isSavingParentLog={isBusy}
                       onUpdateSetStructureOverride={onUpdateSetStructureOverride}
+                      onRecheckPR={onRecheckPR}
                       isReadOnly={isReadOnly}
                       isSavedForDay={savedExerciseIds.has(loggedEx.id)}
                     />

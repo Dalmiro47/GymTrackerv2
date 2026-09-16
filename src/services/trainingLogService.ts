@@ -5,6 +5,7 @@
  * - getWorkoutLog: Fetches the workout log for a specific date.
  * - deleteWorkoutLog: Deletes the workout log for a specific date.
  * - saveExercisePerformanceEntry / saveExercisePerformanceEntries: Save/update the performance snapshot (last session & PR) per exercise.
+ * - recheckPersonalRecord: Manual, user-triggered PR audit for one exercise (rescans every log; can lower or clear the PR).
  * - getLastLoggedPerformance: Retrieves the performance snapshot for an exercise.
  * - getLastNonDeloadPerformance: Performance snapshot with last-session sets sourced from the most recent non-deload log.
  * - getMonthLogFlags: Logged/deload day strings for a month (calendar underlines).
@@ -68,7 +69,13 @@ export const saveWorkoutLog = async (userId: string, date: string, workoutLogPay
       if (!exerciseToSave.setStructureOverride) {
         delete exerciseToSave.setStructureOverride;
       }
-      
+      // `performed` IS persisted (unlike the UI-only flags destructured above):
+      // a planned exercise stores the last session's sets, so this flag is the
+      // only thing that lets a later PR rescan tell a real lift from a pre-fill.
+      // Written as an explicit boolean because the doc is merged — an absent key
+      // would leave a stale `true` from a previous save in place.
+      exerciseToSave.performed = restOfEx.performed !== false;
+
       return {
         ...exerciseToSave,
         sets: ex.sets
@@ -312,7 +319,8 @@ const logDateToMs = (logId: string) => Timestamp.fromDate(parseISO(logId)).toMil
 const recomputePRFromLogs = async (
   userId: string,
   exerciseId: string,
-  excludeLogId: string
+  excludeLogId: string,
+  opts: { skipDeload?: boolean } = {}
 ): Promise<PersonalRecordValue> => {
   const logsCol = collection(db, getUserWorkoutLogsCollectionPath(userId));
   const snap = await getDocs(query(logsCol, where("exerciseIds", "array-contains", exerciseId)));
@@ -320,8 +328,14 @@ const recomputePRFromLogs = async (
   snap.forEach(docSnap => {
     if (docSnap.id === excludeLogId) return;
     const log = docSnap.data() as WorkoutLog;
+    if (opts.skipDeload && log?.isDeload === true) return;
     const exerciseInLog = (log.exercises ?? []).find(e => e.exerciseId === exerciseId);
     if (!exerciseInLog) return;
+    // A planned exercise persists the last session's sets, so counting it would
+    // credit a PR to a day the lift never happened. `undefined` means the log
+    // predates the flag — treat it as performed, or every historical PR would
+    // vanish on the first rescan.
+    if (exerciseInLog.performed === false) return;
     const candidate = pickBestSet(exerciseInLog.sets ?? []);
     if (isBetterPR(candidate, best)) {
       best = { reps: candidate!.reps, weight: candidate!.weight, date: logDateToMs(docSnap.id), logId: docSnap.id };
@@ -413,6 +427,78 @@ export const saveExercisePerformanceEntry = async (
   logDate: string
 ): Promise<void> => {
   await saveExercisePerformanceEntries(userId, [{ exerciseId, sets: currentSessionSets }], logDate);
+};
+
+export type PRRecheckResult = {
+  /** The PR as it was stored before the audit. */
+  previous: { reps: number; weight: number } | null;
+  /** The PR after the audit — null when no log backs one any more. */
+  next: { reps: number; weight: number } | null;
+  /** True when the audit actually moved (or cleared) the stored PR. */
+  changed: boolean;
+};
+
+/**
+ * Manual PR audit for ONE exercise: rescans every log that contains it and
+ * rewrites the stored PR to the best working set found, LOWERING or clearing it
+ * when no log backs the current one any more.
+ *
+ * The automatic path can only ever raise a PR (`isBetterPR`), and it recomputes
+ * on edit only for the log that sourced the PR — an exercise corrected back to
+ * its pre-fill is provisional again and skipped on save entirely. So a mistyped
+ * set can leave behind a PR nothing supports, with no way to undo it. This is
+ * the way out, and it is deliberately user-triggered: it reads every log
+ * containing the exercise, which is far too expensive to run on its own.
+ *
+ * Deload logs are skipped, matching the write path — a PR is never recorded from
+ * a deload session, so the audit must not introduce one either. Exercises saved
+ * as a plan (`performed === false`) are skipped too: their sets are a copy of the
+ * last session, not something that was lifted that day. Logs written before that
+ * flag existed have no `performed` key and still count, so the audit can never
+ * erase a legitimate historical PR.
+ */
+export const recheckPersonalRecord = async (
+  userId: string,
+  exerciseId: string
+): Promise<PRRecheckResult> => {
+  if (!userId) throw new Error("User ID is required.");
+  if (!exerciseId) throw new Error("Exercise ID is required.");
+
+  const ref = doc(db, getUserPerformanceEntriesCollectionPath(userId), exerciseId);
+  try {
+    const [snap, recomputed] = await Promise.all([
+      getDoc(ref),
+      recomputePRFromLogs(userId, exerciseId, '', { skipDeload: true }),
+    ]);
+    const existing = snap.exists() ? (snap.data() as ExercisePerformanceEntry) : null;
+    const previous = existing?.personalRecord ?? null;
+
+    // What the user sees as a change is the PR itself; `logId` is rewritten
+    // alongside it so the entry stays traceable to the log that backs it.
+    const changed =
+      (previous?.reps ?? null) !== (recomputed?.reps ?? null) ||
+      (previous?.weight ?? null) !== (recomputed?.weight ?? null);
+    const needsWrite = changed || (previous?.logId ?? null) !== (recomputed?.logId ?? null);
+
+    if (needsWrite) {
+      if (recomputed) {
+        await setDoc(ref, { personalRecord: recomputed }, { merge: true });
+      } else if (snap.exists()) {
+        // deleteField() is written directly (no sanitizing) so the sentinel survives.
+        await setDoc(ref, { personalRecord: deleteField() }, { merge: true });
+      }
+      invalidateCache(perfCacheKey(userId, exerciseId));
+    }
+
+    return {
+      previous: previous ? { reps: previous.reps, weight: previous.weight } : null,
+      next: recomputed ? { reps: recomputed.reps, weight: recomputed.weight } : null,
+      changed,
+    };
+  } catch (error: any) {
+    console.error(`[SERVICE] recheckPersonalRecord failed for exercise ${exerciseId}:`, error);
+    throw new Error(`Failed to recheck the personal record. ${error.message}`);
+  }
 };
 
 
