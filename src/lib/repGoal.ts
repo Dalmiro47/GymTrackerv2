@@ -161,3 +161,32 @@ export function suggestWeightBump(
 
   return { current, next: Number((current + step).toFixed(1)), step };
 }
+
+export interface OverRepRange {
+  /** 0-based position of the worst offender. */
+  setIndex: number;
+  /** What that set logged — above `range.max`. */
+  reps: number;
+}
+
+/**
+ * At least one set logged MORE reps than the top of the range.
+ *
+ * Distinct from `isRepGoalReached` (every set exactly at the top = time to add
+ * weight): overshooting the range is most often a mistyped entry, and a wrong
+ * rep count silently becomes a personal record. A genuine overshoot is real too,
+ * so the caller warns rather than blocks. No range defined = no validation.
+ *
+ * Returns the highest over-range set (earliest on a tie), because that is the
+ * one that would set the bogus PR.
+ */
+export function findOverRepRange(sets: LoggedSet[] | undefined, range: RepRange | null): OverRepRange | null {
+  if (!range || !sets || sets.length === 0) return null;
+
+  let worst: OverRepRange | null = null;
+  sets.forEach((set, setIndex) => {
+    if (typeof set.reps !== 'number' || set.reps <= range.max) return;
+    if (!worst || set.reps > worst.reps) worst = { setIndex, reps: set.reps };
+  });
+  return worst;
+}

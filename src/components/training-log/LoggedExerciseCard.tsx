@@ -7,9 +7,9 @@ import { computeWarmup, inferWarmupTemplate, WarmupInput, type WarmupStep } from
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { PlusCircle, Trash2, GripVertical, Settings2, ArrowLeftRight, Flame, TrendingUp, Dumbbell, X, ArrowUpCircle, ArrowDownCircle, History } from 'lucide-react';
+import { PlusCircle, Trash2, GripVertical, Settings2, ArrowLeftRight, Flame, TrendingUp, Dumbbell, X, ArrowUpCircle, ArrowDownCircle, AlertTriangle, History, RefreshCw, Loader2 } from 'lucide-react';
 import { differenceInCalendarDays } from 'date-fns';
-import { parseRepRange, isRepGoalReached, isBelowRepRange, getNextRepTarget, suggestWeightBump, type NextRepTarget } from '@/lib/repGoal';
+import { parseRepRange, isRepGoalReached, isBelowRepRange, findOverRepRange, getNextRepTarget, suggestWeightBump, type NextRepTarget } from '@/lib/repGoal';
 import { formatWeightHalf } from '@/lib/rounding';
 import { SetInputRow } from './SetInputRow'; 
 import { useSortable } from '@dnd-kit/sortable';
@@ -162,6 +162,9 @@ interface LoggedExerciseCardProps {
   onReplace: () => void;
   isSavingParentLog: boolean;
   onUpdateSetStructureOverride: (exerciseId: string, override: SetStructure | null) => void;
+  /** Manual, user-triggered PR audit for this exercise. Resolves when the stored
+   *  record has been rescanned (and corrected, if it was wrong). */
+  onRecheckPR: (exerciseId: string) => Promise<void>;
   /** Deload Mode shows a derived (reduced) view — set values must not be edited
    *  there, or the reduced numbers would be written back into the baseline. */
   isReadOnly?: boolean;
@@ -177,6 +180,7 @@ export function LoggedExerciseCard({
   onReplace,
   isSavingParentLog,
   onUpdateSetStructureOverride,
+  onRecheckPR,
   isReadOnly = false,
   isSavedForDay = false,
 }: LoggedExerciseCardProps) {
@@ -187,6 +191,8 @@ export function LoggedExerciseCard({
   const [isEditing, setIsEditing] = useState(false);
   const [localSets, setLocalSets] = useState<LoggedSet[]>(loggedExercise.sets);
   const [warmupOpen, setWarmupOpen] = useState(false);
+  // Kept local so the spinner never travels through the memoised <ExerciseList />.
+  const [isRecheckingPR, setIsRecheckingPR] = useState(false);
   const [weightDisplays, setWeightDisplays] = useState<string[]>(
     (loggedExercise.sets ?? []).map(s => s.weight == null ? '' : String(s.weight))
   );
@@ -249,28 +255,42 @@ export function LoggedExerciseCard({
     () => parseRepRange(loggedExercise.progressiveOverload),
     [loggedExercise.progressiveOverload]
   );
-  const rawCue = useMemo<'above' | 'below' | null>(() => {
+  // A set logged ABOVE the top of the range is the entry-error guard: a mistyped
+  // rep count (55 for 5) silently becomes a personal record, and the automatic PR
+  // path can only ever raise one. No range on the exercise = no validation at all.
+  // It outranks the other two cues because "is this number even right?" has to be
+  // answered before any coaching based on it; the weight suggestion is folded into
+  // its message so a genuine overshoot still gets the same advice.
+  const overRange = useMemo(
+    () => (isReadOnly || isSavedForDay ? null : findOverRepRange(localSets, repRange)),
+    [isReadOnly, isSavedForDay, localSets, repRange]
+  );
+  const rawCue = useMemo<'over' | 'above' | 'below' | null>(() => {
     if (isReadOnly || isSavedForDay || !repRange) return null;
+    if (overRange) return 'over';
     if (isRepGoalReached(localSets, repRange)) return 'above';
     if (isBelowRepRange(localSets, repRange)) return 'below';
     return null;
-  }, [isReadOnly, isSavedForDay, localSets, repRange]);
+  }, [isReadOnly, isSavedForDay, localSets, repRange, overRange]);
 
-  // The under-range cue fires on a single set, which puts it in the path of every
-  // keystroke — typing "12" into an 8–12 range passes through "1". Let it settle
-  // before showing, but drop it immediately once it no longer applies. ("above"
-  // needs every set at the top, so it can't trigger mid-typing and isn't delayed.)
-  const [belowCueSettled, setBelowCueSettled] = useState(false);
+  // The under- and over-range cues fire on a single set, which puts them in the
+  // path of every keystroke — typing "12" into an 8–12 range passes through "1",
+  // and "13" passes through "1" as well. Let them settle before showing, but drop
+  // them immediately once they no longer apply. ("above" needs every set at the
+  // top, so it can't trigger mid-typing and isn't delayed.)
+  const isDelayedCue = rawCue === 'below' || rawCue === 'over';
+  const [cueSettled, setCueSettled] = useState(false);
   useEffect(() => {
-    if (rawCue !== 'below') {
-      setBelowCueSettled(false);
+    if (rawCue !== 'below' && rawCue !== 'over') {
+      setCueSettled(false);
       return;
     }
-    const timer = window.setTimeout(() => setBelowCueSettled(true), 600);
+    setCueSettled(false);
+    const timer = window.setTimeout(() => setCueSettled(true), 600);
     return () => window.clearTimeout(timer);
-  }, [rawCue]);
+  }, [rawCue, overRange?.setIndex, overRange?.reps]);
 
-  const repCue = rawCue === 'below' && !belowCueSettled ? null : rawCue;
+  const repCue = isDelayedCue && !cueSettled ? null : rawCue;
 
   // "What do I do next?" for the in-range case the two cues above leave open.
   // Only one of the three ever shows: the target yields to an active cue.
@@ -283,11 +303,11 @@ export function LoggedExerciseCard({
   // and this one renders inside a set row, so an un-delayed version would shuffle
   // the rows as you type. Show a settled snapshot instead: it appears once typing
   // stops and disappears at once when it no longer applies.
-  // Only meaningful for the "above" cue, so it isn't computed for the others.
+  // Only meaningful for the "above"/"over" cues, so it isn't computed for "below".
   // The step is copied from this exercise's own last increase; the warm-up
   // template is only the fallback when there is nothing to copy.
   const weightBump = useMemo(
-    () => (repCue === 'above'
+    () => (repCue === 'above' || repCue === 'over'
       ? suggestWeightBump(localSets, {
           historyStepKg: loggedExercise.progressionStepKg,
           template: loggedExercise.warmupConfig?.template,
@@ -406,6 +426,16 @@ export function LoggedExerciseCard({
     onUpdateSets(newSets);
   };
 
+  const handleRecheckPR = async () => {
+    if (isRecheckingPR) return;
+    setIsRecheckingPR(true);
+    try {
+      await onRecheckPR(loggedExercise.exerciseId);
+    } finally {
+      setIsRecheckingPR(false);
+    }
+  };
+
   const removeSet = (setId: string) => {
     if (isReadOnly) return;
     const removedIndex = localSets.findIndex(s => s.id === setId);
@@ -484,12 +514,29 @@ export function LoggedExerciseCard({
             </div>
           </div>
           <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 pl-7">
-            <span className="inline-flex h-6 items-center gap-1 rounded-full bg-primary/10 px-2 text-[11px] font-medium leading-none text-primary">
-              <Dumbbell aria-hidden="true" className="h-3 w-3" />
+            {/* The PR chip doubles as its own audit button. A wrong rep/weight
+                entry becomes a record that the automatic path can never take back
+                (it only ever raises), so the correction has to live where the
+                wrong number is visible. Rescanning every log for this exercise is
+                expensive, hence a deliberate press — never an automatic check. */}
+            <button
+              type="button"
+              onClick={handleRecheckPR}
+              disabled={isRecheckingPR}
+              title={t('card.recheckPR')}
+              aria-label={t('card.recheckPRFor', { name: shown.name })}
+              className="pressable inline-flex h-6 items-center gap-1 rounded-full bg-primary/10 px-2 text-[11px] font-medium leading-none text-primary transition-colors hover:bg-primary/20 disabled:opacity-60"
+            >
+              {isRecheckingPR ? (
+                <Loader2 aria-hidden="true" className="h-3 w-3 animate-spin" />
+              ) : (
+                <Dumbbell aria-hidden="true" className="h-3 w-3" />
+              )}
               {/* Rendered from `currentPR` (not the cached display string) so the
                   "N/A" fallback follows the active language. */}
               <span className="tabular-nums">{formatPR(loggedExercise.currentPR)}</span>
-            </span>
+              <RefreshCw aria-hidden="true" className="h-3 w-3 opacity-70" />
+            </button>
             {lastTimeLabel && (
               <span className="inline-flex h-6 items-center gap-1 rounded-full border border-dashed border-border bg-muted/50 px-2 text-[11px] leading-none text-muted-foreground" title={t('card.prefilledTitle')}>
                 <History aria-hidden="true" className="h-3 w-3" />
@@ -507,7 +554,7 @@ export function LoggedExerciseCard({
                 className={cn(
                   "inline-flex h-6 items-center gap-1 rounded-full px-2 text-[11px] leading-none",
                   repCue === 'above' && "border border-success/30 bg-success/10 font-medium text-success",
-                  repCue === 'below' && "border border-warning/30 bg-warning/10 font-medium text-warning",
+                  (repCue === 'below' || repCue === 'over') && "border border-warning/30 bg-warning/10 font-medium text-warning",
                   !repCue && "bg-muted text-muted-foreground"
                 )}
               >
@@ -547,7 +594,7 @@ export function LoggedExerciseCard({
             className={cn(
               "-mx-4 px-4 py-3 space-y-3 border-y border-transparent transition-colors duration-300",
               repCue === 'above' && "border-success/25 bg-success/10",
-              repCue === 'below' && "border-warning/25 bg-warning/10"
+              (repCue === 'below' || repCue === 'over') && "border-warning/25 bg-warning/10"
             )}
           >
             {repCue && repRange && (
@@ -560,6 +607,8 @@ export function LoggedExerciseCard({
               >
                 {repCue === 'above' ? (
                   <ArrowUpCircle aria-hidden="true" className="h-4 w-4 shrink-0 mt-px" />
+                ) : repCue === 'over' ? (
+                  <AlertTriangle aria-hidden="true" className="h-4 w-4 shrink-0 mt-px" />
                 ) : (
                   <ArrowDownCircle aria-hidden="true" className="h-4 w-4 shrink-0 mt-px" />
                 )}
@@ -577,6 +626,25 @@ export function LoggedExerciseCard({
                         </>
                       ) : (
                         <>{t('card.addWeightNext')}</>
+                      )}
+                    </>
+                  ) : repCue === 'over' && overRange ? (
+                    <>
+                      <span className="font-semibold">{t('card.overRange')}</span>{' '}
+                      {t('card.overRangeHint', {
+                        n: overRange.setIndex + 1,
+                        reps: overRange.reps,
+                        min: repRange.min,
+                        max: repRange.max,
+                      })}
+                      {weightBump && (
+                        <>
+                          {' '}{t('card.nextSession')}{' '}
+                          <span className="font-semibold tabular-nums">
+                            {formatWeightHalf(weightBump.next)}kg
+                          </span>{' '}
+                          <span className="tabular-nums">(+{formatWeightHalf(weightBump.step)}kg)</span>.
+                        </>
                       )}
                     </>
                   ) : (

@@ -90,6 +90,15 @@ export interface LoggedExercise {
   personalRecordDisplay?: string; // e.g., "PR: 1x5 @ 100kg" or "PR: N/A"
   currentPR: { reps: number, weight: number } | null; // Numeric PR for reliable logic
   isProvisional?: boolean; // UI-only, DERIVED: true while `sets` still equal `prefill.sets` (nothing changed)
+  /**
+   * STORED (unlike `isProvisional`, which is stripped on save): false when this
+   * exercise was saved as a plan, never done. A planned exercise still persists
+   * sets — they are a copy of the last session's — so without this flag a later
+   * PR rescan cannot tell a set that was actually lifted from one that was only
+   * pre-filled. Absent on logs written before the flag existed; readers must
+   * treat `undefined` as performed.
+   */
+  performed?: boolean;
   prefill?: { sets: Array<{ reps: number | null; weight: number | null }>; lastPerformedDate: number | null }; // UI-only: what was auto-filled from the last session
   progressionStepKg?: number | null; // UI-only: kg added the last time this exercise went up (drives the overload cue)
   warmupConfig?: WarmupConfig; // Pass along for warmup calculation

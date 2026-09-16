@@ -24,6 +24,8 @@ import { ExerciseList } from '@/components/training-log/ExerciseList';
 import { AddExerciseDialog } from '@/components/training-log/AddExerciseDialog';
 import { ReplaceExerciseDialog } from '@/components/training-log/ReplaceExerciseDialog';
 import { format, parseISO, isValid as isDateValid, startOfMonth } from 'date-fns';
+import { parseRepRange, findOverRepRange } from '@/lib/repGoal';
+import { displayExerciseName } from '@/lib/exerciseDisplay';
 import { Loader2 } from 'lucide-react';
 import {
   AlertDialog,
@@ -121,6 +123,7 @@ function TrainingLogPageContent() {
     deleteCurrentLog,
     replaceExerciseInLog,
     updateExerciseSetStructureOverride,
+    recheckExercisePR,
     isDeload,
     setIsDeload,
     displayedMonth,
@@ -147,6 +150,7 @@ function TrainingLogPageContent() {
   const [exerciseToReplace, setExerciseToReplace] = useState<{ id: string; muscleGroup: MuscleGroup } | null>(null);
   const [showLogNotes, setShowLogNotes] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+  const [isOverRangeConfirmOpen, setIsOverRangeConfirmOpen] = useState(false);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const [isRoutineSheetOpen, setIsRoutineSheetOpen] = useState(false);
   // Stable "today" that only changes identity when the local day rolls over
@@ -249,6 +253,51 @@ function TrainingLogPageContent() {
       updateExerciseSetStructureOverride(exerciseId, structure);
     }
   );
+
+  const handleRecheckPR = useStableCallback((exerciseId: string) => recheckExercisePR(exerciseId));
+
+  /**
+   * Sets about to be written with more reps than the exercise's range allows.
+   *
+   * The card already shows an inline cue while typing, but that is easy to scroll
+   * past — and the number it flags is exactly the one that silently becomes a
+   * personal record. So saving stops on it once, with the offending sets named.
+   *
+   * Same conditions the card's cue uses, so the two never disagree: the range is
+   * parsed from the STORED (English) `progressiveOverload`, Deload Mode is skipped
+   * (its values are a derived, reduced view), and an exercise already saved as
+   * performed for this day is skipped too — that number was accepted once already.
+   */
+  const overRangeWarnings = useMemo(() => {
+    if (!currentLog || isDeload) return [];
+    return currentLog.exercises.flatMap((ex) => {
+      if (savedExerciseIds.has(ex.id)) return [];
+      const range = parseRepRange(ex.progressiveOverload);
+      const over = findOverRepRange(ex.sets, range);
+      if (!range || !over) return [];
+      return [{
+        key: ex.id,
+        name: displayExerciseName(ex, language),
+        n: over.setIndex + 1,
+        reps: over.reps,
+        min: range.min,
+        max: range.max,
+      }];
+    });
+  }, [currentLog, isDeload, savedExerciseIds, language]);
+
+  const handleSavePressed = async () => {
+    if (overRangeWarnings.length > 0) {
+      setIsOverRangeConfirmOpen(true);
+      return;
+    }
+    await saveCurrentLog();
+  };
+
+  const handleOverRangeSaveConfirmed = async () => {
+    setIsOverRangeConfirmOpen(false);
+    await saveCurrentLog();
+  };
 
   const handleReplaceExercise = (newExercise: Exercise) => {
     if (exerciseToReplace) {
@@ -403,6 +452,7 @@ function TrainingLogPageContent() {
               onRemove={handleRemoveExercise}
               onReplace={handleOpenReplaceDialog}
               onUpdateSetStructureOverride={handleUpdateSetStructureOverride}
+              onRecheckPR={handleRecheckPR}
               onAddAt={handleOpenAddDialog}
             />
           </>
@@ -617,7 +667,7 @@ function TrainingLogPageContent() {
           </Button>
 
           <Button
-            onClick={async () => await saveCurrentLog()}
+            onClick={handleSavePressed}
             disabled={isSavingLog || isLoadingLog || isDeletingLog}
             className="h-11 shrink-0 gap-2 rounded-full px-5 text-[15px] font-semibold"
           >
@@ -633,6 +683,43 @@ function TrainingLogPageContent() {
           </Button>
         </div>
       </div>
+
+      {/* Over-rep-range confirmation — the hard stop the inline card cue can't be.
+          The list is a sibling of the description, not inside it: AlertDialogDescription
+          renders a <p>, and a <ul> nested in a <p> is invalid markup. */}
+      <AlertDialog open={isOverRangeConfirmOpen} onOpenChange={setIsOverRangeConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-warning" />
+              {t('log.overRangeConfirmTitle')}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('log.overRangeConfirmDesc')}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <ul className="space-y-1.5 rounded-lg border border-warning/25 bg-warning/10 p-3 text-[13px] leading-snug text-warning">
+            {overRangeWarnings.map((w) => (
+              <li key={w.key} className="tabular-nums">
+                {t('log.overRangeConfirmItem', {
+                  name: w.name,
+                  n: w.n,
+                  reps: w.reps,
+                  min: w.min,
+                  max: w.max,
+                })}
+              </li>
+            ))}
+          </ul>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('log.overRangeGoBack')}</AlertDialogCancel>
+            {/* Radix closes the dialog on Action; the save spinner is the dock's. */}
+            <AlertDialogAction onClick={handleOverRangeSaveConfirmed}>
+              {t('log.overRangeSaveAnyway')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Delete-log confirmation (triggered from the floating action dock) */}
       <AlertDialog open={isDeleteConfirmOpen} onOpenChange={setIsDeleteConfirmOpen}>
