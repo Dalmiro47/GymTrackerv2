@@ -7,14 +7,14 @@ import { app } from '@/lib/firebaseConfig';
 import { useAuth } from '@/contexts/AuthContext';
 import { useI18n } from '@/contexts/LanguageContext';
 import type { TranslationKey } from '@/i18n';
-import type { LogDayContext, RoutineReviewContext, DashboardContext } from '@/lib/ai/context-builders';
+import type { LogDayContext, RoutineReviewContext, DashboardContext, ExerciseLibraryContext } from '@/lib/ai/context-builders';
 
 export type ChatMessage = {
   role: 'user' | 'assistant';
   content: string;
 };
 
-type ChatMode = 'log-day' | 'routine-review' | 'dashboard';
+type ChatMode = 'log-day' | 'routine-review' | 'dashboard' | 'exercise-library';
 
 // Local date (not UTC) so the chat rolls over at local midnight, same as logs
 const today = () => format(new Date(), 'yyyy-MM-dd');
@@ -134,7 +134,7 @@ export function useCoachChat(mode: ChatMode, logDate?: string) {
   );
 
   const sendMessage = useCallback(
-    async (userText: string, context: LogDayContext | RoutineReviewContext | DashboardContext) => {
+    async (userText: string, context: LogDayContext | RoutineReviewContext | DashboardContext | ExerciseLibraryContext) => {
       if (!userText.trim() || isStreaming) return;
 
       setError(null);

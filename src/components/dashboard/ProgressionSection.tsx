@@ -14,7 +14,11 @@ import {
   sortProgression,
   type ProgressionResult,
 } from '@/lib/progression';
-import { serializeDashboardContext, type DashboardDeloadSummary } from '@/lib/ai/context-builders';
+import { serializeDashboardContext, toCoachProfile, type CoachProfile, type DashboardDeloadSummary } from '@/lib/ai/context-builders';
+import { getExercises as fetchAllUserExercises } from '@/services/exerciseService';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebaseConfig';
+import type { Exercise } from '@/types';
 import { subWeeks, parseISO, differenceInCalendarDays } from 'date-fns';
 import { Loader2, TrendingUp, Minus, TrendingDown, HelpCircle, LineChart, ChevronDown, Info } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -220,6 +224,27 @@ export function ProgressionSection() {
   const [deload, setDeload] = useState<DashboardDeloadSummary | null>(null);
   const [showInsufficient, setShowInsufficient] = useState(false);
   const [showInactive, setShowInactive] = useState(false);
+  // Coach-only extras (profile + exercise library for variation swaps). Loaded
+  // separately and best-effort: the progression cards never wait on them, and
+  // the coach still works without them.
+  const [coachProfile, setCoachProfile] = useState<CoachProfile | undefined>();
+  const [coachLibrary, setCoachLibrary] = useState<Exercise[]>([]);
+
+  useEffect(() => {
+    if (!user?.id) {
+      setCoachProfile(undefined);
+      setCoachLibrary([]);
+      return;
+    }
+    let cancelled = false;
+    getDoc(doc(db, 'users', user.id, 'profile', 'profile'))
+      .then(snap => { if (!cancelled && snap.exists()) setCoachProfile(toCoachProfile(snap.data())); })
+      .catch(err => console.warn('[ProgressionSection] coach profile unavailable:', err?.message));
+    fetchAllUserExercises(user.id)
+      .then(list => { if (!cancelled) setCoachLibrary(list); })
+      .catch(err => console.warn('[ProgressionSection] coach library unavailable:', err?.message));
+    return () => { cancelled = true; };
+  }, [user?.id]);
 
   useEffect(() => {
     if (!user?.id) {
@@ -287,9 +312,9 @@ export function ProgressionSection() {
   // Dashboard-scoped coach context (reuses the same coach window/wiring).
   // `language` is a dep because the serializer localizes default exercise names.
   const coachContext = useMemo(
-    () => serializeDashboardContext(sorted, deload ?? undefined),
+    () => serializeDashboardContext(sorted, deload ?? undefined, coachProfile, coachLibrary),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sorted, deload, language],
+    [sorted, deload, coachProfile, coachLibrary, language],
   );
 
   // Starter chips: focus, the top actionable active key lift (regressing →

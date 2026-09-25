@@ -221,16 +221,18 @@ export const useTrainingLog = (initialDate: Date) => {
                       ? { reps: performanceEntry.personalRecord.reps, weight: performanceEntry.personalRecord.weight }
                       : null;
 
-                    // `prefill` is UI-only and not stored, so a reload can't tell a
-                    // performed exercise from a still-planned one by the log alone.
-                    // Saving stamps the performanceEntries doc's `lastPerformedDate`
-                    // with the log's date for performed exercises only — so an entry
-                    // older than this day (or none) means this exercise was saved as
-                    // a plan, not done. Rebuild its prefill from the stored sets so
-                    // it stays provisional: overload cues and the Coach's PLANNED
-                    // status survive leaving and re-entering the page.
-                    const performedOnOrAfterDay =
-                      (storedEntry?.lastPerformedDate ?? -1) >= parseISO(dateId).getTime();
+                    // `prefill` is UI-only and not stored, so a planned exercise is
+                    // told apart from a performed one by the persisted `performed`
+                    // flag. Logs written before the flag existed fall back to the
+                    // performanceEntries doc: saving stamps its `lastPerformedDate`
+                    // with the log's date for performed exercises only, so an entry
+                    // older than this day (or none) means it was saved as a plan.
+                    // A planned exercise gets its prefill rebuilt from the stored
+                    // sets so it stays provisional: overload cues and the Coach's
+                    // PLANNED status survive leaving and re-entering the page.
+                    const performedOnOrAfterDay = exFromStoredLog.performed !== undefined
+                      ? exFromStoredLog.performed
+                      : (storedEntry?.lastPerformedDate ?? -1) >= parseISO(dateId).getTime();
                     const restored: LoggedExercise = {
                         ...exFromStoredLog,
                         name: fullDef?.name ?? exFromStoredLog.name,
@@ -676,12 +678,26 @@ export const useTrainingLog = (initialDate: Date) => {
         logToSave.deloadParams = undefined;
       }
 
+      // Planned vs performed is re-derived from the BASELINE's prefill, never
+      // read from `isProvisional`: that flag is stripped from the local state a
+      // save leaves behind, so trusting it made the second save of the day mark
+      // every untouched exercise performed (stamping its performance entry and
+      // `performed: true`, which a reload then read back as "done"). The
+      // baseline, not `currentLog`, because a deload view's reduced sets would
+      // always differ from the prefill.
+      const plannedIds = new Set(
+        (originalLogState?.exercises ?? [])
+          .filter(ex => withDerivedProvisional(ex).isProvisional)
+          .map(ex => ex.id)
+      );
+
       const perfById = await fetchPerformanceDataByExerciseId(
         logToSave.exercises.map(ex => ex.exerciseId)
       );
 
       const exercisesWithUpdatedPrs = logToSave.exercises.map((loggedEx) => {
-        const { isProvisional, ...restOfEx } = loggedEx;
+        const { isProvisional: _uiFlag, ...restOfEx } = loggedEx;
+        const isProvisional = plannedIds.has(loggedEx.id);
         const performanceEntry = perfById.get(restOfEx.exerciseId) ?? null;
         const storedPR = performanceEntry?.personalRecord
             ? { reps: performanceEntry.personalRecord.reps, weight: performanceEntry.personalRecord.weight }
@@ -720,15 +736,26 @@ export const useTrainingLog = (initialDate: Date) => {
           await saveLogService(user.id, finalLogToSave.id, finalLogToSave);
           if (!finalLogToSave.isDeload) {
             const entriesToPersist = logToSave.exercises
-              .filter(ex => !ex.isProvisional)
+              .filter(ex => !plannedIds.has(ex.id))
               .map(ex => ({ exerciseId: ex.exerciseId, sets: ex.sets }));
             if (entriesToPersist.length > 0) {
               await saveExercisePerformanceEntries(user.id, entriesToPersist, finalLogToSave.id);
             }
           }
-          // Update local state from the payload just saved instead of refetching.
-          setOriginalLogState(finalLogToSave);
-          setSavedSnapshot(finalLogToSave);
+          // Update local state from the payload just saved instead of refetching,
+          // with `isProvisional` re-derived so the Coach and later saves still
+          // see planned exercises as planned. A planned exercise's prefill is
+          // re-pointed at the saved sets, exactly as a reload rebuilds it.
+          const savedLocal: WorkoutLog = {
+            ...finalLogToSave,
+            exercises: finalLogToSave.exercises.map(ex =>
+              plannedIds.has(ex.id) && ex.prefill
+                ? withDerivedProvisional({ ...ex, prefill: { ...ex.prefill, sets: ex.sets.map(s => ({ reps: s.reps ?? null, weight: s.weight ?? null })) } })
+                : withDerivedProvisional(ex)
+            ),
+          };
+          setOriginalLogState(savedLocal);
+          setSavedSnapshot(savedLocal);
           setDeloadApplied(finalLogToSave.deloadApplied ?? false);
           await refreshMonthFlags();
           toast({ title: t('log.toast.savedTitle'), description: t('log.toast.savedDesc', { date: formattedDateId }) });
