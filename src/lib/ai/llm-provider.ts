@@ -19,10 +19,14 @@ export interface LLMProvider {
     opts?: { temperature?: number; maxTokens?: number; jsonMode?: boolean },
   ): Promise<LLMResponse>;
 
-  /** Streaming chat completion. Returns an SSE ReadableStream suitable for Response(). */
+  /**
+   * Streaming chat completion. Returns an SSE ReadableStream suitable for Response().
+   * `reasoning: true` lets the model think first (hidden, never streamed); it
+   * spends ~1-1.5k completion tokens on that, so pair it with a larger `maxTokens`.
+   */
   chatStream(
     messages: ChatMessage[],
-    opts?: { temperature?: number; maxTokens?: number },
+    opts?: { temperature?: number; maxTokens?: number; reasoning?: boolean },
   ): Promise<ReadableStream<Uint8Array>>;
 }
 
@@ -90,14 +94,18 @@ export class GroqProvider implements LLMProvider {
 
   async chatStream(
     messages: ChatMessage[],
-    opts?: { temperature?: number; maxTokens?: number },
+    opts?: { temperature?: number; maxTokens?: number; reasoning?: boolean },
   ): Promise<ReadableStream<Uint8Array>> {
     const body = {
       model: this.model,
       messages,
       temperature: opts?.temperature ?? 0.4,
       max_completion_tokens: opts?.maxTokens ?? 1024,
-      reasoning_effort: REASONING_EFFORT,
+      // 'hidden' keeps the thinking out of the stream entirely, so the client
+      // only ever receives the answer (the spinner covers the wait).
+      ...(opts?.reasoning
+        ? { reasoning_effort: 'default', reasoning_format: 'hidden' }
+        : { reasoning_effort: REASONING_EFFORT }),
       stream: true,
     };
 

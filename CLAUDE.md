@@ -24,6 +24,12 @@ npm run typecheck  # TypeScript check (no emit)
 
 No test framework is configured — validation is via TypeScript and linting only.
 
+```bash
+npm run coach:eval -- [caseFilter] [--repeat=N] [--no-explain]   # Exercise-coach eval (real Groq calls, costs credit)
+```
+
+`scripts/coach-eval/run.mts` generates replies with the real prompt + `GroqProvider` (same params as the `exercise-library` branch of `route.ts` — keep them in step) and grades each with **Jev** (`typesafe/jev-1.13`, OpenRouter decision model; returns a fail probability, no reason). Sonnet 5 explains only the fails. Chosen 2026-09: on 29 hand-labelled replies Jev scored 25/29 vs Sonnet's 18/29, at ~1/100 the cost. The judge's `ROLE` must describe everything the coach is GIVEN (weekly sets, unused list) or it flags legitimate uses as fabrication. Run it after any change to `buildExerciseLibrarySystemPrompt`. Report → `scripts/coach-eval/last-run.txt` (gitignored)
+
 To deploy Firestore security rules:
 ```bash
 firebase deploy --only firestore:rules
@@ -34,6 +40,7 @@ firebase deploy --only firestore:rules
 Copy `.env.local` and populate with Firebase project credentials and Groq API key. Required variables:
 - `NEXT_PUBLIC_FIREBASE_*` — Firebase project config
 - `GROQ_API_KEY` — Groq API key (get from https://console.groq.com)
+- `OPEN_ROUTER_API_KEY` — DEV-ONLY, used by `npm run coach:eval` for the judges; the app never reads it, so do not add it to Vercel
 - `FIREBASE_CLIENT_EMAIL` / `FIREBASE_PRIVATE_KEY` — service account (Admin SDK), used ONLY to write the daily AI quota counter. Absent = the app runs but limits are silently unenforced; `isAdminConfigured()` reports it and `/admin` shows a banner. Quote the key in `.env.local` (both quoted and unquoted parse correctly there — verified); paste it UNQUOTED in Vercel, where the value is stored verbatim and a wrapping quote becomes part of the PEM
 
 ## Architecture
@@ -120,7 +127,7 @@ All domain types are in `src/types/index.ts` — `Exercise`, `Routine`, `Workout
 - Firestore reads in `src/services/` are memoized via `src/lib/sessionCache.ts` (per-user keys, 5-min TTL, promise-deduped). Any NEW write path in these services must call `invalidateCache` with the matching prefix (`exercises:{uid}`, `routines:{uid}`, `wl:{uid}`) or pages will silently serve stale data (added 2026-08)
 - `AvailableExercisesSelector` renders the muscle-group grid and the filtered list from ONE tree with ONE search `<Input>`. Splitting them into two `return`s (or two components) remounts the input on the first keystroke, dropping focus and closing the mobile keyboard — invisible on desktop and to automated tests (fixed 2026-08)
 - `LoggedExerciseCard`'s card border is the set-structure channel (`SET_STRUCTURE_COLORS` / `--ss-*` tokens). Per-card *state* cues must not add a ring there — a rep-goal ring shipped as two competing outlines on superset cards. State lives in a full-bleed band inside `CardContent` instead, always mounted with only its colors toggling, so a cue that flips mid-typing can't remount the set inputs (fixed 2026-08)
-- Groq reasoning models spend `max_completion_tokens` on hidden `<think>` tokens BEFORE writing the answer, so leaving reasoning on silently truncates replies mid-sentence (`finish_reason: length`) instead of erroring. `qwen/qwen3.6-27b` burned the full 1500-token budget on a one-line question; `reasoning_effort: 'none'` (Groq accepts only `none` | `default`) is required in `llm-provider.ts` for any budget this small (fixed 2026-08)
+- Groq reasoning models spend `max_completion_tokens` on hidden `<think>` tokens BEFORE writing the answer, so leaving reasoning on silently truncates replies mid-sentence (`finish_reason: length`) instead of erroring. `qwen/qwen3.6-27b` burned the full 1500-token budget on a one-line question; `reasoning_effort: 'none'` (Groq accepts only `none` | `default`) is required in `llm-provider.ts` for any budget this small (fixed 2026-08). The ONE exception is the `exercise-library` mode (`chatStream({ reasoning: true })` → `reasoning_effort: 'default'` + `reasoning_format: 'hidden'`, `maxTokens: 4000`): without thinking it re-suggested exercises the user already had; reasoning used ~1.2-1.6k tokens there, so never pair it with a 1500 budget (2026-09)
 - Deload persistence: a log saved with `isDeload` stores the *already-reduced* sets plus `deloadApplied: true`; `currentLog` transforms the baseline ONLY when `isDeload && !deloadApplied`. Dropping that guard re-reduces stored sets on every reload (the original compounding bug in a new coat) (added 2026-08)
 - `isProvisional` / `prefill` / `currentPR` / `personalRecordDisplay` / `progressionStepKg` are UI-only (stripped in `saveWorkoutLog`). `isProvisional` is DERIVED in `updateExerciseInLog` (`withDerivedProvisional`): true only while an exercise's sets still equal its `prefill` — focus never flips it (a focus-based flip made the coach treat planned exercises as done mid-workout, fixed 2026-08). Coach log-day context splits COMPLETED vs PLANNED on this flag. Any "unsaved changes" check must compare `persistedShape()`, not the whole log
 - `cachedFetch` memoizes *resolved* promises, so a service that catches and returns `[]`/`0` pins that empty result for the 5-min TTL. Services in `trainingLogService` rethrow; callers own the toast (fixed 2026-08)
