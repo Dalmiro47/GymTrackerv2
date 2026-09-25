@@ -159,9 +159,14 @@ export async function POST(req: Request) {
     ];
 
     const provider = createLLMProvider();
+    // The exercise-library coach reasons before answering: without it the model
+    // re-suggested exercises the user already has (checked with an offline eval,
+    // 2026-09). Thinking costs ~1-1.5k hidden tokens, hence the larger budget.
+    const reasoning = mode === 'exercise-library';
     const rawStream = await provider.chatStream(fullMessages, {
       temperature: 0.4,
-      maxTokens: 1500,
+      maxTokens: reasoning ? 4000 : 1500,
+      reasoning,
     });
 
     // Counted only once the provider has accepted the request, so a Groq outage
