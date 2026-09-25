@@ -19,6 +19,12 @@ import {
   type SeedResult 
 } from '@/services/exerciseService';
 import { getRoutines, updateRoutine } from '@/services/routineService';
+import { getLogsSince } from '@/services/trainingLogService';
+import { CoachChatSheet } from '@/components/coach/CoachChatSheet';
+import { buildExerciseLibraryContext, toCoachProfile, type ExerciseLibraryContext } from '@/lib/ai/context-builders';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebaseConfig';
+import { subWeeks } from 'date-fns';
 import { stripUndefinedDeep } from '@/lib/sanitize';
 import { assertMuscleGroup } from '@/lib/muscleGroup';
 
@@ -59,6 +65,9 @@ import { compareByDisplayName, displayExerciseFields, displayExerciseName, exerc
 
 type HiddenDefault = { id: string; name: string; muscleGroup: string };
 
+/** How far back the Exercise Coach looks for volume and "last done". */
+const COACH_WINDOW_WEEKS = 4;
+
 export function ExerciseClientPage() {
   const authContext = useAuth();
   const { user } = authContext;
@@ -83,6 +92,23 @@ export function ExerciseClientPage() {
   const [isRestoreDialogOpen, setIsRestoreDialogOpen] = useState(false);
   const [selectedToRestore, setSelectedToRestore] = useState<string[]>([]);
   const [isRestoring, setIsRestoring] = useState(false);
+
+  // Exercise Coach context, loaded when the chat opens. A new `exercises` list
+  // (an add, edit or delete) gives a new loader, which makes the sheet reload.
+  // `language` is a dep because the builder localizes default exercise names.
+  const loadCoachContext = useCallback(async (): Promise<ExerciseLibraryContext> => {
+    if (!user?.id) throw new Error('User not authenticated');
+    const [routines, logs, profile] = await Promise.all([
+      getRoutines(user.id),
+      getLogsSince(user.id, subWeeks(new Date(), COACH_WINDOW_WEEKS)),
+      // The coach works without a profile; never fail the chat over it.
+      getDoc(doc(db, 'users', user.id, 'profile', 'profile'))
+        .then(snap => (snap.exists() ? snap.data() : null))
+        .catch(() => null),
+    ]);
+    return buildExerciseLibraryContext(exercises, routines, logs, toCoachProfile(profile), COACH_WINDOW_WEEKS);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, exercises, language]);
 
 
   const fetchUserExercises = useCallback(async (currentUserId: string | null | undefined): Promise<void> => {
@@ -695,6 +721,9 @@ export function ExerciseClientPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Floating AI Coach */}
+      <CoachChatSheet mode="exercise-library" loadContext={loadCoachContext} />
     </>
   );
 }

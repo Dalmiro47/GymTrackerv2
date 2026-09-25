@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createLLMProvider, type ChatMessage } from '@/lib/ai/llm-provider';
-import { buildLogDaySystemPrompt, buildRoutineReviewSystemPrompt, buildDashboardSystemPrompt } from '@/lib/ai/chat-prompts';
-import type { LogDayContext, RoutineReviewContext, DashboardContext } from '@/lib/ai/context-builders';
+import { buildLogDaySystemPrompt, buildRoutineReviewSystemPrompt, buildDashboardSystemPrompt, buildExerciseLibrarySystemPrompt } from '@/lib/ai/chat-prompts';
+import type { LogDayContext, RoutineReviewContext, DashboardContext, ExerciseLibraryContext } from '@/lib/ai/context-builders';
 import { isLanguage, type Language } from '@/i18n';
 import { isAdminUid } from '@/lib/adminConfig';
 import { DAILY_LIMIT_COACH_CALLS } from '@/lib/limits';
@@ -11,7 +11,7 @@ import { verifyFirebaseIdToken } from '@/lib/verifyIdToken';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-type ChatMode = 'log-day' | 'routine-review' | 'dashboard';
+type ChatMode = 'log-day' | 'routine-review' | 'dashboard' | 'exercise-library';
 
 const MAX_HISTORY_MESSAGES = 20;
 
@@ -129,7 +129,7 @@ export async function POST(req: Request) {
     const { mode, messages, context, language: rawLanguage } = body as {
       mode: ChatMode;
       messages: Array<{ role: 'user' | 'assistant'; content: string }>;
-      context: LogDayContext | RoutineReviewContext | DashboardContext;
+      context: LogDayContext | RoutineReviewContext | DashboardContext | ExerciseLibraryContext;
       /** The user's profile language; the coach always replies in it. */
       language?: unknown;
     };
@@ -145,7 +145,9 @@ export async function POST(req: Request) {
         ? buildLogDaySystemPrompt(context as LogDayContext, language)
         : mode === 'dashboard'
           ? buildDashboardSystemPrompt(context as DashboardContext, language)
-          : buildRoutineReviewSystemPrompt(context as RoutineReviewContext, language);
+          : mode === 'exercise-library'
+            ? buildExerciseLibrarySystemPrompt(context as ExerciseLibraryContext, language)
+            : buildRoutineReviewSystemPrompt(context as RoutineReviewContext, language);
 
     const trimmedHistory = messages.slice(-MAX_HISTORY_MESSAGES);
     const fullMessages: ChatMessage[] = [

@@ -58,7 +58,7 @@ import {
 } from '@dnd-kit/sortable';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { CoachChatSheet } from '@/components/coach/CoachChatSheet';
-import { buildRoutineReviewContext, type RoutineReviewContext } from '@/lib/ai/context-builders';
+import { buildRoutineReviewContext, toCoachProfile, type RoutineReviewContext } from '@/lib/ai/context-builders';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebaseConfig';
 import { subDays } from 'date-fns';
@@ -232,13 +232,16 @@ export default function RoutinesPage() {
       console.warn('Could not load routine history for coach context:', err?.message);
     }
 
+    // The library lets the coach suggest swaps and additions from exercises
+    // the user actually has.
     return buildRoutineReviewContext(
       routines,
       logs,
-      { goal: profile.goal, daysPerWeekTarget: profile.daysPerWeekTarget },
+      toCoachProfile(profile),
       routineVersions,
+      allUserExercises,
     );
-  }, [user?.id, routines]);
+  }, [user?.id, routines, allUserExercises]);
 
   async function handleDragEndRoutines(event: DragEndEvent) {
     const { active, over } = event;

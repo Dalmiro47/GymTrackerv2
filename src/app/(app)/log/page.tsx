@@ -19,11 +19,12 @@ import {
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { useTrainingLog } from '@/hooks/useTrainingLog';
-import type { Exercise, LoggedExercise, LoggedSet, MuscleGroup, SetStructure } from '@/types';
+import type { Exercise, LoggedExercise, LoggedSet, MuscleGroup, SetStructure, WorkoutLog } from '@/types';
+import { getLogsSince } from '@/services/trainingLogService';
 import { ExerciseList } from '@/components/training-log/ExerciseList';
 import { AddExerciseDialog } from '@/components/training-log/AddExerciseDialog';
 import { ReplaceExerciseDialog } from '@/components/training-log/ReplaceExerciseDialog';
-import { format, parseISO, isValid as isDateValid, startOfMonth } from 'date-fns';
+import { format, parseISO, isValid as isDateValid, startOfMonth, subWeeks } from 'date-fns';
 import { parseRepRange, findOverRepRange } from '@/lib/repGoal';
 import { displayExerciseName } from '@/lib/exerciseDisplay';
 import { Loader2 } from 'lucide-react';
@@ -58,7 +59,7 @@ import { WeekStrip } from '@/components/training-log/WeekStrip';
 import { WorkoutCalendar } from '@/components/dashboard/WorkoutCalendar';
 import { ResponsiveSheet } from '@/components/ui/responsive-sheet';
 import { CoachChatSheet } from '@/components/coach/CoachChatSheet';
-import { serializeLogDayContext } from '@/lib/ai/context-builders';
+import { serializeLogDayContext, toCoachProfile, type CoachProfile } from '@/lib/ai/context-builders';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebaseConfig';
 import { useI18n } from '@/contexts/LanguageContext';
@@ -69,6 +70,9 @@ import { useI18n } from '@/contexts/LanguageContext';
  * recreates its handlers each render. Callbacks here are only ever invoked from event
  * handlers (post-commit), so reading the latest body from a ref is safe.
  */
+/** How far back the Training Coach looks for each exercise's recent sessions. */
+const COACH_HISTORY_WEEKS = 10;
+
 function useStableCallback<T extends (...args: never[]) => unknown>(fn: T): T {
   const ref = useRef(fn);
   useEffect(() => {
@@ -131,18 +135,31 @@ function TrainingLogPageContent() {
   } = useTrainingLog(initialDate);
 
   // Load user profile for AI Coach context
-  const [userProfile, setUserProfile] = useState<{ goal?: string; daysPerWeekTarget?: number; constraints?: string[] } | undefined>();
+  const [userProfile, setUserProfile] = useState<CoachProfile | undefined>();
   useEffect(() => {
     if (!user?.id) return;
     getDoc(doc(db, 'users', user.id, 'profile', 'profile'))
       .then((snap) => {
         if (snap.exists()) {
           const data = snap.data();
-          setUserProfile({ goal: data.goal, daysPerWeekTarget: data.daysPerWeekTarget, constraints: data.constraints });
+          setUserProfile(toCoachProfile(data));
         }
       })
       .catch(() => {}); // Non-critical — coach works without profile
   }, [user?.id]);
+
+  // Recent logs before the selected day, so the coach sees each exercise's last
+  // sessions (trend: rising / stalled / dropping). Best-effort, like the profile.
+  const selectedDateId = format(selectedDate, 'yyyy-MM-dd');
+  const [coachRecentLogs, setCoachRecentLogs] = useState<WorkoutLog[]>([]);
+  useEffect(() => {
+    if (!user?.id) return;
+    let cancelled = false;
+    getLogsSince(user.id, subWeeks(parseISO(selectedDateId), COACH_HISTORY_WEEKS))
+      .then((logs) => { if (!cancelled) setCoachRecentLogs(logs.filter((l) => l.date < selectedDateId)); })
+      .catch((err) => console.warn('[log] coach history unavailable:', err?.message));
+    return () => { cancelled = true; };
+  }, [user?.id, selectedDateId]);
 
   const [isAddExerciseDialogOpen, setIsAddExerciseDialogOpen] = useState(false);
   const [exerciseInsertionIndex, setExerciseInsertionIndex] = useState<number | null>(null);
@@ -315,10 +332,11 @@ function TrainingLogPageContent() {
   }, [currentLog, selectedDate, loggedDayStrings, deloadDayStrings]);
 
   // `language` is a dep because the serializer localizes default exercise names.
+  // The library is the pool the coach picks swap suggestions from.
   const logDayContext = useMemo(
-    () => serializeLogDayContext(currentLog ?? null, userProfile),
+    () => serializeLogDayContext(currentLog ?? null, userProfile, availableExercises, coachRecentLogs),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [currentLog, userProfile, language],
+    [currentLog, userProfile, availableExercises, coachRecentLogs, language],
   );
 
   const activeRoutine = useMemo(

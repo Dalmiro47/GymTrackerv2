@@ -13,18 +13,18 @@ import { useVisualViewport } from '@/hooks/use-visual-viewport';
 import { useCoachChat, type ChatMessage } from '@/hooks/use-coach-chat';
 import { useI18n } from '@/contexts/LanguageContext';
 import type { TranslationKey } from '@/i18n';
-import type { LogDayContext, RoutineReviewContext, DashboardContext } from '@/lib/ai/context-builders';
+import type { LogDayContext, RoutineReviewContext, DashboardContext, ExerciseLibraryContext } from '@/lib/ai/context-builders';
 
-type ChatMode = 'log-day' | 'routine-review' | 'dashboard';
+type ChatMode = 'log-day' | 'routine-review' | 'dashboard' | 'exercise-library';
 
-type CoachContext = LogDayContext | RoutineReviewContext | DashboardContext;
+type CoachContext = LogDayContext | RoutineReviewContext | DashboardContext | ExerciseLibraryContext;
 
 type CoachChatSheetProps = {
   mode: ChatMode;
   /** Static context (log-day / dashboard) or null if using loadContext */
   context?: CoachContext | null;
-  /** Lazy context loader (routine-review) */
-  loadContext?: () => Promise<RoutineReviewContext>;
+  /** Lazy context loader (routine-review / exercise-library) */
+  loadContext?: () => Promise<RoutineReviewContext | ExerciseLibraryContext>;
   /** Optional starter chips shown in the empty state; tapping sends the text. */
   suggestedPrompts?: string[];
   /** log-day only: selected log date (`yyyy-MM-dd`) so chat history is scoped to that day */
@@ -50,6 +50,12 @@ const MODE_CONFIG: Record<ChatMode, { title: TranslationKey; description: Transl
     description: 'coach.dashboard.description',
     placeholder: 'coach.dashboard.placeholder',
     emptyText: 'coach.dashboard.empty',
+  },
+  'exercise-library': {
+    title: 'coach.exercises.title',
+    description: 'coach.exercises.description',
+    placeholder: 'coach.exercises.placeholder',
+    emptyText: 'coach.exercises.empty',
   },
 };
 
@@ -82,6 +88,12 @@ export function CoachChatSheet({ mode, context, loadContext, suggestedPrompts, l
   useEffect(() => {
     if (context) setResolvedContext(context);
   }, [context]);
+
+  // A new loader means the page's data changed (e.g. an exercise was added):
+  // drop the cached context so the next open, or this one, reloads it.
+  useEffect(() => {
+    if (loadContext) setResolvedContext(null);
+  }, [loadContext]);
 
   // Lazy-load context when chat opens
   useEffect(() => {

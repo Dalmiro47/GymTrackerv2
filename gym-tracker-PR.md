@@ -2,14 +2,14 @@
 claude --dangerously-skip-permissions 
 
 ## Pull Request to Github 
-git switch -c ref/pr-reset
+git switch -c ref/overload-daily-goal
 
 ## Do ALL THE CHANGES 
 
 ## Pull Request to Github 
 git add -A 
 git commit -m "ref: pr reset" 
-git push -u origin ref/pr-reset
+git push -u origin ref/overload-daily-goal
 
 ## Make local main match GitHub
 
@@ -24,7 +24,7 @@ git rev-parse HEAD
 git rev-parse origin/main 
  
 ## After merge, delete the branch
-git branch -D ref/pr-reset
+git branch -D ref/overload-daily-goal
 
 
 ## To kill ports in use: 
