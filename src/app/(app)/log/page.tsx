@@ -122,6 +122,7 @@ function TrainingLogPageContent() {
     removeExerciseFromLog,
     reorderExercisesInLog,
     updateExerciseInLog,
+    markExerciseDone,
     saveCurrentLog,
     updateOverallLogNotes,
     deleteCurrentLog,
@@ -259,6 +260,19 @@ function TrainingLogPageContent() {
 
   const handleUpdateSets = useStableCallback((loggedExercise: LoggedExercise, sets: LoggedSet[]) => {
     updateExerciseInLog({ ...loggedExercise, sets });
+  });
+
+  // "Same as last time" saves at once (the user asked for a one-tap log), through
+  // the same over-range gate as the Save button: the whole day doc is written, so
+  // other cards' unchecked entries must not slip past it.
+  const handleMarkDone = useStableCallback(async (rowId: string) => {
+    const next = markExerciseDone(rowId);
+    if (!next) return;
+    if (overRangeWarnings.length > 0) {
+      setIsOverRangeConfirmOpen(true);
+      return;
+    }
+    await saveCurrentLog(next);
   });
 
   const handleRemoveExercise = useStableCallback((rowId: string) => {
@@ -467,6 +481,7 @@ function TrainingLogPageContent() {
               isReadOnly={isDeload}
               onDragEnd={handleDragEnd}
               onUpdateSets={handleUpdateSets}
+              onMarkDone={handleMarkDone}
               onRemove={handleRemoveExercise}
               onReplace={handleOpenReplaceDialog}
               onUpdateSetStructureOverride={handleUpdateSetStructureOverride}

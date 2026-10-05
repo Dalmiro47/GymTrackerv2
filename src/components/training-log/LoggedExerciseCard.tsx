@@ -7,7 +7,7 @@ import { computeWarmup, inferWarmupTemplate, WarmupInput, type WarmupStep } from
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { PlusCircle, Trash2, GripVertical, Settings2, ArrowLeftRight, Flame, TrendingUp, Dumbbell, X, ArrowUpCircle, ArrowDownCircle, AlertTriangle, History, RefreshCw, Loader2 } from 'lucide-react';
+import { PlusCircle, Trash2, GripVertical, Settings2, ArrowLeftRight, Flame, TrendingUp, Dumbbell, X, ArrowUpCircle, ArrowDownCircle, AlertTriangle, History, RefreshCw, Loader2, Check } from 'lucide-react';
 import { differenceInCalendarDays } from 'date-fns';
 import { parseRepRange, isRepGoalReached, isBelowRepRange, findOverRepRange, getNextRepTarget, suggestWeightBump, type NextRepTarget } from '@/lib/repGoal';
 import { formatWeightHalf } from '@/lib/rounding';
@@ -158,6 +158,8 @@ function setsShallowEqual(a: LoggedSet[], b: LoggedSet[]) {
 interface LoggedExerciseCardProps {
   loggedExercise: LoggedExercise;
   onUpdateSets: (sets: LoggedSet[]) => void;
+  /** Logs the untouched pre-filled sets as done ("same as last time") and saves the day. */
+  onMarkDone: () => void;
   onRemove: () => void;
   onReplace: () => void;
   isSavingParentLog: boolean;
@@ -176,6 +178,7 @@ interface LoggedExerciseCardProps {
 export function LoggedExerciseCard({
   loggedExercise,
   onUpdateSets,
+  onMarkDone,
   onRemove,
   onReplace,
   isSavingParentLog,
@@ -311,9 +314,10 @@ export function LoggedExerciseCard({
       ? suggestWeightBump(localSets, {
           historyStepKg: loggedExercise.progressionStepKg,
           template: loggedExercise.warmupConfig?.template,
+          exerciseName: loggedExercise.name,
         })
       : null),
-    [repCue, localSets, loggedExercise.progressionStepKg, loggedExercise.warmupConfig?.template]
+    [repCue, localSets, loggedExercise.progressionStepKg, loggedExercise.warmupConfig?.template, loggedExercise.name]
   );
 
   const [nextTarget, setNextTarget] = useState<NextRepTarget | null>(null);
@@ -674,7 +678,10 @@ export function LoggedExerciseCard({
                 index={index}
                 onSetChange={handleSetChange}
                 onRemoveSet={() => removeSet(set.id)}
-                isProvisional={set.isProvisional}
+                // Local sets only re-sync on a reps/weight change, so a card
+                // marked "same as last time" (values unchanged) would stay grey.
+                // The parent's derived flag clears that; local covers typing.
+                isProvisional={set.isProvisional && (loggedExercise.sets[index]?.isProvisional ?? true)}
                 disabled={isReadOnly}
                 weightDisplay={weightDisplays[index] ?? ''}
                 setWeightDisplay={(val) =>
@@ -692,7 +699,20 @@ export function LoggedExerciseCard({
           </div>
 
           <div className="pt-1">
-            <div className="flex justify-center">
+            <div className="flex flex-wrap justify-center gap-2">
+              {lastTimeLabel && !isReadOnly && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={onMarkDone}
+                  disabled={isSavingParentLog}
+                  aria-label={t('card.sameAsLastFor', { name: shown.name })}
+                  className="h-9 rounded-full border-primary/30 bg-primary/10 px-3.5 text-[13px] font-medium text-primary hover:bg-primary/20 hover:text-primary"
+                >
+                  <Check className="h-4 w-4" />
+                  {t('card.sameAsLast')}
+                </Button>
+              )}
               <Button
                 variant="outline"
                 size="sm"

@@ -1,6 +1,6 @@
 'use client';
 import React, { useEffect, useMemo, useState } from 'react';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp, deleteField } from 'firebase/firestore';
 import { db } from '@/lib/firebaseConfig';
 import { useAuth } from '@/contexts/AuthContext';
 import { useI18n } from '@/contexts/LanguageContext';
@@ -15,6 +15,7 @@ import { Loader2, CheckCircle2 } from 'lucide-react';
 import { stripUndefined } from '@/lib/clean';
 import { useToast } from '@/hooks/use-toast';
 import { friendlyErrorMessage } from '@/lib/errorMessages';
+import { DateOfBirthInput } from '@/components/DateOfBirthInput';
 
 const clampSession = (n?: number) =>
   typeof n === 'number' ? Math.min(180, Math.max(20, Math.round(n))) : undefined;
@@ -53,6 +54,9 @@ export function CoachProfileForm({ initial: rawInitial, title }: { initial: User
         ...form,
         sessionTimeTargetMin: clampSession(form.sessionTimeTargetMin),
         ...(form.gender === 'Self-describe' ? {} : { genderSelfDescribe: undefined }),
+        // A key omitted under `merge` keeps its stored value, so a cleared
+        // date of birth must be deleted explicitly or it comes back on reload.
+        dateOfBirth: form.dateOfBirth || (baseline.dateOfBirth ? deleteField() : undefined),
         updatedAt: serverTimestamp(),
       });
       await setDoc(doc(db, 'users', user.id, 'profile', 'profile'), payload, { merge: true });
@@ -96,10 +100,12 @@ export function CoachProfileForm({ initial: rawInitial, title }: { initial: User
         <div className="space-y-1.5">
           <Label>{t('profile.daysPerWeek')}</Label>
           <Input
-            type="number"
+            type="text"
+            inputMode="numeric"
+            maxLength={1}
             value={form.daysPerWeekTarget ?? ''}
             onChange={(e) => {
-              const val = e.target.value;
+              const val = e.target.value.replace(/\D/g, '');
               const n = val === '' ? undefined : Math.min(7, Math.max(1, Number(val)));
               setForm({ ...form, daysPerWeekTarget: n });
             }}
@@ -110,13 +116,12 @@ export function CoachProfileForm({ initial: rawInitial, title }: { initial: User
         <div className="space-y-1.5">
           <Label>{t('profile.sessionTime')}</Label>
           <Input
-            type="number"
+            type="text"
             inputMode="numeric"
-            min={20}
-            max={180}
+            maxLength={3}
             value={form.sessionTimeTargetMin ?? ''}
             onChange={(e) => {
-              const val = e.target.value;
+              const val = e.target.value.replace(/\D/g, '');
               const n = val === '' ? undefined : Number(val);
               setForm({
                 ...form,
@@ -147,14 +152,10 @@ export function CoachProfileForm({ initial: rawInitial, title }: { initial: User
        <p className="eyebrow border-t pt-5">{t('profile.aboutYou')}</p>
        <div className="!mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">
-          <Label>{t('profile.age')}</Label>
-          <Input
-            type="number"
-            value={form.age ?? ''}
-            onChange={(e) => {
-              const val = e.target.value;
-              setForm({ ...form, age: val === '' ? undefined : Number(val) });
-            }}
+          <Label>{t('profile.dateOfBirth')}</Label>
+          <DateOfBirthInput
+            value={form.dateOfBirth}
+            onChange={(dateOfBirth) => setForm((f) => ({ ...f, dateOfBirth }))}
           />
         </div>
 

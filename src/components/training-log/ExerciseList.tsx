@@ -45,6 +45,7 @@ export interface ExerciseListProps {
   isReadOnly: boolean;
   onDragEnd: (event: DragEndEvent) => void;
   onUpdateSets: (loggedExercise: LoggedExercise, sets: LoggedSet[]) => void;
+  onMarkDone: (rowId: string) => void;
   onRemove: (rowId: string) => void;
   onReplace: (rowId: string, muscleGroup: MuscleGroup) => void;
   onUpdateSetStructureOverride: (exerciseId: string, structure: SetStructure | null) => void;
@@ -72,6 +73,7 @@ export const ExerciseList = React.memo(function ExerciseList({
   isReadOnly,
   onDragEnd,
   onUpdateSets,
+  onMarkDone,
   onRemove,
   onReplace,
   onUpdateSetStructureOverride,
@@ -119,6 +121,7 @@ export const ExerciseList = React.memo(function ExerciseList({
                     <LoggedExerciseCard
                       loggedExercise={loggedEx}
                       onUpdateSets={(sets) => onUpdateSets(loggedEx, sets)}
+                      onMarkDone={() => onMarkDone(loggedEx.id)}
                       onRemove={() => onRemove(loggedEx.id)}
                       onReplace={() => onReplace(loggedEx.id, loggedEx.muscleGroup)}
                       isSavingParentLog={isBusy}

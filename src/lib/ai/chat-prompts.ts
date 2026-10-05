@@ -34,6 +34,7 @@ function renderProfile(p: CoachProfile | undefined): string {
   if (!p) return '';
   const lines = [
     `- Goal: ${p.goal || 'General'}`,
+    p.age ? `- Age: ${p.age}` : '',
     p.trainingAge ? `- Training experience: ${p.trainingAge}` : '',
     p.daysPerWeekTarget ? `- ${p.daysPerWeekTarget} days/week target` : '',
     p.sessionTimeTargetMin ? `- Session time target: ${p.sessionTimeTargetMin} min` : '',

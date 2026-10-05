@@ -359,20 +359,26 @@ export function AddEditRoutineDialog({
             </>
           )}
         </DialogFooter>
+        {/* Rendered INSIDE the editor's content (it still portals to the body) so
+            Radix counts taps on it as inside the editor. As a sibling, a touch tap
+            on a replacement closed BOTH dialogs and discarded the edits: on touch,
+            Radix waits for the `click` to decide "outside", and by then Replace has
+            already closed itself, so the editor saw itself on top and dismissed.
+            Mouse decides on pointerdown, which is why desktop worked. */}
+        <ReplaceExerciseDialog
+          isOpen={isReplaceOpen}
+          setIsOpen={(open) => {
+            setIsReplaceOpen(open);
+            if (!open) setReplaceIndex(null);
+          }}
+          availableExercises={replaceCandidates}
+          isLoadingExercises={isLoadingExercises}
+          onReplaceExercise={handleReplaceExercise}
+          initialMuscleGroup={exerciseBeingReplaced?.muscleGroup}
+        />
       </DialogContent>
     </Dialog>
 
-    <ReplaceExerciseDialog
-      isOpen={isReplaceOpen}
-      setIsOpen={(open) => {
-        setIsReplaceOpen(open);
-        if (!open) setReplaceIndex(null);
-      }}
-      availableExercises={replaceCandidates}
-      isLoadingExercises={isLoadingExercises}
-      onReplaceExercise={handleReplaceExercise}
-      initialMuscleGroup={exerciseBeingReplaced?.muscleGroup}
-    />
     </>
   );
 }

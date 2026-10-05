@@ -17,6 +17,11 @@ export type GenderOption =
 export interface UserProfile {
   gender?: GenderOption;
   genderSelfDescribe?: string; // used when gender === 'Self-describe'
+  /** Local date `YYYY-MM-DD`. The coach gets the age computed from it
+   *  (`ageFromDateOfBirth`), never the date itself. */
+  dateOfBirth?: string;
+  /** LEGACY: a typed age, written before date of birth replaced it. Kept on old
+   *  profile docs and read only as a fallback when `dateOfBirth` is absent. */
   age?: number;
   heightCm?: number;
   weightKg?: number;
