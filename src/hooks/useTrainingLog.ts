@@ -81,6 +81,8 @@ const persistedShape = (log: WorkoutLog) => ({
     warmupConfig: ex.warmupConfig ?? null,
     notes: ex.notes ?? '',
     sets: ex.sets.map(s => ({ reps: s.reps ?? null, weight: s.weight ?? null })),
+    // Saved as `performed`, and "same as last time" flips it without touching a set.
+    planned: !!ex.prefill && setsShape(ex.sets) === setsShape(ex.prefill.sets),
   })),
 });
 
@@ -638,6 +640,23 @@ export const useTrainingLog = (initialDate: Date) => {
     });
   };
   
+  // "Same as last time": the pre-filled sets were done exactly as shown. Dropping
+  // the prefill is what makes them count as performed — `isProvisional` and the
+  // save path's `plannedIds` both derive from it — without inventing an edit.
+  // Returns the new baseline so the caller can save it in the same tap — state
+  // has not re-rendered yet, so `saveCurrentLog` would still read the old one.
+  const markExerciseDone = (rowId: string): WorkoutLog | null => {
+    if (!originalLogState) return null;
+    const next: WorkoutLog = {
+      ...originalLogState,
+      exercises: originalLogState.exercises.map(ex =>
+        ex.id === rowId ? withDerivedProvisional({ ...ex, prefill: undefined }) : ex
+      ),
+    };
+    setOriginalLogState(next);
+    return next;
+  };
+
   const updateExerciseSetStructureOverride = (exerciseId: string, structure: SetStructure | null) => {
     const base = originalLogState ?? currentLog;
     if (!base) return;
@@ -655,8 +674,14 @@ export const useTrainingLog = (initialDate: Date) => {
     setOriginalLogState(nextBaseline);
   };
   
-  const saveCurrentLog = async () => {
-    if (!user?.id || !currentLog) {
+  // `baselineOverride`: a baseline set in this same tick (see markExerciseDone),
+  // which `originalLogState` / `currentLog` do not reflect yet.
+  const saveCurrentLog = async (baselineOverride?: WorkoutLog) => {
+    const baseline = baselineOverride ?? originalLogState;
+    const source = baselineOverride
+      ? (isDeload && !deloadApplied ? applyDeloadTransform(baselineOverride) : baselineOverride)
+      : currentLog;
+    if (!user?.id || !source) {
       toast({ title: t('common.error'), description: t('log.toast.noDataSave'), variant: "destructive" });
       return;
     }
@@ -666,7 +691,7 @@ export const useTrainingLog = (initialDate: Date) => {
       // Save what the user sees. For a (not yet applied) deload that is the
       // transformed view; the reduced sets are persisted with `deloadApplied`
       // so the next load shows them as stored instead of reducing them again.
-      const logToSave: WorkoutLog = { ...currentLog };
+      const logToSave: WorkoutLog = { ...source };
 
       if (isDeload) {
         logToSave.isDeload = true;
@@ -686,7 +711,7 @@ export const useTrainingLog = (initialDate: Date) => {
       // baseline, not `currentLog`, because a deload view's reduced sets would
       // always differ from the prefill.
       const plannedIds = new Set(
-        (originalLogState?.exercises ?? [])
+        (baseline?.exercises ?? [])
           .filter(ex => withDerivedProvisional(ex).isProvisional)
           .map(ex => ex.id)
       );
@@ -905,6 +930,7 @@ export const useTrainingLog = (initialDate: Date) => {
     replaceExerciseInLog,
     reorderExercisesInLog,
     updateExerciseInLog,
+    markExerciseDone,
     updateExerciseSetStructureOverride,
     recheckExercisePR,
     saveCurrentLog,

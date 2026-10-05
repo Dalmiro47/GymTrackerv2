@@ -13,6 +13,7 @@ import type { RoutineVersion } from '@/types/routineHistory';
 import { displayExerciseFields, displayExerciseName } from '@/lib/exerciseDisplay';
 import { dedupeExercisesByNameAndMuscle } from '@/lib/routineEditing';
 import { MUSCLE_GROUPS_LIST } from '@/lib/constants';
+import { ageFromDateOfBirth } from '@/lib/age';
 
 // ─── Shared: coach profile + exercise library ───────────────────────
 
@@ -23,12 +24,16 @@ export type CoachProfile = {
   constraints?: string[];
   trainingAge?: string;
   sessionTimeTargetMin?: number;
+  /** Computed from `dateOfBirth` (legacy `age` as fallback); the birth date itself is never sent. */
+  age?: number;
 };
 
 /** Picks the coach fields out of a raw `users/{uid}/profile/profile` doc. */
 export function toCoachProfile(data: Record<string, unknown> | undefined | null): CoachProfile {
   if (!data) return {};
+  const ageFromDob = typeof data.dateOfBirth === 'string' ? ageFromDateOfBirth(data.dateOfBirth) : undefined;
   return {
+    age: ageFromDob ?? (typeof data.age === 'number' && data.age > 0 ? data.age : undefined),
     goal: typeof data.goal === 'string' ? data.goal : undefined,
     daysPerWeekTarget: typeof data.daysPerWeekTarget === 'number' ? data.daysPerWeekTarget : undefined,
     constraints: Array.isArray(data.constraints) ? data.constraints.filter((c): c is string => typeof c === 'string') : undefined,

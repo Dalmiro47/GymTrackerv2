@@ -24,6 +24,7 @@ import { useToast } from '@/hooks/use-toast';
 import { db } from '@/lib/firebaseConfig';
 import { stripUndefined } from '@/lib/clean';
 import { friendlyErrorMessage } from '@/lib/errorMessages';
+import { DateOfBirthInput } from '@/components/DateOfBirthInput';
 import { GENDER_OPTIONS, GOAL_OPTIONS } from '@/lib/profileOptions';
 import { ensureExercisesSeeded } from '@/services/exerciseService';
 import type { GenderOption, Goal, UserProfile } from '@/lib/types.gym';
@@ -46,7 +47,7 @@ type Draft = {
   goal?: Goal;
   daysPerWeekTarget?: number;
   sessionTimeTargetMin?: number;
-  age?: number;
+  dateOfBirth?: string;
   gender?: GenderOption;
   genderSelfDescribe?: string;
   constraints: string[];
@@ -249,7 +250,7 @@ export function OnboardingWizard({ open, onFinished }: { open: boolean; onFinish
       goal: draft.goal ?? FALLBACK_GOAL,
       daysPerWeekTarget: draft.daysPerWeekTarget,
       sessionTimeTargetMin: draft.sessionTimeTargetMin,
-      age: draft.age,
+      dateOfBirth: draft.dateOfBirth,
       gender: draft.gender,
       genderSelfDescribe: draft.gender === 'Self-describe' ? draft.genderSelfDescribe : undefined,
       constraints: draft.constraints.length ? draft.constraints : undefined,
@@ -377,18 +378,11 @@ export function OnboardingWizard({ open, onFinished }: { open: boolean; onFinish
                     <StepHeading title={t('onb.about.title')} subtitle={t('onb.about.subtitle')} />
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                       <div className="space-y-1.5">
-                        <Label htmlFor="onb-age">{t('profile.age')}</Label>
-                        <Input
-                          id="onb-age"
-                          type="number"
-                          inputMode="numeric"
-                          min={10}
-                          max={100}
-                          value={draft.age ?? ''}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            setDraft((d) => ({ ...d, age: val === '' ? undefined : Number(val) }));
-                          }}
+                        <Label htmlFor="onb-dob">{t('profile.dateOfBirth')}</Label>
+                        <DateOfBirthInput
+                          id="onb-dob"
+                          value={draft.dateOfBirth}
+                          onChange={(dateOfBirth) => setDraft((d) => ({ ...d, dateOfBirth }))}
                         />
                       </div>
                       <div className="space-y-1.5">

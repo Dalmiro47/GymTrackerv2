@@ -126,11 +126,18 @@ const TEMPLATE_STEP_KG: Record<WarmupTemplate, number> = {
   NONE: 2.5,
 };
 
+/** From this working weight up, heavy lower-body barbell lifts move in +5kg instead of +10kg. */
+const HEAVY_BARBELL_STEP_THRESHOLD_KG = 100;
+// Stored names of seeded exercises are English; the Spanish words cover user-named ones.
+const LOWER_BODY_BARBELL_NAME = /squat|deadlift|rdl|sentadilla|peso muerto/i;
+
 export interface WeightBumpInput {
   /** kg added the last time this exercise's working weight went up, if known. */
   historyStepKg?: number | null;
   /** Equipment proxy, used only when there is no history. */
   template?: WarmupTemplate;
+  /** Stored exercise name — picks out squat/deadlift for the fixed barbell rule. */
+  exerciseName?: string;
 }
 
 /**
@@ -141,17 +148,26 @@ export interface WeightBumpInput {
  * that already worked beats any formula. A percentage-based guess is what made
  * this suggest +1kg on lifts that only move in 2.5/5/10kg plates. With no
  * increase in recent history, fall back to the equipment's usual jump.
+ * Exception: squat/deadlift-type barbell lifts always use the fixed 10kg / 5kg rule below.
  * Bodyweight work has no weight to bump and returns null — the caller keeps its
  * generic wording.
  */
 export function suggestWeightBump(
   sets: LoggedSet[] | undefined,
-  { historyStepKg, template }: WeightBumpInput = {}
+  { historyStepKg, template, exerciseName }: WeightBumpInput = {}
 ): WeightBump | null {
   if (!sets || sets.length === 0) return null;
 
   const current = sets.reduce((max, set) => Math.max(max, set.weight ?? 0), 0);
   if (current <= 0) return null;
+
+  // Heavy lower-body barbell lifts (squat, deadlift, RDL) follow a fixed rule the
+  // user asked for: +10kg below 100kg, +5kg from 100kg up. It beats history on
+  // purpose — a +10 jump taken at 95kg must not be repeated at 105kg.
+  if (template === 'HEAVY_BARBELL' && exerciseName && LOWER_BODY_BARBELL_NAME.test(exerciseName)) {
+    const step = current < HEAVY_BARBELL_STEP_THRESHOLD_KG ? 10 : 5;
+    return { current, next: Number((current + step).toFixed(1)), step };
+  }
 
   // Snapped to 0.5kg, the only granularity the app stores.
   const fromHistory = historyStepKg && historyStepKg > 0 ? snapToHalf(historyStepKg) : null;

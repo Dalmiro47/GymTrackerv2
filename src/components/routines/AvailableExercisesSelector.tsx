@@ -74,6 +74,12 @@ export function AvailableExercisesSelector({
 
     if (searchTerm.trim() !== '') {
       temp = temp.filter(ex => exerciseMatchesQuery(ex, searchTerm, language));
+      // Replace opens pre-scoped to the replaced exercise's group, so searching for an
+      // exercise from ANOTHER group dead-ended on "No exercises found". When the scoped
+      // search has no match, fall back to every group (each row shows its group label).
+      if (temp.length === 0 && activeMuscleGroup && activeMuscleGroup !== 'All') {
+        return uniqueExercises.filter(ex => exerciseMatchesQuery(ex, searchTerm, language));
+      }
     }
     return temp;
   }, [uniqueExercises, searchTerm, activeMuscleGroup, language]);
