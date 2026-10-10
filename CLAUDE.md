@@ -149,11 +149,11 @@ All domain types are in `src/types/index.ts` — `Exercise`, `Routine`, `Workout
 - When proposing UX changes, separate effects/polish (welcome) from structural/layout changes (require explicit approval)
 
 ## Custom Commands
-- `/brain-sync` — captures current session state to Open Brain MCP as a meeting_debrief thought
+- `/dds:brain-sync` — captures current session state to Open Brain MCP as a meeting_debrief thought
 
 ## Session Workflow
 1. Work on feature/fix
-2. Run `/brain-sync` before ending the session
+2. Run `/dds:brain-sync` before ending the session
 
 ## Agent Guardrails (non-negotiable)
 Keep this file between 200–300 lines max. Every line must earn its keep.
@@ -174,3 +174,7 @@ Keep this file between 200–300 lines max. Every line must earn its keep.
 
 ### Scale Expectation
 - This is a gym app (1–5 users). Do not over-engineer for scale. Optimize for simplicity and readability over performance
+
+## Brain sync
+
+- Topics: gym-tracker, Firestore
