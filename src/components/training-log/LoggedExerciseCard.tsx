@@ -7,8 +7,7 @@ import { computeWarmup, inferWarmupTemplate, WarmupInput, type WarmupStep } from
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { PlusCircle, Trash2, GripVertical, Settings2, ArrowLeftRight, Flame, TrendingUp, Dumbbell, X, ArrowUpCircle, ArrowDownCircle, AlertTriangle, History, RefreshCw, Loader2, Check } from 'lucide-react';
-import { differenceInCalendarDays } from 'date-fns';
+import { PlusCircle, Trash2, GripVertical, Settings2, ArrowLeftRight, Flame, TrendingUp, Dumbbell, X, ArrowUpCircle, ArrowDownCircle, AlertTriangle, RefreshCw, Loader2, History } from 'lucide-react';
 import { parseRepRange, isRepGoalReached, isBelowRepRange, findOverRepRange, getNextRepTarget, suggestWeightBump, type NextRepTarget } from '@/lib/repGoal';
 import { formatWeightHalf } from '@/lib/rounding';
 import { SetInputRow } from './SetInputRow'; 
@@ -232,22 +231,13 @@ export function LoggedExerciseCard({
 
   const borderColor = SET_STRUCTURE_COLORS[localStructure]?.border ?? 'hsl(var(--border))';
 
-  // "Last session" chip: shown only while the card is still the untouched pre-fill
-  // (planned, not done). Disappears as soon as any set is edited.
-  const lastTimeLabel = useMemo(() => {
+  // "Same as last time" is offered only while the card is still the untouched
+  // pre-fill (planned, not done). Disappears as soon as any set is edited.
+  const canRepeatLast = useMemo(() => {
     const pf = loggedExercise.prefill;
-    if (!loggedExercise.isProvisional || !pf || pf.lastPerformedDate == null) return null;
-    if (!pf.sets.some(s => s.reps != null || s.weight != null)) return null;
-    // The sets themselves are already visible in the inputs below — the chip
-    // only needs to say "this is pre-filled" and from when, so it stays short.
-    const days = differenceInCalendarDays(new Date(), new Date(pf.lastPerformedDate));
-    const when =
-      days <= 0 ? t('card.when.today')
-      : days === 1 ? t('card.when.yesterday')
-      : days < 14 ? t('card.when.daysAgo', { n: days })
-      : t('card.when.weeksAgo', { n: Math.round(days / 7) });
-    return t('card.lastSession', { when });
-  }, [loggedExercise.prefill, loggedExercise.isProvisional, t]);
+    if (!loggedExercise.isProvisional || !pf || pf.lastPerformedDate == null) return false;
+    return pf.sets.some(s => s.reps != null || s.weight != null);
+  }, [loggedExercise.prefill, loggedExercise.isProvisional]);
 
   // Progressive-overload cue: every set at the top of the exercise's rep range
   // means it's time to add weight; every set under the bottom means the load is
@@ -541,12 +531,6 @@ export function LoggedExerciseCard({
               <span className="tabular-nums">{formatPR(loggedExercise.currentPR)}</span>
               <RefreshCw aria-hidden="true" className="h-3 w-3 opacity-70" />
             </button>
-            {lastTimeLabel && (
-              <span className="inline-flex h-6 items-center gap-1 rounded-full border border-dashed border-border bg-muted/50 px-2 text-[11px] leading-none text-muted-foreground" title={t('card.prefilledTitle')}>
-                <History aria-hidden="true" className="h-3 w-3" />
-                <span className="tabular-nums">{lastTimeLabel}</span>
-              </span>
-            )}
             {shown.exerciseSetup && (
                 <span className="inline-flex h-6 items-center gap-1 rounded-full bg-muted px-2 text-[11px] leading-none text-muted-foreground">
                     <Settings2 aria-hidden="true" className="h-3 w-3" />
@@ -700,19 +684,6 @@ export function LoggedExerciseCard({
 
           <div className="pt-1">
             <div className="flex flex-wrap justify-center gap-2">
-              {lastTimeLabel && !isReadOnly && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={onMarkDone}
-                  disabled={isSavingParentLog}
-                  aria-label={t('card.sameAsLastFor', { name: shown.name })}
-                  className="h-9 rounded-full border-primary/30 bg-primary/10 px-3.5 text-[13px] font-medium text-primary hover:bg-primary/20 hover:text-primary"
-                >
-                  <Check className="h-4 w-4" />
-                  {t('card.sameAsLast')}
-                </Button>
-              )}
               <Button
                 variant="outline"
                 size="sm"
@@ -730,21 +701,34 @@ export function LoggedExerciseCard({
               className="flex flex-1 items-center justify-between gap-2"
               onPointerDownCapture={(e) => e.stopPropagation()}
             >
-              <span className="eyebrow whitespace-nowrap">
-                {t('card.sessionStructure')}
-              </span>
-
-              <SetStructurePicker
-                className="max-w-[13rem]"
-                value={localStructure}
-                onChange={(val) => {
-                                setLocalStructure(val);
-                  const base = loggedExercise.setStructure ?? 'normal';
-                  const nextOverride = (val === base) ? null : val;
-                  onUpdateSetStructureOverride(loggedExercise.id, nextOverride);
-                }}
-                disabled={isSavingParentLog}
-              />
+              {/* No label: the picker's value (Normal, Superset…) names itself, and
+                  the space goes to a button text that says what it repeats. */}
+              <div className="flex min-w-0 items-center">
+                <SetStructurePicker
+                  className="min-w-0 max-w-[13rem]"
+                  value={localStructure}
+                  onChange={(val) => {
+                    setLocalStructure(val);
+                    const base = loggedExercise.setStructure ?? 'normal';
+                    const nextOverride = (val === base) ? null : val;
+                    onUpdateSetStructureOverride(loggedExercise.id, nextOverride);
+                  }}
+                  disabled={isSavingParentLog}
+                />
+              </div>
+              {canRepeatLast && !isReadOnly && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={onMarkDone}
+                  disabled={isSavingParentLog}
+                  aria-label={t('card.sameAsLastFor', { name: shown.name })}
+                  className="h-9 shrink-0 rounded-full border-primary/30 bg-primary/10 px-3.5 text-[13px] font-medium text-primary hover:bg-primary/20 hover:text-primary"
+                >
+                  <History className="h-4 w-4" />
+                  {t('card.sameAsLast')}
+                </Button>
+              )}
             </div>
           </div>
         </CardContent>
