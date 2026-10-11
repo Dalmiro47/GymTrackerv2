@@ -5,7 +5,7 @@ Read and follow `CONSTRAINTS.md` at the repo root before every task. It defines:
 - When to stop and ask (Section 2)
 - How to resolve goal vs. constraint conflicts (Section 3)
 - Session hygiene rules (Section 4)
-- Project-specific extensions (Section 5)
+- Where project rules live, the factory git exception and shared app rules (Section 5); this repo's own rules are under `## Project constraints` below, and its code invariants under `## Constraints (non-negotiable)`
 
 CONSTRAINTS.md rules are non-negotiable. If a task conflicts with a constraint, stop and surface the conflict — do not silently resolve it.
 
@@ -144,18 +144,15 @@ All domain types are in `src/types/index.ts` — `Exercise`, `Routine`, `Workout
 - i18n dictionaries are UTF-8 and mojibake there passes typecheck, lint AND build: broken Spanish is invisible to every check in the repo. Write accented strings with the Edit/Write tool as literal characters. A Python `.encode().decode('unicode_escape')` round-trip corrupted `src/i18n/es.ts` this session and only a byte-level diff caught it (added 2026-09)
 - This shell (Git Bash on Windows) MANGLES backslashes inside heredocs: a `<<'EOF'` body containing `\\n` arrives as `\n`, silently changing regex/string semantics. It produced a confidently WRONG env-var test result this session before being caught. Build backslash-bearing content with `chr(92)` in Python, or use the Write tool — never a heredoc (added 2026-09)
 - A Radix dialog opened OVER another dialog must be rendered inside the lower one's `DialogContent` (it still portals), never as a sibling. On touch, Radix decides "pointer down outside" on the later `click`, after the top dialog has already closed itself, so the lower dialog dismisses and drops its edits. Mouse decides on pointerdown, so desktop and mouse-driven tests pass while every phone fails (routine editor → Replace, fixed 2026-10)
-- Minimum viable plan: match the stated UX outcome with the minimum change needed
-- Do not add scope (refactors, extra configurability) unless explicitly asked
-- When proposing UX changes, separate effects/polish (welcome) from structural/layout changes (require explicit approval)
 
 ## Custom Commands
-- `/dds:brain-sync` — captures current session state to Open Brain MCP as a meeting_debrief thought
+- `/dds:brain-sync` (shared skill from the dds-kit plugin) captures a session-state milestone to Open Brain via the `capture_thought` MCP tool.
 
 ## Session Workflow
 1. Work on feature/fix
 2. Run `/dds:brain-sync` before ending the session
 
-## Agent Guardrails (non-negotiable)
+## Project constraints
 Keep this file between 200–300 lines max. Every line must earn its keep.
 
 ### Error Handling
@@ -168,12 +165,18 @@ Keep this file between 200–300 lines max. Every line must earn its keep.
 - Secret keys and service role keys must live in environment variables only — never in source code or chat
 
 ### Destructive Operations
-- Before ANY destructive or irreversible operation, do NOT execute directly. First confirm a recent backup/export exists (or create one), then STOP and ask for explicit confirmation, stating: (a) exactly what will be affected, (b) why it's irreversible, (c) what backup/rollback exists
+- Before ANY destructive or irreversible operation, follow CONSTRAINTS.md 4 (snapshot, then ask): do NOT execute directly; make sure a save point or recent backup/export exists, then STOP and ask for explicit confirmation, stating: (a) exactly what will be affected, (b) why it's irreversible, (c) what backup/rollback exists
 - Covers (non-exhaustive): deleting or mass-updating Firestore documents or collections, unscoped writes across `users/{userId}/...`, deploying Firestore rules that broaden or remove access (`firebase deploy --only firestore:rules`), deleting files or directories (`rm -rf`, fs deletes), overwriting production data, force-pushing or rewriting git history on shared branches
+- `firebase deploy` and `firebase firestore:delete` are denied by the dds guard (`.claude/dds-guard.json`); the owner runs them from their own terminal after the backup and confirmation above
 - "I'll just do it quickly" is not a reason to skip this. Speed is exactly the risk
 
 ### Scale Expectation
 - This is a gym app (1–5 users). Do not over-engineer for scale. Optimize for simplicity and readability over performance
+
+### Working Rules
+- Minimum viable plan: match the stated UX outcome with the minimum change needed
+- Do not add scope (refactors, extra configurability) unless explicitly asked
+- When proposing UX changes, separate effects/polish (welcome) from structural/layout changes (require explicit approval)
 
 ## Brain sync
 
