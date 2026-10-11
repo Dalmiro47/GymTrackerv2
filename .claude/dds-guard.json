@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "rules": [
+    {
+      "id": "firebase-deploy",
+      "decision": "deny",
+      "command": "^firebase(-tools)?( .*)? deploy( |$)",
+      "reason": "Firestore rules deploys are destructive and the owner's to run (CLAUDE.md Destructive Operations, CONSTRAINTS 1.4, 4)"
+    },
+    {
+      "id": "firestore-delete",
+      "decision": "deny",
+      "command": "^firebase(-tools)?( .*)? firestore:delete( |$)",
+      "reason": "Deleting Firestore documents or collections is destructive (CLAUDE.md Destructive Operations, CONSTRAINTS 4)"
+    }
+  ]
+}
