@@ -13,7 +13,7 @@
  * - updatePerformanceEntryOnLogDelete: Updates an exercise's performance entry (PR, last sets) if sourced from a deleted log, attempting to fall back to the next newest log. Deletes entry if it becomes empty.
  */
 import { db } from '@/lib/firebaseConfig';
-import type { WorkoutLog, LoggedSet, LoggedExercise, ExercisePerformanceEntry, PerformanceSet } from '@/types';
+import type { WorkoutLog, LoggedSet, LoggedExercise, ExercisePerformanceEntry, PerformanceSet, PerformedSession } from '@/types';
 import {
   doc,
   setDoc,
@@ -59,7 +59,7 @@ export const saveWorkoutLog = async (userId: string, date: string, workoutLogPay
     exerciseIds: exerciseIds,
     exercises: workoutLogPayload.exercises.map(ex => {
       // Destructure to remove UI-only fields before saving
-      const { personalRecordDisplay, isProvisional, currentPR, prefill, progressionStepKg, ...restOfEx } = ex;
+      const { personalRecordDisplay, isProvisional, currentPR, prefill, progressionStepKg, repeatStreak, ...restOfEx } = ex;
 
       // Clean up optional fields that might be null or undefined on the exercise
       const exerciseToSave: { [key: string]: any } = { ...restOfEx };
@@ -552,6 +552,23 @@ const computeLastWeightStep = (
   return null;
 };
 
+/**
+ * The sessions a repeat streak may count, newest first. Deload logs are skipped
+ * (their loads are artificially reduced) and so are planned exercises: they
+ * persist a copy of the last session's sets, which would read as a repetition.
+ * `undefined` means the log predates the flag and counts as performed.
+ */
+const performedSessionsForExercise = (
+  logs: WorkoutLog[], // newest first
+  exerciseId: string
+): PerformedSession[] =>
+  logs.flatMap(log => {
+    if (log?.isDeload === true) return [];
+    const ex = log?.exercises?.find(e => e.exerciseId === exerciseId);
+    if (!ex || ex.performed === false) return [];
+    return [{ date: log.date, sets: ex.sets ?? [] }];
+  });
+
 export const getLastNonDeloadPerformance = async (userId: string, exerciseId: string): Promise<ExercisePerformanceEntry | null> => {
     if (!userId || !exerciseId) return null;
 
@@ -602,6 +619,7 @@ export const getLastNonDeloadPerformance = async (userId: string, exerciseId: st
             lastPerformedSets: lastSets,
             lastPerformedDate: lastDate,
             lastWeightStepKg: computeLastWeightStep(recentLogs, exerciseId),
+            recentSessions: performedSessionsForExercise(recentLogs, exerciseId),
         };
 
     } catch (e) {

@@ -1,4 +1,4 @@
-import type { LoggedSet, WarmupTemplate } from '@/types';
+import type { LoggedSet, PerformedSession, WarmupTemplate } from '@/types';
 import { snapToHalf } from '@/lib/rounding';
 
 /**
@@ -44,7 +44,7 @@ export function parseRepRange(text?: string | null): RepRange | null {
  */
 
 /** Every set at (or above) the top of the range — time to add weight. */
-export function isRepGoalReached(sets: LoggedSet[] | undefined, range: RepRange | null): boolean {
+export function isRepGoalReached(sets: Array<Pick<LoggedSet, 'reps'>> | undefined, range: RepRange | null): boolean {
   if (!range || !sets || sets.length === 0) return false;
   return sets.every(set => typeof set.reps === 'number' && set.reps >= range.max);
 }
@@ -80,7 +80,7 @@ export interface NextRepTarget {
  * set at the top) or the exercise isn't finished — a blank set means there is
  * nothing to plan from yet.
  */
-export function getNextRepTarget(sets: LoggedSet[] | undefined, range: RepRange | null): NextRepTarget | null {
+export function getNextRepTarget(sets: Array<Pick<LoggedSet, 'reps'>> | undefined, range: RepRange | null): NextRepTarget | null {
   if (!range || !sets || sets.length === 0) return null;
 
   const reps: number[] = [];
@@ -107,7 +107,7 @@ export function getNextRepTarget(sets: LoggedSet[] | undefined, range: RepRange 
 export interface WeightBump {
   /** Working weight = the heaviest set, same definition the warm-up panel uses. */
   current: number;
-  /** What to load next session. */
+  /** What to load this session. */
   next: number;
   step: number;
 }
@@ -153,7 +153,7 @@ export interface WeightBumpInput {
  * generic wording.
  */
 export function suggestWeightBump(
-  sets: LoggedSet[] | undefined,
+  sets: Array<Pick<LoggedSet, 'weight'>> | undefined,
   { historyStepKg, template, exerciseName }: WeightBumpInput = {}
 ): WeightBump | null {
   if (!sets || sets.length === 0) return null;
@@ -176,6 +176,36 @@ export function suggestWeightBump(
     : TEMPLATE_STEP_KG[template ?? 'ISOLATION'] ?? 2.5;
 
   return { current, next: Number((current + step).toFixed(1)), step };
+}
+
+const sessionShape = (sets: PerformedSession['sets']) =>
+  JSON.stringify(
+    sets
+      .filter(s => s.reps != null || s.weight != null)
+      .map(s => [s.reps ?? 0, s.weight ?? 0])
+  );
+
+/**
+ * How many sessions in a row, counting back from the newest one before `beforeDate`,
+ * logged exactly the same sets (same reps and weight, in the same order). Returns 0
+ * when there is no repetition, so a result of 1 never occurs: one session on its own
+ * has nothing to repeat. Only logs in `sessions` count, so the streak tops out at
+ * the size of that window (the last 10 logs containing the exercise).
+ *
+ * `beforeDate` keeps the day being edited out of its own streak, and makes a
+ * backdated log read the history as it stood on that day.
+ */
+export function countRepeatStreak(sessions: PerformedSession[] | undefined, beforeDate: string): number {
+  if (!sessions) return 0;
+  const past = sessions.filter(s => s.date < beforeDate);
+  if (past.length === 0) return 0;
+
+  const shape = sessionShape(past[0].sets);
+  if (shape === '[]') return 0;
+
+  let streak = 1;
+  while (streak < past.length && sessionShape(past[streak].sets) === shape) streak++;
+  return streak >= 2 ? streak : 0;
 }
 
 export interface OverRepRange {

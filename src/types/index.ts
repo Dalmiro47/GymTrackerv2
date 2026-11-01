@@ -101,6 +101,7 @@ export interface LoggedExercise {
   performed?: boolean;
   prefill?: { sets: Array<{ reps: number | null; weight: number | null }>; lastPerformedDate: number | null }; // UI-only: what was auto-filled from the last session
   progressionStepKg?: number | null; // UI-only: kg added the last time this exercise went up (drives the overload cue)
+  repeatStreak?: number; // UI-only: consecutive past sessions with identical sets (see countRepeatStreak)
   warmupConfig?: WarmupConfig; // Pass along for warmup calculation
   setStructure?: SetStructure; // Default from the routine
   setStructureOverride?: SetStructure | null; // User override for this specific log
@@ -153,6 +154,14 @@ export interface ExercisePerformanceEntry {
   // kg added the last time this exercise's working weight actually went up.
   // Derived from recent logs (never stored) — null when there is no increase to learn from.
   lastWeightStepKg?: number | null;
+  // Recent performed, non-deload sessions, newest first. Derived from recent logs
+  // (never stored); feeds the repeat streak (see countRepeatStreak).
+  recentSessions?: PerformedSession[];
+}
+
+export interface PerformedSession {
+  date: string; // "YYYY-MM-DD"
+  sets: PerformanceSet[];
 }
 
 

@@ -19,7 +19,7 @@ interface SetInputRowProps {
   disabled?: boolean;
   weightDisplay: string;
   setWeightDisplay: (value: string) => void;
-  /** Reps to aim for next session on THIS set — the one set the card picked to
+  /** Reps to aim for this session on THIS set — the one set the card picked to
    *  progress. Display-only: it never touches `set.reps`. */
   repTarget?: number | null;
 }
