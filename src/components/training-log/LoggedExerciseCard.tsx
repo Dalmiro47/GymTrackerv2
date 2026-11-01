@@ -7,7 +7,7 @@ import { computeWarmup, inferWarmupTemplate, WarmupInput, type WarmupStep } from
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { PlusCircle, Trash2, GripVertical, Settings2, ArrowLeftRight, Flame, TrendingUp, Dumbbell, X, ArrowUpCircle, ArrowDownCircle, AlertTriangle, RefreshCw, Loader2, History } from 'lucide-react';
+import { PlusCircle, Trash2, GripVertical, Settings2, ArrowLeftRight, Flame, TrendingUp, Dumbbell, X, ArrowUpCircle, ArrowDownCircle, AlertTriangle, RefreshCw, Loader2, History, Repeat } from 'lucide-react';
 import { parseRepRange, isRepGoalReached, isBelowRepRange, findOverRepRange, getNextRepTarget, suggestWeightBump, type NextRepTarget } from '@/lib/repGoal';
 import { formatWeightHalf } from '@/lib/rounding';
 import { SetInputRow } from './SetInputRow'; 
@@ -240,10 +240,13 @@ export function LoggedExerciseCard({
   }, [loggedExercise.prefill, loggedExercise.isProvisional]);
 
   // Progressive-overload cue: every set at the top of the exercise's rep range
-  // means it's time to add weight; every set under the bottom means the load is
-  // too heavy. Reads `localSets` so it reacts as you type. Suppressed in Deload
-  // Mode — the shown values are a derived, reduced view — and once the exercise
-  // is saved for the day (the increase belongs to the next session by then).
+  // in what was LOADED means it's time to add weight this session, so it reads
+  // `prefill` and typing can't trigger it or move its number. A set under the
+  // bottom means the load is too heavy; that one and the over-range guard check
+  // what is being entered, so they read `localSets` and react as you type.
+  // Suppressed in Deload Mode — the shown values are a derived, reduced view —
+  // and once the exercise is saved for the day (the increase belongs to the next
+  // session by then).
   const repRange = useMemo(
     () => parseRepRange(loggedExercise.progressiveOverload),
     [loggedExercise.progressiveOverload]
@@ -252,25 +255,31 @@ export function LoggedExerciseCard({
   // rep count (55 for 5) silently becomes a personal record, and the automatic PR
   // path can only ever raise one. No range on the exercise = no validation at all.
   // It outranks the other two cues because "is this number even right?" has to be
-  // answered before any coaching based on it; the weight suggestion is folded into
-  // its message so a genuine overshoot still gets the same advice.
+  // answered before any coaching based on it, so it carries no weight suggestion.
   const overRange = useMemo(
     () => (isReadOnly || isSavedForDay ? null : findOverRepRange(localSets, repRange)),
     [isReadOnly, isSavedForDay, localSets, repRange]
   );
+  const loadedAtTop = useMemo(
+    () => isRepGoalReached(loggedExercise.prefill?.sets, repRange),
+    [loggedExercise.prefill, repRange]
+  );
+  // The live warnings outrank "above", which would otherwise stay up over them:
+  // load 12/12, go heavier, get 7, and that 7 still has to be flagged.
   const rawCue = useMemo<'over' | 'above' | 'below' | null>(() => {
     if (isReadOnly || isSavedForDay || !repRange) return null;
     if (overRange) return 'over';
-    if (isRepGoalReached(localSets, repRange)) return 'above';
     if (isBelowRepRange(localSets, repRange)) return 'below';
+    if (loadedAtTop) return 'above';
     return null;
-  }, [isReadOnly, isSavedForDay, localSets, repRange, overRange]);
+  }, [isReadOnly, isSavedForDay, localSets, repRange, overRange, loadedAtTop]);
 
   // The under- and over-range cues fire on a single set, which puts them in the
   // path of every keystroke — typing "12" into an 8–12 range passes through "1",
   // and "13" passes through "1" as well. Let them settle before showing, but drop
-  // them immediately once they no longer apply. ("above" needs every set at the
-  // top, so it can't trigger mid-typing and isn't delayed.)
+  // them immediately once they no longer apply. ("above" comes from the loaded
+  // sets, so typing can't trigger it and it isn't delayed; it stays up while one
+  // of these is settling, or every passing keystroke would blink it off.)
   const isDelayedCue = rawCue === 'below' || rawCue === 'over';
   const [cueSettled, setCueSettled] = useState(false);
   useEffect(() => {
@@ -283,42 +292,34 @@ export function LoggedExerciseCard({
     return () => window.clearTimeout(timer);
   }, [rawCue, overRange?.setIndex, overRange?.reps]);
 
-  const repCue = isDelayedCue && !cueSettled ? null : rawCue;
+  const repCue = isDelayedCue && !cueSettled ? (loadedAtTop ? 'above' : null) : rawCue;
 
   // "What do I do next?" for the in-range case the two cues above leave open.
   // Only one of the three ever shows: the target yields to an active cue.
-  const rawNextTarget = useMemo<NextRepTarget | null>(() => {
-    if (isReadOnly || isSavedForDay || rawCue) return null;
-    return getNextRepTarget(localSets, repRange);
-  }, [isReadOnly, isSavedForDay, rawCue, localSets, repRange]);
+  // Read from `prefill`, what was loaded for this session, not from `localSets`:
+  // it is this session's goal, so entering reps must not move it to another set.
+  // Gated on the settled `repCue` so a passing keystroke ("1" on the way to "12")
+  // can't blink it away.
+  const nextTarget = useMemo<NextRepTarget | null>(() => {
+    if (isReadOnly || isSavedForDay || repCue) return null;
+    return getNextRepTarget(loggedExercise.prefill?.sets, repRange);
+  }, [isReadOnly, isSavedForDay, repCue, loggedExercise.prefill, repRange]);
 
-  // Every keystroke re-targets (9 → 1 → 10 walks through three different answers),
-  // and this one renders inside a set row, so an un-delayed version would shuffle
-  // the rows as you type. Show a settled snapshot instead: it appears once typing
-  // stops and disappears at once when it no longer applies.
-  // Only meaningful for the "above"/"over" cues, so it isn't computed for "below".
+  // Only meaningful for the "above" cue, so it isn't computed for the others.
   // The step is copied from this exercise's own last increase; the warm-up
   // template is only the fallback when there is nothing to copy.
+  // It bumps the LOADED weight: read from `localSets`, entering the suggested
+  // 52.5kg would raise the suggestion to 55kg.
   const weightBump = useMemo(
-    () => (repCue === 'above' || repCue === 'over'
-      ? suggestWeightBump(localSets, {
+    () => (repCue === 'above'
+      ? suggestWeightBump(loggedExercise.prefill?.sets, {
           historyStepKg: loggedExercise.progressionStepKg,
           template: loggedExercise.warmupConfig?.template,
           exerciseName: loggedExercise.name,
         })
       : null),
-    [repCue, localSets, loggedExercise.progressionStepKg, loggedExercise.warmupConfig?.template, loggedExercise.name]
+    [repCue, loggedExercise.prefill, loggedExercise.progressionStepKg, loggedExercise.warmupConfig?.template, loggedExercise.name]
   );
-
-  const [nextTarget, setNextTarget] = useState<NextRepTarget | null>(null);
-  useEffect(() => {
-    if (!rawNextTarget) {
-      setNextTarget(null);
-      return;
-    }
-    const timer = window.setTimeout(() => setNextTarget(rawNextTarget), 600);
-    return () => window.clearTimeout(timer);
-  }, [rawNextTarget]);
 
   const style = useMemo<React.CSSProperties>(() => ({
     transform: CSS.Transform.toString(transform),
@@ -550,6 +551,20 @@ export function LoggedExerciseCard({
                 {shown.progressiveOverload}
               </span>
             )}
+            {/* Plateau signal, read from past sessions only, so typing can't flip it.
+                Hidden in Deload Mode and for an exercise saved as done today, even
+                while that saved entry is being edited (`isSavedForDay` turns false
+                on an edit, `performed` doesn't). A log older than the flag has no
+                `performed`; there, only a done exercise has no prefill. */}
+            {!isReadOnly
+              && loggedExercise.performed !== true
+              && !(loggedExercise.performed === undefined && !loggedExercise.prefill)
+              && (loggedExercise.repeatStreak ?? 0) >= 2 && (
+              <span className="inline-flex h-6 items-center gap-1 rounded-full border border-warning/30 bg-warning/10 px-2 text-[11px] font-medium leading-none text-warning">
+                <Repeat aria-hidden="true" className="h-3 w-3 shrink-0" />
+                {t('card.repeatStreak', { count: loggedExercise.repeatStreak ?? 0 })}
+              </span>
+            )}
           </div>
         </CardHeader>
         <CardContent 
@@ -606,14 +621,14 @@ export function LoggedExerciseCard({
                       <span className="font-semibold">{t('card.repGoalReached')}</span>{' '}
                       {weightBump ? (
                         <>
-                          {t('card.nextSession')}{' '}
+                          {t('card.thisSession')}{' '}
                           <span className="font-semibold tabular-nums">
                             {formatWeightHalf(weightBump.next)}kg
                           </span>{' '}
                           <span className="tabular-nums">(+{formatWeightHalf(weightBump.step)}kg)</span>.
                         </>
                       ) : (
-                        <>{t('card.addWeightNext')}</>
+                        <>{t('card.addWeightThis')}</>
                       )}
                     </>
                   ) : repCue === 'over' && overRange ? (
@@ -625,15 +640,6 @@ export function LoggedExerciseCard({
                         min: repRange.min,
                         max: repRange.max,
                       })}
-                      {weightBump && (
-                        <>
-                          {' '}{t('card.nextSession')}{' '}
-                          <span className="font-semibold tabular-nums">
-                            {formatWeightHalf(weightBump.next)}kg
-                          </span>{' '}
-                          <span className="tabular-nums">(+{formatWeightHalf(weightBump.step)}kg)</span>.
-                        </>
-                      )}
                     </>
                   ) : (
                     <>

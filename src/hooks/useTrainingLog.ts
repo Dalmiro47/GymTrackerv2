@@ -22,6 +22,7 @@ import { format, parseISO, startOfMonth } from 'date-fns';
 import { useToast } from './use-toast';
 import { inferWarmupTemplate, roundToGymHalf } from '@/lib/utils';
 import { isBetterPR, formatPR, pickBestSet } from '@/lib/pr';
+import { countRepeatStreak } from '@/lib/repGoal';
 import { setUnsavedChanges } from '@/lib/unsavedChanges';
 import { friendlyErrorMessage } from '@/lib/errorMessages';
 // Module-level `t`: these toasts fire from async handlers, and the hook must not
@@ -247,6 +248,7 @@ export const useTrainingLog = (initialDate: Date) => {
                         personalRecordDisplay: formatPR(currentPR),
                         currentPR: currentPR,
                         progressionStepKg: performanceEntry?.lastWeightStepKg ?? null,
+                        repeatStreak: countRepeatStreak(performanceEntry?.recentSessions, dateId),
                     };
                     return performedOnOrAfterDay
                       ? restored
@@ -473,6 +475,7 @@ export const useTrainingLog = (initialDate: Date) => {
                 isProvisional: true, 
                 prefill: makePrefill(performanceEntry, initialSets),
                 progressionStepKg: performanceEntry?.lastWeightStepKg ?? null,
+                repeatStreak: countRepeatStreak(performanceEntry?.recentSessions, dateOfLog),
                 warmupConfig: fullExerciseDef ? getWarmupConfig(fullExerciseDef) : undefined,
                 setStructure: routineEx.setStructure ?? 'normal',
                 setStructureOverride: null,
@@ -540,6 +543,7 @@ export const useTrainingLog = (initialDate: Date) => {
       isProvisional: true,
       prefill: makePrefill(performanceEntry, initialSets),
       progressionStepKg: performanceEntry?.lastWeightStepKg ?? null,
+      repeatStreak: countRepeatStreak(performanceEntry?.recentSessions, dateOfLog),
       warmupConfig: getWarmupConfig(exercise),
       setStructure: 'normal',
       setStructureOverride: null,
@@ -604,6 +608,7 @@ export const useTrainingLog = (initialDate: Date) => {
         isProvisional: true,
         prefill: makePrefill(performanceEntry, initialSets),
         progressionStepKg: performanceEntry?.lastWeightStepKg ?? null,
+        repeatStreak: countRepeatStreak(performanceEntry?.recentSessions, dateOfLog),
         warmupConfig: getWarmupConfig(newExercise),
         setStructure: prev.setStructure ?? 'normal',
         setStructureOverride: prev.setStructureOverride ?? null,
