@@ -1,68 +1,59 @@
 ## Constraints
 
-Read and follow `CONSTRAINTS.md` at the repo root before every task. It defines:
-- What you must never do (Section 1)
-- When to stop and ask (Section 2)
-- How to resolve goal vs. constraint conflicts (Section 3)
-- Session hygiene rules (Section 4)
-- Where project rules live, the factory git exception and shared app rules (Section 5); this repo's own rules are under `## Project constraints` below, and its code invariants under `## Constraints (non-negotiable)`
-
-CONSTRAINTS.md rules are non-negotiable. If a task conflicts with a constraint, stop and surface the conflict — do not silently resolve it.
-
-# CLAUDE.md
-
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Universal rules (cited as `CONSTRAINTS` plus a section number) load through the dds plugin import line in `~/.claude/CLAUDE.md`, not a file in this repo; a machine without that line has no constraints. This repo's own rules are under `## Project constraints`. If a task conflicts with a constraint, stop and surface the conflict; do not silently resolve it.
 
 ## Commands
 
 ```bash
-npm run dev        # Start dev server with Turbopack (default port 3000 — no -p flag is set, so NOT 9002)
+npm run dev        # Dev server with Turbopack, default port 3000 (no -p flag is set, so NOT 9002)
 npm run build      # Production build
 npm run lint       # Next.js ESLint
-npm run typecheck  # TypeScript check (no emit)
-```
-
-No test framework is configured — validation is via TypeScript and linting only.
-
-```bash
+npm run typecheck  # TypeScript check, no emit
 npm run coach:eval -- [caseFilter] [--repeat=N] [--no-explain]   # Exercise-coach eval (real Groq calls, costs credit)
+firebase deploy --only firestore:rules   # Owner only, from their own terminal (see Destructive Operations)
 ```
 
-`scripts/coach-eval/run.mts` generates replies with the real prompt + `GroqProvider` (same params as the `exercise-library` branch of `route.ts` — keep them in step) and grades each with **Jev** (`typesafe/jev-1.13`, OpenRouter decision model; returns a fail probability, no reason). Sonnet 5 explains only the fails. Chosen 2026-09: on 29 hand-labelled replies Jev scored 25/29 vs Sonnet's 18/29, at ~1/100 the cost. The judge's `ROLE` must describe everything the coach is GIVEN (weekly sets, unused list) or it flags legitimate uses as fabrication. Run it after any change to `buildExerciseLibrarySystemPrompt`. Report → `scripts/coach-eval/last-run.txt` (gitignored)
+No test framework is configured: validation is via TypeScript and linting only.
 
-To deploy Firestore security rules:
-```bash
-firebase deploy --only firestore:rules
-```
+`/dds:brain-sync` (shared skill from the dds-kit plugin) captures a session-state milestone to Open Brain via the `capture_thought` MCP tool.
 
-## Environment Setup
+## Environment
 
-Copy `.env.local` and populate with Firebase project credentials and Groq API key. Required variables:
-- `NEXT_PUBLIC_FIREBASE_*` — Firebase project config
-- `GROQ_API_KEY` — Groq API key (get from https://console.groq.com)
-- `OPEN_ROUTER_API_KEY` — DEV-ONLY, used by `npm run coach:eval` for the judges; the app never reads it, so do not add it to Vercel
-- `FIREBASE_CLIENT_EMAIL` / `FIREBASE_PRIVATE_KEY` — service account (Admin SDK), used ONLY to write the daily AI quota counter. Absent = the app runs but limits are silently unenforced; `isAdminConfigured()` reports it and `/admin` shows a banner. Quote the key in `.env.local` (both quoted and unquoted parse correctly there — verified); paste it UNQUOTED in Vercel, where the value is stored verbatim and a wrapping quote becomes part of the PEM
+`.env.local` is gitignored and there is no example file; create it by hand.
 
-## Architecture
+- `NEXT_PUBLIC_FIREBASE_*`: Firebase project config
+- `GROQ_API_KEY`: Groq API key (https://console.groq.com)
+- `OPEN_ROUTER_API_KEY`: DEV-ONLY, used by `npm run coach:eval` for the judges; the app never reads it, so do not add it to Vercel
+- `FIREBASE_CLIENT_EMAIL` / `FIREBASE_PRIVATE_KEY`: service account (Admin SDK), used ONLY to write the daily AI quota counter. Absent = the app runs but limits are silently unenforced; `isAdminConfigured()` reports it and `/admin` shows a banner
 
-**Next.js 15 App Router** with Firebase as the sole backend (no custom API server for data — only `/src/app/api/coach/` for AI proxying).
+## Map
 
-### Route Structure
+Next.js 15 App Router; Firebase is the sole backend, with no custom API server for data. API routes exist only for the AI coach.
 
-- `src/app/(app)/` — Protected routes (auth-guarded via `use-require-auth.ts`)
-  - `dashboard/`, `exercises/`, `log/`, `routines/`, `settings/`, `profile/`
-- `src/app/login/` — Public auth page
-- `src/app/api/coach/chat/` — Server-side streaming chat endpoint (Groq)
-
-### Data Flow
-
-1. **Auth** — Firebase Google Sign-In, managed by `AuthContext` (`src/contexts/AuthContext.tsx`), provided at root layout
-2. **Data** — All user data lives in Firestore under `users/{userId}/{collection}`. CRUD is abstracted in `src/services/` (`trainingLogService.ts`, `exerciseService.ts`, `routineService.ts`)
-3. **State** — No Redux/Zustand. Complex state lives in custom hooks:
-   - `useTrainingLog.ts` — Core workout logging state; manages current session, date selection, routine auto-fill, and performance history
-   - `use-coach-chat.ts` — Client-side chat state with SSE streaming for AI Coach
-
-### Firestore Schema
+- Protected routes (auth-guarded via `src/hooks/use-require-auth.ts`): `src/app/(app)/`: `admin/`, `dashboard/`, `exercises/`, `log/`, `profile/`, `routines/`, `settings/profile/`
+- Public auth page: `src/app/login/`
+- Coach streaming chat (Groq): `src/app/api/coach/chat/route.ts`; coach allowance: `src/app/api/coach/usage/route.ts`
+- Auth (Google Sign-In, provided at root layout): `src/contexts/AuthContext.tsx`
+- Firestore CRUD: `src/services/` (`trainingLogService.ts`, `exerciseService.ts`, `routineService.ts`, `routineHistoryService.ts`, `feedbackService.ts`)
+- Core logging state (session, date, routine auto-fill, performance history): `src/hooks/useTrainingLog.ts`
+- Coach client state (SSE, ID token, per-day localStorage history): `src/hooks/use-coach-chat.ts`
+- Coach pages: `/log` (workout), `/routines` (program analysis), dashboard (progression), `/exercises` (library gaps, mode `exercise-library`)
+- Coach provider (`LLMProvider`, `GroqProvider`, `DEFAULT_MODEL`): `src/lib/ai/llm-provider.ts`
+- Coach context serializers: `src/lib/ai/context-builders.ts`; system prompts (`SWAP_RANKING`, volume targets, overload logic, KNOWN EXERCISES): `src/lib/ai/chat-prompts.ts`
+- Coach UI (own fixed panel, `SegmentRenderer`): `src/components/coach/CoachChatSheet.tsx`
+- Daily quota: `src/lib/usageQuota.ts`, `src/lib/limits.ts`, `src/lib/firebaseAdmin.ts`
+- Language state (`LanguageProvider`, `gt-lang` mirror, `<html lang>`; set from `UserNav`, or `LanguageToggle` on `/login`): `src/contexts/LanguageContext.tsx`
+- Dictionaries: `src/i18n/en.ts` (source of truth), `src/i18n/es.ts`; display helpers and `detectLanguage()`: `src/i18n/index.ts`
+- Seeded exercises in Spanish: `src/lib/defaultExercises.es.ts`, applied by `src/lib/exerciseDisplay.ts`
+- UI components: `src/components/ui/` (shadCN: Radix primitives + Tailwind); colors and fonts: `src/app/globals.css`, `tailwind.config.ts`
+- Shell: `BottomNav` (mobile tab bar, `--bottomnav-height`), desktop-only sidebar, `AppBarActions` (page-injected app-bar buttons): `src/components/layout/`. The Training Log's Save/Delete sit in a floating dock centred in the content column at the AI Coach button's height (z-40, under the coach backdrop)
+- Shared calendar UI (dashboard + log): `src/components/dashboard/WorkoutCalendar.tsx`, `src/components/training-log/WeekStrip.tsx`
+- PWA (production only): `next.config.ts`; icon master `public/logo.svg` ("Iron Glass"), rendered by `scripts/gen-icons.mjs` to `public/icons/`
+- Types: `src/types/index.ts` (`Exercise`, `Routine`, `WorkoutLog`, `LoggedSet`, `UserProfile`), `src/types/setStructure.ts` (`normal`, `superset`, `triset`, `dropSet`, `restPause`); coach-profile `UserProfile` (goal, constraints, `language`): `src/lib/types.gym.ts`
+- Coach eval: `scripts/coach-eval/run.mts`; report: `scripts/coach-eval/last-run.txt` (gitignored)
+- Decision log: `docs/decisions.md`
+- Mobile chat panel recipe: `docs/mobile-chat-panel.md`
+- Firestore layout (rules: `firestore.rules`):
 
 ```
 users/{userId}/
@@ -72,85 +63,84 @@ users/{userId}/
   workoutLogs/{YYYY-MM-DD} # Daily logs
   performanceEntries/{exerciseId} # PRs & last performance
   routineHistory/{routineId_epochMs} # Routine change snapshots (flat; outlives deleted routines)
+  stats/usage             # Daily AI quota: client read-only, Admin SDK writes
+feedback/{docId}          # Top-level: anyone signed in may create, only the admin reads
 ```
 
-`firestore.rules` grants access via a single non-recursive `match /users/{userId}/{collection}/{docId}`. Any deeper path (e.g. `users/{uid}/routines/{rid}/versions/{vid}`) falls through to the deny-all default and fails at runtime with permission-denied — new collections must be flat siblings, or the rules need a deploy (a gated destructive op).
+## Glossary
 
-### AI Coach
+- **row id**: `LoggedExercise.id`, composite `${exerciseId}-${date}-${ts}`, used by dnd-kit. Not the library id.
+- **exerciseId**: `LoggedExercise.exerciseId`, the library `Exercise.id`.
+- **prefill**: an exercise's sets copied from the last session when it is planned.
+- **provisional**: `isProvisional`, an exercise whose sets still equal its `prefill`. UI-only, derived.
+- **performed**: `LoggedExercise.performed`, persisted; `false` = planned, never lifted; `undefined` = performed.
+- **PR**: the heaviest single working set (`isBetterPR`: weight first, reps break a tie only at equal weight).
+- **deload**: a session at reduced weight and set count, signalled by `--warning`.
+- **coach modes**: `ChatMode`: `log-day`, `routine-review`, `dashboard`, `exercise-library`.
+- **nav title**: `NavItem.title` is a translation key, not display text.
 
-The Coach is a contextual chat embedded in `/log` (workout coaching), `/routines` (program analysis), the dashboard (progression) and `/exercises` (library gaps, mode `exercise-library`). Every mode gets the exercise library grouped by muscle plus the shared `SWAP_RANKING` rules in `chat-prompts.ts`, so swaps are suggested only from exercises the user has (the Exercises coach alone may propose new ones). It uses Groq (model: `qwen/qwen3.6-27b`, with `reasoning_effort: 'none'`) via a vendor-agnostic LLM provider interface. The client sends the profile `language` with every request and the system prompt forces replies in it (see Internationalization) — the coach never follows the language the user happens to type in.
+## Standards
 
-**Key files:**
-- `src/lib/ai/llm-provider.ts` — `LLMProvider` interface + `GroqProvider` (OpenAI-compatible REST)
-- `src/lib/ai/context-builders.ts` — Serializes page data into compact context (log-day + routine-review)
-- `src/lib/ai/chat-prompts.ts` — System prompt builders with goal-based volume targets, progressive overload logic, and KNOWN EXERCISES injection
-- `src/app/api/coach/chat/route.ts` — **SSE streaming** endpoint: `POST` → `text/event-stream` of `data: {"v":"<delta>"}` chunks. Uses `provider.chatStream()`; `filterThinkingStream` strips qwen3 `<think>…</think>` tokens before forwarding (with a `flush()` for short replies); kept as a safety net now that reasoning is disabled. Requires a Firebase ID token (`Authorization: Bearer <token>`), verified via the Identity Toolkit REST API. `maxTokens: 1500`.
-- `src/hooks/use-coach-chat.ts` — Client-side chat state. Reads the SSE stream and appends deltas to the assistant bubble; sends the user's Firebase ID token; history sanitized via `extractTextFromContent()` before being sent to the API. Chat history persists in localStorage per local day.
-- `src/components/coach/CoachChatSheet.tsx` — Shared Sheet UI. `SegmentRenderer` renders markdown (bold, italic, headings `#`–`######`, bullet/numbered lists, strips `---`). Raw markdown never shown to user.
+- State: no Redux/Zustand; complex state lives in custom hooks.
+- Strings: components use `const { t, tn, locale, language } = useI18n()`; `tn('exercises.count', n)` picks the `_one`/`_other` key. `es.ts` is typed `Record<keyof typeof en, string>`, so a missing key fails `typecheck`.
+- Dates: pass `{ locale }` to date-fns `format`, use the `date.*` pattern keys for long/short forms, `capitalize()` for standalone Spanish month/day names, and `locale={locale}` on `Calendar`.
+- Coach swaps: every mode gets the exercise library grouped by muscle plus `SWAP_RANKING`, so swaps come only from exercises the user has; only the Exercises coach may propose new ones.
+- Coach language: the client sends the profile `language` with every request and the system prompt forces replies in it; the coach never follows the language the user types in.
+- Coach replies render through `SegmentRenderer`; raw markdown is never shown to the user.
+- New coach mode: add its context in `context-builders.ts` and prompt in `chat-prompts.ts`, add it to `ChatMode` in `route.ts`, `CoachChatSheet.tsx` and `use-coach-chat.ts` plus the prompt branch in `route.ts`, then use `CoachChatSheet` with `mode="your-mode"`.
+- Run `npm run coach:eval` after any change to `buildExerciseLibrarySystemPrompt`.
+- Theme: dark is the default for a user who never picked one (`DEFAULT_THEME` in `ThemeContext`, mirrored in `THEME_INIT_SCRIPT`); `system` is an explicit opt-in from the avatar menu.
+- Colors: the single brand accent is `--primary` (sky, the PWA icon's dumbbell); `--warning` (amber) is the deload/plateau signal (`--chart-4` kept identical). No Tailwind palette classes (`text-blue-600` etc.) outside the token system.
+- Fonts: Hanken Grotesk (`font-body`) + Big Shoulders Display (`font-headline`: dates, stats, day numbers, exercise names). Utilities in `globals.css`: `.surface .eyebrow .pressable .glass .animate-enter .enter-1..6 .no-scrollbar`; CSS-only motion with a reduced-motion guard.
+- Pickers use `ResponsiveSheet`: a floating panel centred in the viewport at every breakpoint (it wraps `Dialog`, not `Sheet`).
+- Session workflow: work on the feature or fix, then the owner runs `/dds:brain-sync` before ending the session.
 
-**To extend AI features:** Add a new mode in `context-builders.ts` + `chat-prompts.ts`, then use `CoachChatSheet` with `mode="your-mode"`.
+### Gotchas (learned the hard way)
 
-### Internationalization (EN / ES-LatAm, 2026-09)
-
-- The language is a **profile setting**: `language?: 'en' | 'es'` on `users/{uid}/profile/profile` (`src/lib/types.gym.ts`), switched from the avatar menu (Language submenu next to Theme, `UserNav`) and applied instantly. `LanguageProvider` (`src/contexts/LanguageContext.tsx`) owns the persistence (`setLanguage` merges the field into the profile doc), mirrors it to localStorage (`gt-lang`) for the next visit, reloads it from the profile doc on sign-in, and sets `<html lang>`. `CoachProfileForm` strips `language` from its state so a profile save can never overwrite a later switch
-- Language auto-detect: with no `gt-lang` AND no profile `language`, `detectLanguage()` (device locale, then IANA time zone vs. a Spanish-speaking-country list) is applied via `applyLanguage(next, false)` — deliberately NOT mirrored to localStorage. Persisting a guess makes it indistinguishable from an explicit choice, so detection never runs again on that device; only a real pick (signed-out `LanguageToggle` on `/login`, or the avatar menu) writes `gt-lang` (added 2026-09)
-- Dictionaries live in `src/i18n/en.ts` (source of truth) and `src/i18n/es.ts` (typed `Record<keyof typeof en, string>`, so a missing key fails `typecheck`). Components use `const { t, tn, locale, language } = useI18n()`; `tn('exercises.count', n)` picks the `_one`/`_other` key. Non-React code (toasts inside memoised fetchers/hooks, `friendlyErrorMessage`, `unsavedChanges`, warm-up labels, routine-history phrasing) uses the module-level `t`/`tn` from `@/i18n`, which the provider keeps in sync — use it deliberately there so a language switch doesn't re-create fetch callbacks and refetch
-- **Stored values stay English**: muscle groups (`"Chest"`), set structures (`'superset'`), goals, genders, warm-up templates are data keys. Display them through `muscleGroupLabel()` / `setStructureLabel()` / `warmupTemplateLabel()` or the option maps in `CoachProfileForm`; never translate what gets written to Firestore
-- **Seeded default exercises** are also stored English (deterministic ids = slug of the English name; denormalized `name` copies in logs/routines/history snapshots; `inferWarmupTemplate` keys off English words). `src/lib/defaultExercises.es.ts` holds their Spanish name/targetNotes/setup/overload, applied at DISPLAY time by `src/lib/exerciseDisplay.ts` (`displayExerciseName` / `displayExerciseFields`, per field, only while the stored value still equals the seeded English one). Anything that renders, searches, sorts, or sends an exercise name to the coach goes through it — it resolves by `id` / `exerciseId`, so past logs, routines, progression, and history localize with no migration. The edit dialog pre-fills the displayed text; `ExerciseClientPage` maps untouched fields back to the stored English on save, otherwise "save without changes" would turn a default into a Spanish-named custom exercise. `routineHistory` diffs emit display names (snapshots keep stored names — they are hashed). User-named exercises are shown as-is
-- Dates: pass `{ locale }` to date-fns `format`, use the `date.*` pattern keys for long/short forms, `capitalize()` for standalone Spanish month/day names, and `locale={locale}` on `Calendar`
-- `/api/coach/chat` returns `{ code, error }`; the client maps `code` to a translated message (`use-coach-chat.ts`), so never rely on the English `error` text in the UI
-
-### UI Stack
-
-- **shadCN/UI** components in `src/components/ui/` (Radix primitives + Tailwind)
-- **Tailwind** with CSS variable theming — colors/fonts defined in `src/app/globals.css` and `tailwind.config.ts`
-- **Design tokens ("Chalk & Iron", 2026-09)**: dark-first — dark is the DEFAULT theme for a user who never picked one (`DEFAULT_THEME` in `ThemeContext`, mirrored in `THEME_INIT_SCRIPT`; `system` is an explicit opt-in from the avatar menu); single brand accent is `--primary` (sky, the PWA icon's dumbbell); `--warning` (amber) is the deload/plateau signal (`--chart-4` kept identical); `--accent` is a NEUTRAL gray wired to shadcn ghost/outline hovers — never use `bg-accent`/`text-accent` for brand actions (the pre-redesign code did, and it caused the color chaos). No Tailwind palette classes (`text-blue-600` etc.) outside the token system. Off-scale opacities (`bg-primary/12`) are silently dropped by Tailwind — use /10, /15, /20
-- Fonts: Hanken Grotesk (`font-body`) + Big Shoulders Display (`font-headline`, dates/stats/day numbers/exercise names). Utilities in `globals.css`: `.surface .eyebrow .pressable .glass .animate-enter .enter-1..6 .no-scrollbar`; CSS-only motion with a reduced-motion guard. The iOS 16px `!important` rule covers `input, select, textarea` only (adding `button` flattens every chip)
-- **Shell**: mobile nav is `BottomNav` (tab bar, `--bottomnav-height`); the sidebar is desktop-only; pages can inject app-bar buttons via `AppBarActions`; the Training Log's Save/Delete instead sit in a floating dock centred in the content column at the AI Coach button's height (z-40, under the coach backdrop). Pickers use `ResponsiveSheet` — a floating panel centred in the viewport at every breakpoint (it wraps `Dialog`, not `Sheet`). `Dialog`/`AlertDialog` open with NO entry animation on purpose: the edge-slide sheet and the zoom/slide/blur combo both read as laggy on device, and directional entry (sliding in from the half of the screen you pressed) was tried and rejected — the coach window's plain appear is the reference feel. Do not re-add `animate-in`/`zoom`/`slide`/`backdrop-blur` to these overlays. `DialogTitle` uses the BODY font — `font-headline` (condensed Big Shoulders) reads squashed on a short title (2026-09) `WorkoutCalendar` + `WeekStrip` are shared pure-UI components (dashboard + log). `DialogHeader` reserves `pr-10` for the restyled close button; a header that sets its own padding must restate `pr-12`, otherwise tailwind-merge drops it and the title runs under the X (found 2026-09)
-- **PWA** enabled in production only (configured in `next.config.ts`). Icon master is `public/logo.svg` ("Iron Glass", 2026-09); the PNGs in `public/icons/` are rendered from it as FULL-BLEED squares on purpose — the manifest declares one file `any maskable` and iOS masks its own corners, so baked-in rounded corners leave transparent slivers under Android's squircle. Rasterize with the `sharp` already in `node_modules` (no ImageMagick/Pillow on this machine; sharp cannot write ICO — `src/app/favicon.ico` is PNG entries wrapped in a hand-built ICO header). The in-app logo is the same mark inlined in `src/components/AppIcon.tsx` — change one, change both
-
-### Key Types
-
-All domain types are in `src/types/index.ts` — `Exercise`, `Routine`, `WorkoutLog`, `SetEntry`, `UserProfile`, etc. Set structure variants (straight sets, drop sets, supersets, etc.) are in `src/types/setStructure.ts`. The coach-profile shape (goal, constraints, `language`) is `UserProfile` in `src/lib/types.gym.ts`. `NavItem.title` is a translation key.
-
-### Build Notes
-
-- `next.config.ts` suppresses TypeScript and ESLint build errors (`ignoreBuildErrors: true`) — use `npm run typecheck` and `npm run lint` separately
-- `.npmrc` sets `legacy-peer-deps=true` for dependency compatibility
-
-## Constraints (non-negotiable)
-- Constraints are hard guardrails, not problems to solve
-- Historical bugs mentioned as context = things to avoid, always
-- Deload invariant: in `useTrainingLog`, `currentLog` is *derived* (`useMemo`) from `originalLogState` — never store the deload-transformed view in state or write it back to the baseline; doing so compounded weight reductions and corrupted saved logs (fixed 2026-06)
-- Exercise identity = name + muscleGroup, never name alone. `dedupeExercisesByNameAndMuscle` feeds the shared picker (routines + Training Log's Add Exercise); keying on name alone silently hid "Dips" (Triceps) behind "Dips" (Chest) — the user only noticed by renaming one (fixed 2026-08)
-- `LoggedExercise.id` (composite row id, `${exerciseId}-${date}-${ts}`, used by dnd-kit) is NOT `LoggedExercise.exerciseId` (library `Exercise.id`). Comparing a library exercise against row ids never matches, so the filter silently becomes a no-op that still *looks* correct — this shipped a broken "exclude already-logged" filter in the Replace picker (fixed 2026-08)
-- Firestore reads in `src/services/` are memoized via `src/lib/sessionCache.ts` (per-user keys, 5-min TTL, promise-deduped). Any NEW write path in these services must call `invalidateCache` with the matching prefix (`exercises:{uid}`, `routines:{uid}`, `wl:{uid}`) or pages will silently serve stale data (added 2026-08)
-- `AvailableExercisesSelector` renders the muscle-group grid and the filtered list from ONE tree with ONE search `<Input>`. Splitting them into two `return`s (or two components) remounts the input on the first keystroke, dropping focus and closing the mobile keyboard — invisible on desktop and to automated tests (fixed 2026-08)
-- `LoggedExerciseCard`'s card border is the set-structure channel (`SET_STRUCTURE_COLORS` / `--ss-*` tokens). Per-card *state* cues must not add a ring there — a rep-goal ring shipped as two competing outlines on superset cards. State lives in a full-bleed band inside `CardContent` instead, always mounted with only its colors toggling, so a cue that flips mid-typing can't remount the set inputs (fixed 2026-08)
-- Groq reasoning models spend `max_completion_tokens` on hidden `<think>` tokens BEFORE writing the answer, so leaving reasoning on silently truncates replies mid-sentence (`finish_reason: length`) instead of erroring. `qwen/qwen3.6-27b` burned the full 1500-token budget on a one-line question; `reasoning_effort: 'none'` (Groq accepts only `none` | `default`) is required in `llm-provider.ts` for any budget this small (fixed 2026-08). The ONE exception is the `exercise-library` mode (`chatStream({ reasoning: true })` → `reasoning_effort: 'default'` + `reasoning_format: 'hidden'`, `maxTokens: 4000`): without thinking it re-suggested exercises the user already had; reasoning used ~1.2-1.6k tokens there, so never pair it with a 1500 budget (2026-09)
-- Deload persistence: a log saved with `isDeload` stores the *already-reduced* sets plus `deloadApplied: true`; `currentLog` transforms the baseline ONLY when `isDeload && !deloadApplied`. Dropping that guard re-reduces stored sets on every reload (the original compounding bug in a new coat) (added 2026-08)
-- `isProvisional` / `prefill` / `currentPR` / `personalRecordDisplay` / `progressionStepKg` are UI-only (stripped in `saveWorkoutLog`). `isProvisional` is DERIVED in `updateExerciseInLog` (`withDerivedProvisional`): true only while an exercise's sets still equal its `prefill` — focus never flips it (a focus-based flip made the coach treat planned exercises as done mid-workout, fixed 2026-08). Coach log-day context splits COMPLETED vs PLANNED on this flag. Any "unsaved changes" check must compare `persistedShape()`, not the whole log
-- `cachedFetch` memoizes *resolved* promises, so a service that catches and returns `[]`/`0` pins that empty result for the 5-min TTL. Services in `trainingLogService` rethrow; callers own the toast (fixed 2026-08)
-- `getLastNonDeloadPerformance(...).lastPerformedDate` is the date of the newest LOG DOC containing the exercise (today's, once saved — performed or not), NOT the `performanceEntries` doc, which only `saveExercisePerformanceEntries` stamps for non-provisional exercises. "Was this exercise performed on day X?" must read `getLastLoggedPerformance`; the derived one made every saved-as-plan exercise look done on reload (fixed 2026-08)
-- Mobile keyboard: `position: fixed` resolves against the LAYOUT viewport, which iOS never shrinks for the keyboard, and `body{overflow:hidden}` does NOT stop iOS touch-scroll chaining. `CoachChatSheet` therefore pins the body (`position:fixed` + negative `top`, scroll restored on close) and bounds its mobile panel by `top`+`bottom` with NO `height`: `top` is a constant, and only `bottom` is offset by `useVisualViewport`'s `keyboardHeight` (`innerHeight - visualViewport.height - offsetTop`, clamped at 0) so the keyboard lifts the bottom edge while the header stays put and the message list shrinks (LinkedIn). Sizing the panel from `visualViewport.height`/`offsetTop` instead moved the whole dialog upward and ran the header off-screen — those absolutes are untrustworthy (iOS standalone/PWA reports a height LARGER than the visible box); only the delta is. A `dvh`/centered panel slid under the keyboard and the page behind kept scrolling. Also: any mobile input forced to `text-sm` (<16px) makes iOS zoom on focus, which re-triggers the whole viewport dance — keep the Textarea's base `text-base md:text-sm`. AND: on input focus / drags with the keyboard open, iOS *pans* the visual viewport (`vv.offsetTop` > 0) — NOT a document scroll, so the body pin can't stop it, and every fixed element slides up by `offsetTop` (header off-screen; background drags resized the panel). Fix: add clamped `offsetTop` to the panel's `top` (fine as a delta, 0 when unpanned) + block background drags with `touch-none` backdrop and a non-passive `touchmove` guard (fixed 2026-08)
-- Dialog open latency is a RENDER cost, not an animation one: picker state in `/log` re-rendered every `LoggedExerciseCard` (each runs `useSortable` + its set rows) before the dialog could paint. The cards live in the memoised `ExerciseList`; keep every prop it takes referentially stable (page handlers go through `useStableCallback`, and dnd-kit's `useSensor` memoises on its options OBJECT — an inline literal there silently kills the memo). The AI Coach feels instant purely because its `open` state is local to itself (fixed 2026-09)
-- First-run onboarding gates on `onboardedAt` (or a pre-existing `goal`) on the profile doc — NEVER on "the profile doc exists": `ensureExercisesSeeded` writes `seedVersion` and a language switch writes `language`, both before the user has answered anything, so doc-existence silently means the wizard never shows for a new user (added 2026-09)
-- Firestore rule matches are UNIONed, never overridden: a broader `match` that also matches a path re-grants what a narrower one withholds. `users/{userId}/{collection}/{docId}` therefore carries `&& collection != 'stats'`, or it would hand the client write access to the quota doc the dedicated `stats` rule exists to deny — a silent security hole that tests green (added 2026-09)
-- `firebase-admin` v14 exposes ONLY modular entry points (`firebase-admin/app`, `firebase-admin/firestore`); the `admin.apps` / `admin.credential` namespace is gone. Its firestore module also needs `@opentelemetry/api` installed EXPLICITLY, because `.npmrc`'s `legacy-peer-deps=true` skips the peer dep — without it the dev server dies on `Cannot find module '@opentelemetry/api'` from deep inside firebase-admin, while `typecheck` and `lint` both pass (added 2026-09)
-- A control strip must never hide a control behind `overflow-x-auto` + `no-scrollbar` — that pushed `/log`'s primary "Add exercise" off-screen with no affordance once Spanish labels (~30% longer than English) grew. Fix by wrapping, or by letting ONE element flex and truncate (`min-w-0 flex-1`) so it yields space first; `/log` uses the latter. Measure at 360px, not 390 (fixed 2026-09)
-- A PR is the heaviest single working set (`isBetterPR`: weight first, reps break a tie only at equal weight), and the automatic path can only ever RAISE it: it recomputes downward solely for the log that sourced it, and an exercise corrected back to its prefill turns provisional and is skipped on save entirely. So a mistyped set leaves a PR nothing supports. `recheckPersonalRecord` is the only way down, and it is user-triggered ONLY (it rescans every log containing the exercise) (added 2026-09)
-- `saveCurrentLog` strips `isProvisional`, and the local state it leaves behind used to keep it stripped, so the NEXT save of the day read every untouched exercise as performed (stamped its `performanceEntries` date + `performed: true`; reload then showed it done, dropped the overload cue, and the coach called it completed). Planned-vs-performed at save time is re-derived from the baseline's `prefill` (`plannedIds`), never read from the flag. Any coach volume/history built from logs must also skip `performed === false` (fixed 2026-09)
-- A log doc also stores the sets of a planned-but-never-performed exercise (a copy of the last session's), and `isProvisional` is UI-only and stripped on save, so `LoggedExercise.performed` is PERSISTED purely so PR scans can tell a real lift from a pre-fill. Skip `performed === false`, and treat `undefined` as performed, or the first rescan erases every PR from logs written before the flag existed (added 2026-09)
-- i18n dictionaries are UTF-8 and mojibake there passes typecheck, lint AND build: broken Spanish is invisible to every check in the repo. Write accented strings with the Edit/Write tool as literal characters. A Python `.encode().decode('unicode_escape')` round-trip corrupted `src/i18n/es.ts` this session and only a byte-level diff caught it (added 2026-09)
-- This shell (Git Bash on Windows) MANGLES backslashes inside heredocs: a `<<'EOF'` body containing `\\n` arrives as `\n`, silently changing regex/string semantics. It produced a confidently WRONG env-var test result this session before being caught. Build backslash-bearing content with `chr(92)` in Python, or use the Write tool — never a heredoc (added 2026-09)
-- A Radix dialog opened OVER another dialog must be rendered inside the lower one's `DialogContent` (it still portals), never as a sibling. On touch, Radix decides "pointer down outside" on the later `click`, after the top dialog has already closed itself, so the lower dialog dismisses and drops its edits. Mouse decides on pointerdown, so desktop and mouse-driven tests pass while every phone fails (routine editor → Replace, fixed 2026-10)
-
-## Custom Commands
-- `/dds:brain-sync` (shared skill from the dds-kit plugin) captures a session-state milestone to Open Brain via the `capture_thought` MCP tool.
-
-## Session Workflow
-1. Work on feature/fix
-2. Run `/dds:brain-sync` before ending the session
+- `scripts/coach-eval/run.mts` must use the same params as the `exercise-library` branch of `route.ts`; keep them in step.
+- The eval judge's `ROLE` must describe everything the coach is GIVEN (weekly sets, unused list), or it flags legitimate uses as fabrication.
+- `FIREBASE_PRIVATE_KEY`: quote it in `.env.local` (quoted and unquoted both parse there, verified); paste it UNQUOTED in Vercel, where the value is stored verbatim and a wrapping quote becomes part of the PEM.
+- `firestore.rules`' user match `/users/{userId}/{collection}/{docId}` is non-recursive: a deeper path (e.g. `users/{uid}/routines/{rid}/versions/{vid}`) hits deny-all and fails at runtime with permission-denied. New collections must be flat siblings, or the rules need a deploy (a gated destructive op).
+- `CoachProfileForm` strips `language` from its state so a profile save can never overwrite a later language switch.
+- Never mirror a detected language to `gt-lang` (`applyLanguage(next, false)`): a persisted guess looks like an explicit choice, so detection never runs again on that device. Only a real pick writes it.
+- Non-React code (toasts in memoised fetchers/hooks, `friendlyErrorMessage`, `unsavedChanges`, warm-up labels, routine-history phrasing) uses module-level `t`/`tn` from `@/i18n`, deliberately, so a language switch doesn't re-create fetch callbacks and refetch.
+- Stored values stay English (muscle groups `"Chest"`, set structures `'superset'`, goals, genders, warm-up templates are data keys): display via `muscleGroupLabel()` / `setStructureLabel()` / `warmupTemplateLabel()` or `CoachProfileForm`'s option maps; never translate what gets written to Firestore.
+- Seeded exercises are stored English (ids = slug of the English name; denormalized `name` in logs/routines/snapshots; `inferWarmupTemplate` keys off English words). Anything that renders, searches, sorts, or sends a name to the coach goes through `displayExerciseName` / `displayExerciseFields`; user-named exercises show as-is.
+- The exercise edit dialog pre-fills displayed text, so `ExerciseClientPage` maps untouched fields back to the stored English on save; otherwise "save without changes" turns a default into a Spanish-named custom exercise.
+- `routineHistory` diffs emit display names, but snapshots keep stored names because they are hashed.
+- `/api/coach/chat` returns `{ code, error }`; the client maps `code` to a translated message in `use-coach-chat.ts`, so never rely on the English `error` text in the UI.
+- `--accent` is a NEUTRAL gray wired to shadcn ghost/outline hovers: never use `bg-accent`/`text-accent` for brand actions.
+- Off-scale opacities (`bg-primary/12`) are silently dropped by Tailwind: use /10, /15, /20.
+- The iOS 16px `!important` rule covers `input, select, textarea` only; adding `button` flattens every chip.
+- `Dialog`/`AlertDialog` open with NO entry animation on purpose: do not re-add `animate-in`/`zoom`/`slide`/`backdrop-blur` to these overlays.
+- `DialogTitle` uses the BODY font: `font-headline` (condensed Big Shoulders) reads squashed on a short title.
+- `DialogHeader` reserves `pr-10` for the close button; a header that sets its own padding must restate `pr-12`, or tailwind-merge drops it and the title runs under the X.
+- PWA PNGs must stay FULL-BLEED squares; rasterize with the `sharp` already in `node_modules` (no ImageMagick/Pillow on this machine). sharp cannot write ICO: `src/app/favicon.ico` is PNG entries in a hand-built ICO header.
+- The in-app logo in `src/components/AppIcon.tsx` is the same mark as `public/logo.svg`: change one, change both.
+- `next.config.ts` suppresses TypeScript and ESLint build errors (`ignoreBuildErrors: true`), so a passing build proves nothing: run `npm run typecheck` and `npm run lint`.
+- In `useTrainingLog`, `currentLog` is *derived* (`useMemo`) from `originalLogState`: never store the deload-transformed view in state or write it back to the baseline, or weight reductions compound and corrupt saved logs.
+- Exercise identity = name + muscleGroup, never name alone: `dedupeExercisesByNameAndMuscle` feeds the shared picker, and keying on name silently hid "Dips" (Triceps) behind "Dips" (Chest).
+- Compare a library exercise with `LoggedExercise.exerciseId`, never `.id` (row id): it never matches, so the filter is a silent no-op that still looks correct (shipped in the Replace picker).
+- Service reads are memoized via `src/lib/sessionCache.ts` (per-user keys, 5-min TTL, promise-deduped): any NEW write path must call `invalidateCache` with the matching prefix (`exercises:{uid}`, `routines:{uid}`, `wl:{uid}`) or pages silently serve stale data.
+- `AvailableExercisesSelector` renders the muscle-group grid and filtered list from ONE tree with ONE search `<Input>`: splitting into two `return`s or components remounts the input on the first keystroke and closes the mobile keyboard, invisibly on desktop and to automated tests.
+- `LoggedExerciseCard`'s border is the set-structure channel (`SET_STRUCTURE_COLORS` / `--ss-*`): per-card state cues must not add a ring. State lives in a full-bleed band inside `CardContent`, always mounted with only its colors toggling, so a cue flipping mid-typing can't remount the set inputs.
+- Groq reasoning spends `max_completion_tokens` on hidden `<think>` tokens first and truncates silently (`finish_reason: length`): `reasoning_effort: 'none'` (Groq accepts only `none` | `default`) is required in `llm-provider.ts` for 1500-token budgets. Only `exercise-library` reasons (`chatStream({ reasoning: true })`, `reasoning_format: 'hidden'`, `maxTokens: 4000`); never pair reasoning with a 1500 budget.
+- A log saved with `isDeload` stores *already-reduced* sets plus `deloadApplied: true`; `currentLog` transforms ONLY when `isDeload && !deloadApplied`. Dropping that guard re-reduces stored sets on every reload.
+- `isProvisional` / `prefill` / `currentPR` / `personalRecordDisplay` / `progressionStepKg` are UI-only (stripped in `saveWorkoutLog`). `isProvisional` is derived in `updateExerciseInLog` (`withDerivedProvisional`), never by focus; coach log-day context splits COMPLETED vs PLANNED on it; "unsaved changes" checks must compare `persistedShape()`, not the whole log.
+- `cachedFetch` memoizes *resolved* promises, so a service that catches and returns `[]`/`0` pins that empty result for the TTL: services in `trainingLogService` rethrow and callers own the toast.
+- `getLastNonDeloadPerformance(...).lastPerformedDate` is the newest LOG DOC containing the exercise, performed or not; the `performanceEntries` doc is stamped by `saveExercisePerformanceEntries` only for non-provisional exercises. "Was it performed on day X?" must read `getLastLoggedPerformance`.
+- `CoachChatSheet` mobile panel: pin the body, bound by `top` + `bottom` with NO `height`, only `bottom` reacts to the keyboard, `top` adds clamped `offsetTop`, backdrop `touch-none` + non-passive `touchmove` guard, Textarea stays `text-base md:text-sm` (<16px makes iOS zoom). Full rules: `docs/mobile-chat-panel.md`.
+- Dialog open latency in `/log` is a RENDER cost: keep every `ExerciseList` prop referentially stable (page handlers via `useStableCallback`; dnd-kit's `useSensor` memoises on its options OBJECT, so an inline literal kills the memo). The AI Coach feels instant because its `open` state is local to itself.
+- `firebase-admin` v14 has ONLY modular entry points (`firebase-admin/app`, `firebase-admin/firestore`), and `.npmrc`'s `legacy-peer-deps=true` skips peer deps, so `@opentelemetry/api` must stay explicit or the dev server dies on `Cannot find module '@opentelemetry/api'` while `typecheck` and `lint` pass.
+- First-run onboarding gates on `onboardedAt` (or a pre-existing `goal`), NEVER on the profile doc existing: `ensureExercisesSeeded` writes `seedVersion` and a language switch writes `language` before the user answers anything.
+- Firestore rule matches are UNIONed: `users/{userId}/{collection}/{docId}` must keep `&& collection != 'stats'`, or it re-grants client write access to the quota doc, a silent security hole that tests green.
+- Never hide a control behind `overflow-x-auto` + `no-scrollbar`: wrap, or let ONE element flex and truncate (`min-w-0 flex-1`), as `/log` does. Spanish labels run ~30% longer than English; measure at 360px, not 390.
+- The automatic PR path can only RAISE a PR; `recheckPersonalRecord` is the only way down and is user-triggered ONLY (it rescans every log containing the exercise).
+- `saveCurrentLog` strips `isProvisional`, so planned-vs-performed at save time is re-derived from the baseline's `prefill` (`plannedIds`), never read from the flag. Coach volume/history built from logs must skip `performed === false`.
+- PR scans must skip `performed === false` and treat `undefined` as performed, or the first rescan erases every PR from logs written before the flag existed.
+- Mojibake in i18n dictionaries passes typecheck, lint AND build: write accented strings with the Edit/Write tool as literal characters, never via a Python `.encode().decode('unicode_escape')` round-trip.
+- This shell (Git Bash on Windows) MANGLES backslashes in heredocs: a `<<'EOF'` body with `\\n` arrives as `\n`. Build such content with `chr(92)` in Python or the Write tool, never a heredoc.
+- A Radix dialog opened OVER another must render inside the lower one's `DialogContent` (it still portals), never as a sibling: on touch, Radix decides "pointer down outside" on the later `click`, so the lower dialog dismisses and drops its edits. Mouse-driven tests pass while every phone fails.
 
 ## Project constraints
 Keep this file between 200–300 lines max. Every line must earn its keep.
