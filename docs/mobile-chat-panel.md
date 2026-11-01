@@ -13,7 +13,7 @@ DOM/CSS and port to any framework; only the class strings are Tailwind-specific.
 
 ---
 
-## The five problems
+## The seven problems
 
 | # | Symptom | Root cause |
 |---|---------|-----------|
