@@ -57,6 +57,7 @@ Newest first. Dates carry only the precision that was recorded. Rules live in CL
 - **Decision:** coach modes run with `reasoning_effort: 'none'` and a 1500-token budget; `exercise-library` alone uses `reasoning_effort: 'default'`, `reasoning_format: 'hidden'` and `maxTokens: 4000`.
 - **Why:** `qwen/qwen3.6-27b` burned the full 1500-token budget on a one-line question and truncated mid-sentence instead of erroring. Without thinking, the Exercises coach re-suggested exercises the user already had; reasoning used about 1.2-1.6k tokens there.
 - **Rejected:** reasoning on at 1500 tokens; reasoning off for `exercise-library`.
+- **Update 2026-11-07:** the coach moved to `qwen/qwen3.8-27b` after Groq shut down `qwen/qwen3.6-27b`; the reasoning settings stay the same.
 
 ## 2026-08, 2026-09: Provisional is derived, `performed` is persisted
 
