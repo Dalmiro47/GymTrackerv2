@@ -61,7 +61,7 @@ export default function LoginPage() {
       <Card className="animate-enter w-full max-w-sm">
         <CardHeader className="items-center pt-8 text-center">
           <div className="mb-6 flex justify-center">
-            <Logo iconSize={30} textSize="text-[26px]" />
+            <Logo textSize="text-[26px]" />
           </div>
           <CardTitle className="text-[28px]">{t('login.welcome')}</CardTitle>
           <CardDescription className="text-[15px]">
