@@ -1,14 +1,12 @@
 import Link from 'next/link';
-import { AppIcon } from '@/components/AppIcon';
 import { cn } from '@/lib/utils';
 
 interface LogoProps {
   className?: string;
-  iconSize?: number;
   textSize?: string;
 }
 
-export function Logo({ className, iconSize = 24, textSize = 'text-2xl' }: LogoProps) {
+export function Logo({ className, textSize = 'text-2xl' }: LogoProps) {
   return (
     <Link
       href="/dashboard"
@@ -17,7 +15,6 @@ export function Logo({ className, iconSize = 24, textSize = 'text-2xl' }: LogoPr
         className
       )}
     >
-      <AppIcon size={iconSize} />
       <span className={cn('font-headline font-bold tracking-tight whitespace-nowrap', textSize)}>
         DDS Gym Tracker
       </span>

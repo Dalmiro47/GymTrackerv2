@@ -55,7 +55,7 @@ export function AppSidebar({ isOpen, setIsOpen }: AppSidebarProps) {
                 setIsOpen(false);
               }}
             >
-              <Logo iconSize={20} textSize="text-[17px]" />
+              <Logo textSize="text-[17px]" />
             </div>
             <Button
               variant="ghost"

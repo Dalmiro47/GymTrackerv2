@@ -4,6 +4,13 @@ Newest first. Dates carry only the precision that was recorded. Rules live in CL
 
 `REVIEW.md`, cited below, is the 2026-06-11 code review, removed from the tree and kept in git history (added in commit `aadc5dc`).
 
+## 2026-11-07: Squat illustration icon; separate `any` and `maskable` PNGs
+
+- **Decision:** the app icon is a raster illustration (barbell back squat, sky rim light, near-black background) with master `assets/brand/squat-master.png`, kept outside `public/` so it is never served. `scripts/gen-icons.mjs` renders full-bleed `any` icons (192, 512), an opaque 180 `apple-touch-icon`, `src/app/favicon.ico`, and a separate `icon-maskable-512.png`: the illustration at 76% centred on the colour sampled from the master's corner (`#000000`). The manifest `background_color` is `#000000` to match. The header, sidebar and login show only the "DDS Gym Tracker" text; `AppIcon` renders `/icons/icon-192.png` and is used only by the 48 px `InstallGuide`.
+- **Why:** the illustration fills its square edge to edge, so one file declared `any maskable` would let Android's mask cut the bar tip and the plates. Measured on the master, at 80% they reach radius 0.41-0.42 of the icon, past the 0.40 minimum safe circle; at 76% everything fits. At 20 px the illustration is unreadable, so small placements use text.
+- **Rejected:** one `any maskable` file (plates cut); an 80% inset (bar tip outside the safe circle); the illustration in the app bar and sidebar (unreadable at 20 px); a cropped favicon (the full master was chosen).
+- **Supersedes:** "Full-bleed PWA icons (Iron Glass)" (2026-09).
+
 ## 2026-11-01: Docs as map
 
 - **Decision:** CLAUDE.md is a map with one-line gotchas, longer whys live here, and the README is a short map (dds-kit 0.9 brain-sync standard).
@@ -39,6 +46,7 @@ Newest first. Dates carry only the precision that was recorded. Rules live in CL
 - **Decision:** the PNGs in `public/icons/` are rendered from `public/logo.svg` as full-bleed squares.
 - **Why:** the manifest declares one file `any maskable` and iOS masks its own corners.
 - **Rejected:** baked-in rounded corners, which leave transparent slivers under Android's squircle.
+- **Superseded 2026-11-07:** by "Squat illustration icon; separate `any` and `maskable` PNGs". `public/logo.svg` is removed.
 
 ## 2026-09: Stored values stay English; Spanish is applied at display time
 

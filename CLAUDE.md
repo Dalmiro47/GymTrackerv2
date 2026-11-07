@@ -48,7 +48,7 @@ Next.js 15 App Router; Firebase is the sole backend, with no custom API server f
 - UI components: `src/components/ui/` (shadCN: Radix primitives + Tailwind); colors and fonts: `src/app/globals.css`, `tailwind.config.ts`
 - Shell: `BottomNav` (mobile tab bar, `--bottomnav-height`), desktop-only sidebar, `AppBarActions` (page-injected app-bar buttons): `src/components/layout/`. The Training Log's Save/Delete sit in a floating dock centred in the content column at the AI Coach button's height (z-40, under the coach backdrop)
 - Shared calendar UI (dashboard + log): `src/components/dashboard/WorkoutCalendar.tsx`, `src/components/training-log/WeekStrip.tsx`
-- PWA (production only): `next.config.ts`; icon master `public/logo.svg` ("Iron Glass"), rendered by `scripts/gen-icons.mjs` to `public/icons/`
+- PWA (production only): `next.config.ts`; icon master `assets/brand/squat-master.png` (raster, not served), rendered by `scripts/gen-icons.mjs` to `public/icons/` and `src/app/favicon.ico`; `public/sw.js` is next-pwa build output, never hand-edited
 - Types: `src/types/index.ts` (`Exercise`, `Routine`, `WorkoutLog`, `LoggedSet`, `UserProfile`), `src/types/setStructure.ts` (`normal`, `superset`, `triset`, `dropSet`, `restPause`); coach-profile `UserProfile` (goal, constraints, `language`): `src/lib/types.gym.ts`
 - Coach eval: `scripts/coach-eval/run.mts`; report: `scripts/coach-eval/last-run.txt` (gitignored)
 - Decision log: `docs/decisions.md`
@@ -90,7 +90,7 @@ feedback/{docId}          # Top-level: anyone signed in may create, only the adm
 - New coach mode: add its context in `context-builders.ts` and prompt in `chat-prompts.ts`, add it to `ChatMode` in `route.ts`, `CoachChatSheet.tsx` and `use-coach-chat.ts` plus the prompt branch in `route.ts`, then use `CoachChatSheet` with `mode="your-mode"`.
 - Run `npm run coach:eval` after any change to `buildExerciseLibrarySystemPrompt`.
 - Theme: dark is the default for a user who never picked one (`DEFAULT_THEME` in `ThemeContext`, mirrored in `THEME_INIT_SCRIPT`); `system` is an explicit opt-in from the avatar menu.
-- Colors: the single brand accent is `--primary` (sky, the PWA icon's dumbbell); `--warning` (amber) is the deload/plateau signal (`--chart-4` kept identical). No Tailwind palette classes (`text-blue-600` etc.) outside the token system.
+- Colors: the single brand accent is `--primary` (sky, the app icon's rim light); `--warning` (amber) is the deload/plateau signal (`--chart-4` kept identical). No Tailwind palette classes (`text-blue-600` etc.) outside the token system.
 - Fonts: Hanken Grotesk (`font-body`) + Big Shoulders Display (`font-headline`: dates, stats, day numbers, exercise names). Utilities in `globals.css`: `.surface .eyebrow .pressable .glass .animate-enter .enter-1..6 .no-scrollbar`; CSS-only motion with a reduced-motion guard.
 - Pickers use `ResponsiveSheet`: a floating panel centred in the viewport at every breakpoint (it wraps `Dialog`, not `Sheet`).
 - Session workflow: work on the feature or fix, then the owner runs `/dds:brain-sync` before ending the session.
@@ -115,8 +115,8 @@ feedback/{docId}          # Top-level: anyone signed in may create, only the adm
 - `Dialog`/`AlertDialog` open with NO entry animation on purpose: do not re-add `animate-in`/`zoom`/`slide`/`backdrop-blur` to these overlays.
 - `DialogTitle` uses the BODY font: `font-headline` (condensed Big Shoulders) reads squashed on a short title.
 - `DialogHeader` reserves `pr-10` for the close button; a header that sets its own padding must restate `pr-12`, or tailwind-merge drops it and the title runs under the X.
-- PWA PNGs must stay FULL-BLEED squares; rasterize with the `sharp` already in `node_modules` (no ImageMagick/Pillow on this machine). sharp cannot write ICO: `src/app/favicon.ico` is PNG entries in a hand-built ICO header.
-- The in-app logo in `src/components/AppIcon.tsx` is the same mark as `public/logo.svg`: change one, change both.
+- PWA `any` and apple PNGs stay FULL-BLEED opaque squares; only `icon-maskable-512.png` is inset (76% on the master's corner colour) so Android's mask keeps the plates. Rasterize with the `sharp` already in `node_modules` (no ImageMagick/Pillow on this machine). sharp cannot write ICO: `gen-icons.mjs` wraps PNG entries in a hand-built ICO header.
+- `src/components/AppIcon.tsx` renders the generated `/icons/icon-192.png` (only `InstallGuide` uses it); the header, sidebar and login `Logo` is text only, because the illustration is unreadable at 20 px.
 - `next.config.ts` suppresses TypeScript and ESLint build errors (`ignoreBuildErrors: true`), so a passing build proves nothing: run `npm run typecheck` and `npm run lint`.
 - In `useTrainingLog`, `currentLog` is *derived* (`useMemo`) from `originalLogState`: never store the deload-transformed view in state or write it back to the baseline, or weight reductions compound and corrupt saved logs.
 - Exercise identity = name + muscleGroup, never name alone: `dedupeExercisesByNameAndMuscle` feeds the shared picker, and keying on name silently hid "Dips" (Triceps) behind "Dips" (Chest).
