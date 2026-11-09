@@ -1,6 +1,3 @@
-
-"use client";
-
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
 import type { WarmupTemplate, WarmupStepSpec } from '@/types';
