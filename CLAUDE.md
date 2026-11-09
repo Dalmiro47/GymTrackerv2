@@ -144,6 +144,8 @@ feedback/{docId}          # Top-level: anyone signed in may create, only the adm
 - A Radix dialog opened OVER another must render inside the lower one's `DialogContent` (it still portals), never as a sibling: on touch, Radix decides "pointer down outside" on the later `click`, so the lower dialog dismisses and drops its edits. Mouse-driven tests pass while every phone fails.
 
 ## Project constraints
+Ship exception: enabled (granted 2026-11-09)
+Ship gate: npm run typecheck
 Keep this file between 200–300 lines max. Every line must earn its keep.
 
 ### Error Handling
