@@ -4,6 +4,12 @@ Newest first. Dates carry only the precision that was recorded. Rules live in CL
 
 `REVIEW.md`, cited below, is the 2026-06-11 code review, removed from the tree and kept in git history (added in commit `aadc5dc`).
 
+## 2026-11-10: Read-only MCP server inside the app
+
+- **Decision:** the MCP endpoint is a route of this app, `/api/mcp/<MCP_ACCESS_KEY>`, built on `@modelcontextprotocol/server` with its stateless web transport. The path key is the only credential and is compared in constant time. The owner uid comes from `MCP_OWNER_UID`, never from a request, and no tool takes a uid. Reads go through the Admin SDK, every one rooted at `users/{MCP_OWNER_UID}` and bounded by a limit or a date range. The route answers the same 401 when either env var is missing, the key is under 32 characters, the key is wrong, or the Admin SDK is not configured.
+- **Why:** in-app reuses the deployment, the service account and the pure helpers (`toCoachProfile`, `displayExerciseName`) with no second service to run. A Claude connector registered without sign-in cannot send headers, so the key sits in the path. The Admin SDK bypasses `firestore.rules`, so the scoping has to live in code: one repo bound to the env uid, whose db type has no write method. Failing closed keeps a half-configured deployment from serving the wrong account.
+- **Rejected:** a separate MCP service; a uid as tool input; reusing the client-SDK services (they need a signed-in browser session); `mcp-handler` (the server package's own transport covers the route); unbounded collection reads; an `array-contains` history query (it needs a composite index the repo cannot verify).
+
 ## 2026-11-07: Squat illustration icon; separate `any` and `maskable` PNGs
 
 - **Decision:** the app icon is a raster illustration (barbell back squat, sky rim light, near-black background) with master `assets/brand/squat-master.png`, kept outside `public/` so it is never served. `scripts/gen-icons.mjs` renders full-bleed `any` icons (192, 512), an opaque 180 `apple-touch-icon`, `src/app/favicon.ico`, and a separate `icon-maskable-512.png`: the illustration at 76% centred on the colour sampled from the master's corner (`#000000`). The manifest `background_color` is `#000000` to match. The header, sidebar and login show only the "DDS Gym Tracker" text; `AppIcon` renders `/icons/icon-192.png` and is used only by the 48 px `InstallGuide`.

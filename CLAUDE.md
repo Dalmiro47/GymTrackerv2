@@ -13,7 +13,7 @@ npm run coach:eval -- [caseFilter] [--repeat=N] [--no-explain]   # Exercise-coac
 firebase deploy --only firestore:rules   # Owner only, from their own terminal (see Destructive Operations)
 ```
 
-No test framework is configured: validation is via TypeScript and linting only.
+Tests: `npm test` (node:test through tsx; no env file, no network). Only `src/lib/mcp/` has tests; the rest is validated by TypeScript and linting.
 
 `/dds:brain-sync` (shared skill from the dds-kit plugin) captures a session-state milestone to Open Brain via the `capture_thought` MCP tool.
 
@@ -25,6 +25,7 @@ No test framework is configured: validation is via TypeScript and linting only.
 - `GROQ_API_KEY`: Groq API key (https://console.groq.com)
 - `OPEN_ROUTER_API_KEY`: DEV-ONLY, used by `npm run coach:eval` for the judges; the app never reads it, so do not add it to Vercel
 - `FIREBASE_CLIENT_EMAIL` / `FIREBASE_PRIVATE_KEY`: service account (Admin SDK), used ONLY to write the daily AI quota counter. Absent = the app runs but limits are silently unenforced; `isAdminConfigured()` reports it and `/admin` shows a banner
+- `MCP_ACCESS_KEY` / `MCP_OWNER_UID`: server-only, for the MCP endpoint; either one absent = every MCP request answers 401
 
 ## Map
 
@@ -41,6 +42,7 @@ Next.js 15 App Router; Firebase is the sole backend, with no custom API server f
 - Coach provider (`LLMProvider`, `GroqProvider`, `DEFAULT_MODEL`): `src/lib/ai/llm-provider.ts`
 - Coach context serializers: `src/lib/ai/context-builders.ts`; system prompts (`SWAP_RANKING`, volume targets, overload logic, KNOWN EXERCISES): `src/lib/ai/chat-prompts.ts`
 - Coach UI (own fixed panel, `SegmentRenderer`): `src/components/coach/CoachChatSheet.tsx`
+- MCP server (read-only, owner's data, Admin SDK): `src/app/api/mcp/[key]/route.ts`, `src/lib/mcp/` (`auth.ts`, `repo.server.ts`, `tools.read.ts`, `server.ts`); tests `*.test.ts` beside each module, run with `npm test`
 - Daily quota: `src/lib/usageQuota.ts`, `src/lib/limits.ts`, `src/lib/firebaseAdmin.ts`
 - Language state (`LanguageProvider`, `gt-lang` mirror, `<html lang>`; set from `UserNav`, or `LanguageToggle` on `/login`): `src/contexts/LanguageContext.tsx`
 - Dictionaries: `src/i18n/en.ts` (source of truth), `src/i18n/es.ts`; display helpers and `detectLanguage()`: `src/i18n/index.ts`
@@ -133,6 +135,7 @@ feedback/{docId}          # Top-level: anyone signed in may create, only the adm
 - `CoachChatSheet` mobile panel: pin the body, bound by `top` + `bottom` with NO `height`, only `bottom` reacts to the keyboard, `top` adds clamped `offsetTop`, backdrop `touch-none` + non-passive `touchmove` guard, Textarea stays `text-base md:text-sm` (<16px makes iOS zoom). Full rules: `docs/mobile-chat-panel.md`.
 - Dialog open latency in `/log` is a RENDER cost: keep every `ExerciseList` prop referentially stable (page handlers via `useStableCallback`; dnd-kit's `useSensor` memoises on its options OBJECT, so an inline literal kills the memo). The AI Coach feels instant because its `open` state is local to itself.
 - `firebase-admin` v14 has ONLY modular entry points (`firebase-admin/app`, `firebase-admin/firestore`), and `.npmrc`'s `legacy-peer-deps=true` skips peer deps, so `@opentelemetry/api` must stay explicit or the dev server dies on `Cannot find module '@opentelemetry/api'` while `typecheck` and `lint` pass.
+- MCP tool schemas import `z` from `zod4` (an alias of zod 4): `@modelcontextprotocol/server` v2 rejects zod 3 schemas, and the rest of the app stays on zod 3.
 - First-run onboarding gates on `onboardedAt` (or a pre-existing `goal`), NEVER on the profile doc existing: `ensureExercisesSeeded` writes `seedVersion` and a language switch writes `language` before the user answers anything.
 - Firestore rule matches are UNIONed: `users/{userId}/{collection}/{docId}` must keep `&& collection != 'stats'`, or it re-grants client write access to the quota doc, a silent security hole that tests green.
 - Never hide a control behind `overflow-x-auto` + `no-scrollbar`: wrap, or let ONE element flex and truncate (`min-w-0 flex-1`), as `/log` does. Spanish labels run ~30% longer than English; measure at 360px, not 390.
@@ -145,7 +148,7 @@ feedback/{docId}          # Top-level: anyone signed in may create, only the adm
 
 ## Project constraints
 Ship exception: enabled (granted 2026-11-09)
-Ship gate: npm run typecheck
+Ship gate: npm run typecheck && npm test
 Keep this file between 200–300 lines max. Every line must earn its keep.
 
 ### Error Handling
