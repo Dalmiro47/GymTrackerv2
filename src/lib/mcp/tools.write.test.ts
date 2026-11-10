@@ -1,0 +1,668 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { defaultExercises } from '@/lib/defaultExercises';
+import { displayExerciseName } from '@/lib/exerciseDisplay';
+import { createRepo, MAX_ROUTINE_HISTORY, type ReadDb } from './repo.server';
+import { createWriteRepo, type WriteDb } from './repo.write.server';
+import type { ToolResult } from './results';
+import { createWriteTools, MAX_ROUTINE_EXERCISES, writeToolSchemas } from './tools.write';
+
+// Fake values only. The tools run on the real read repo and the real write repo,
+// over an in-memory fake db that records every call. The fake throws on anything
+// that is not a read, `batch.create`, `batch.set` or `batch.commit` (delete,
+// update, add...), and its `create` fails the whole batch when the document
+// exists, like Firestore.
+const OWNER = 'fake-owner';
+const ROOT = `users/${OWNER}/`;
+const NOW_MS = 1_800_000_000_000;
+const NOW = () => new Date(NOW_MS);
+const TS = { sentinel: 'serverTimestamp' };
+
+type Data = Record<string, any>;
+type Op = { kind: 'create' | 'set'; path: string; data: Data; options?: unknown };
+type Batch = { ops: Op[]; commits: number };
+
+const strict = <T extends object>(target: T, label: string): T =>
+  new Proxy(target, {
+    get(obj, prop, receiver) {
+      if (typeof prop === 'symbol' || prop === 'then' || prop in obj) return Reflect.get(obj, prop, receiver);
+      throw new Error(`${label}.${String(prop)} must never be called`);
+    },
+  });
+
+function fakeDb(seed: Record<string, Data> = {}, hooks: { beforeCommit?: (store: Map<string, Data>) => void; failRead?: boolean; failCommit?: boolean } = {}) {
+  const store = new Map<string, Data>(Object.entries(seed).map(([path, data]) => [ROOT + path, data]));
+  const batches: Batch[] = [];
+  const idOf = (path: string) => path.split('/').pop()!;
+  const snap = (path: string) => {
+    const data = store.get(path);
+    return strict({ id: idOf(path), exists: data !== undefined, data: () => data }, 'snapshot');
+  };
+  const readGuard = () => {
+    if (hooks.failRead) throw new Error(`secret internal detail ${ROOT}`);
+  };
+
+  const query = (path: string, ops: unknown[][]): ReturnType<ReadDb['collection']> =>
+    strict(
+      {
+        where: (field: string, op: string, value: unknown) => query(path, [...ops, ['where', field, op, value]]),
+        orderBy: (field: string, direction?: string) => query(path, [...ops, ['orderBy', field, direction ?? 'asc']]),
+        limit: (n: number) => query(path, [...ops, ['limit', n]]),
+        async get() {
+          readGuard();
+          let rows = [...store.entries()].filter(([p]) => p.startsWith(`${path}/`) && !p.slice(path.length + 1).includes('/'));
+          for (const op of ops) {
+            if (op[0] === 'where') rows = rows.filter(([, d]) => d[op[1] as string] === op[3]);
+            if (op[0] === 'orderBy') {
+              const field = op[1] as string;
+              const sign = op[2] === 'desc' ? -1 : 1;
+              rows = rows.filter(([, d]) => d[field] !== undefined).sort(([, a], [, b]) => (a[field] < b[field] ? -sign : a[field] > b[field] ? sign : 0));
+            }
+            if (op[0] === 'limit') rows = rows.slice(0, op[1] as number);
+          }
+          return strict({ docs: rows.map(([p]) => snap(p)) }, 'querySnapshot');
+        },
+      },
+      'query',
+    );
+
+  const db: ReadDb & WriteDb = strict(
+    {
+      collection: (path: string) => query(path, []),
+      doc: (path: string) =>
+        strict(
+          {
+            path,
+            async get() {
+              readGuard();
+              return snap(path);
+            },
+          },
+          'docRef',
+        ),
+      batch() {
+        const batch: Batch = { ops: [], commits: 0 };
+        batches.push(batch);
+        return strict(
+          {
+            create(ref: { path: string }, data: Data) {
+              batch.ops.push({ kind: 'create', path: ref.path, data });
+            },
+            set(ref: { path: string }, data: Data, options: unknown) {
+              batch.ops.push({ kind: 'set', path: ref.path, data, options });
+            },
+            async commit() {
+              batch.commits++;
+              hooks.beforeCommit?.(store);
+              if (hooks.failCommit) throw new Error(`secret internal detail ${ROOT}`);
+              const taken = batch.ops.find(op => op.kind === 'create' && store.has(op.path));
+              if (taken) throw Object.assign(new Error(`6 ALREADY_EXISTS: ${taken.path}`), { code: 6 });
+              for (const op of batch.ops) {
+                store.set(op.path, op.kind === 'set' ? { ...store.get(op.path), ...op.data } : op.data);
+              }
+            },
+          },
+          'batch',
+        );
+      },
+    },
+    'db',
+  );
+
+  const tools = createWriteTools({ repo: createRepo(db, OWNER), writes: createWriteRepo(db, OWNER, () => TS), now: NOW });
+  const ops = () => batches.flatMap(b => b.ops);
+  const get = (path: string) => store.get(ROOT + path);
+  return { tools, batches, ops, get, store };
+}
+
+// A seeded default whose Spanish name differs from the stored English one.
+const seeded = defaultExercises.find(ex => displayExerciseName(ex, 'es') !== ex.name)!;
+
+const bench = { name: 'Bench Press', muscleGroup: 'Chest', targetNotes: 'Mid chest', exerciseSetup: 'Flat', progressiveOverload: '6-8', instructions: 'long text', dataAiHint: 'bench press', warmup: { template: 'HEAVY_BARBELL' } };
+const dips = { name: 'Dips', muscleGroup: 'Triceps' };
+const row = { name: 'Row', muscleGroup: 'Back', targetNotes: 'Lats' };
+
+const entry = (id: string, ex: Data, setStructure = 'normal') => ({
+  id,
+  name: ex.name,
+  muscleGroup: ex.muscleGroup,
+  targetNotes: ex.targetNotes ?? '',
+  exerciseSetup: ex.exerciseSetup ?? '',
+  progressiveOverload: ex.progressiveOverload ?? '',
+  dataAiHint: ex.dataAiHint ?? '',
+  setStructure,
+});
+
+const CREATED_AT = { stored: 'createdAt' };
+const pushDay = () => ({
+  name: 'Push Day',
+  description: 'Chest and triceps',
+  order: 2,
+  createdAt: CREATED_AT,
+  updatedAt: { stored: 'updatedAt' },
+  legacyField: 'keep me',
+  exercises: [entry('bench-press_chest', bench, 'superset'), entry('dips_triceps', dips)],
+});
+
+const seed = (extra: Record<string, Data> = {}): Record<string, Data> => ({
+  'exercises/bench-press_chest': bench,
+  'exercises/dips_triceps': dips,
+  'exercises/row_back': row,
+  [`exercises/${seeded.id}`]: { name: seeded.name, muscleGroup: seeded.muscleGroup },
+  'routines/push-day': pushDay(),
+  ...extra,
+});
+
+const ok = (result: ToolResult) => {
+  assert.notEqual(result.isError, true, result.content[0].text);
+  return JSON.parse(result.content[0].text);
+};
+
+/** The call was refused with `code`, and no batch was opened. */
+const refused = (result: ToolResult, code: string, db: ReturnType<typeof fakeDb>) => {
+  assert.equal(result.isError, true, `expected ${code}, got a success`);
+  assert.match(result.content[0].text, new RegExp(`^${code}: `));
+  assert.equal(db.batches.length, 0, `${code} must open no batch`);
+};
+
+const WRITE_PATH = new RegExp(`^users/${OWNER}/(routines|exercises|routineHistory)/[^/]+$`);
+
+/** Exactly one batch with one commit; every path is the owner's, in an allowed collection. */
+const oneBatch = (db: ReturnType<typeof fakeDb>) => {
+  assert.equal(db.batches.length, 1, 'exactly one batch');
+  assert.equal(db.batches[0].commits, 1, 'exactly one commit');
+  for (const op of db.batches[0].ops) assert.match(op.path, WRITE_PATH);
+  return db.batches[0].ops;
+};
+
+const versionsOf = (ops: Op[]) => ops.filter(op => op.path.startsWith(`${ROOT}routineHistory/`));
+
+// ─── Input validation ────────────────────────────────────────────────
+
+test('schemas: exactly the six write tools, and none takes a uid', () => {
+  assert.deepEqual(Object.keys(writeToolSchemas).sort(), [
+    'add_exercise_to_routine', 'create_exercise', 'create_routine',
+    'remove_exercise_from_routine', 'reorder_routine_exercises', 'replace_exercise_in_routine',
+  ]);
+  for (const [name, schema] of Object.entries(writeToolSchemas)) {
+    for (const key of Object.keys(schema.shape)) {
+      assert.doesNotMatch(key, /uid|user|owner/i, `${name} must not take ${key}`);
+    }
+  }
+});
+
+test('schemas: create_exercise takes a stored muscle group key and bounded strings', () => {
+  const s = writeToolSchemas.create_exercise;
+  assert.deepEqual(s.parse({ name: '  Cable Fly ', muscleGroup: 'Chest' }), { name: 'Cable Fly', muscleGroup: 'Chest' });
+  assert.equal(s.safeParse({ name: 'x'.repeat(80), muscleGroup: 'Chest', instructions: 'y'.repeat(2000) }).success, true);
+  for (const bad of [
+    { name: 'Cable Fly', muscleGroup: 'Pecho' },
+    { name: 'Cable Fly', muscleGroup: 'chest' },
+    { name: 'Cable Fly' },
+    { name: 'x', muscleGroup: 'Chest' },
+    { name: ' x ', muscleGroup: 'Chest' },
+    { name: 'x'.repeat(81), muscleGroup: 'Chest' },
+    { name: 'Cable Fly', muscleGroup: 'Chest', targetNotes: 'y'.repeat(2001) },
+    { name: 'Cable Fly', muscleGroup: 'Chest', instructions: 'y'.repeat(2001) },
+  ]) {
+    assert.equal(s.safeParse(bad).success, false, JSON.stringify(bad).slice(0, 60));
+  }
+});
+
+test('schemas: create_routine name 3 to 80, description to 500, 1 to 30 safe ids', () => {
+  const s = writeToolSchemas.create_routine;
+  const ids = (n: number) => Array.from({ length: n }, (_, i) => `ex-${i}`);
+  assert.equal(s.safeParse({ name: 'Leg', exerciseIds: ids(30), description: 'd'.repeat(500) }).success, true);
+  for (const bad of [
+    { name: 'Le', exerciseIds: ids(1) },
+    { name: 'x'.repeat(81), exerciseIds: ids(1) },
+    { name: 'Legs', exerciseIds: [] },
+    { name: 'Legs', exerciseIds: ids(31) },
+    { name: 'Legs', exerciseIds: ['a/b'] },
+    { name: 'Legs', exerciseIds: ids(1), description: 'd'.repeat(501) },
+    { name: 'Legs' },
+  ]) {
+    assert.equal(s.safeParse(bad).success, false, JSON.stringify(bad).slice(0, 60));
+  }
+});
+
+test('schemas: routine edit tools refuse unsafe ids and bad positions', () => {
+  const add = writeToolSchemas.add_exercise_to_routine;
+  assert.equal(add.safeParse({ routineId: 'push-day', exerciseId: 'row_back' }).success, true);
+  assert.equal(add.safeParse({ routineId: 'a/b', exerciseId: 'row_back' }).success, false);
+  assert.equal(add.safeParse({ routineId: 'push-day', exerciseId: '..' }).success, false);
+  assert.equal(add.safeParse({ routineId: 'push-day', exerciseId: 'row_back', index: -1 }).success, false);
+  assert.equal(add.safeParse({ routineId: 'push-day', exerciseId: 'row_back', index: 1.5 }).success, false);
+  assert.equal('setStructure' in add.shape, false);
+
+  const replace = writeToolSchemas.replace_exercise_in_routine;
+  assert.equal(replace.safeParse({ routineId: 'push-day', index: 0, expectedExerciseId: 'a', newExerciseId: 'b' }).success, true);
+  assert.equal(replace.safeParse({ routineId: 'push-day', index: 0, newExerciseId: 'b' }).success, false);
+  assert.equal(replace.safeParse({ routineId: 'push-day', index: -1, expectedExerciseId: 'a', newExerciseId: 'b' }).success, false);
+
+  assert.equal(writeToolSchemas.remove_exercise_from_routine.safeParse({ routineId: 'push-day', exerciseId: '' }).success, false);
+  assert.equal(writeToolSchemas.reorder_routine_exercises.safeParse({ routineId: 'push-day', exerciseIds: [] }).success, false);
+});
+
+// ─── create_exercise ─────────────────────────────────────────────────
+
+test('create_exercise: one batch, one create, the same doc shape as the app, no history', async () => {
+  const db = fakeDb(seed());
+  const out = ok(await db.tools.create_exercise({ name: 'Cable Fly', muscleGroup: 'Chest', targetNotes: ' Lower chest ', progressiveOverload: '10-12' }));
+  const ops = oneBatch(db);
+  assert.deepEqual(ops, [
+    {
+      kind: 'create',
+      path: `${ROOT}exercises/cable-fly_chest`,
+      data: {
+        name: 'Cable Fly',
+        muscleGroup: 'Chest',
+        targetNotes: 'Lower chest',
+        exerciseSetup: '',
+        progressiveOverload: '10-12',
+        instructions: '',
+        dataAiHint: 'cable fly',
+      },
+    },
+  ]);
+  assert.deepEqual(out, {
+    ok: true,
+    exercise: { id: 'cable-fly_chest', name: 'Cable Fly', muscleGroup: 'Chest', targetNotes: 'Lower chest', progressiveOverload: '10-12' },
+  });
+});
+
+test('create_exercise: a duplicate name + muscle group writes nothing (stored and Spanish display names)', async () => {
+  const stored = fakeDb(seed());
+  refused(await stored.tools.create_exercise({ name: ' bench press ', muscleGroup: 'Chest' }), 'duplicate_exercise', stored);
+
+  const spanish = fakeDb(seed());
+  refused(
+    await spanish.tools.create_exercise({ name: displayExerciseName(seeded, 'es'), muscleGroup: seeded.muscleGroup }),
+    'duplicate_exercise',
+    spanish,
+  );
+});
+
+test('create_exercise: the same name in another muscle group is a different exercise', async () => {
+  const db = fakeDb(seed());
+  ok(await db.tools.create_exercise({ name: 'Dips', muscleGroup: 'Chest' }));
+  assert.equal(oneBatch(db)[0].path, `${ROOT}exercises/dips_chest`);
+});
+
+test('create_exercise: a taken id gets the app suffix, and the taken doc is not touched', async () => {
+  // The id is held by an exercise that was renamed, so the names do not collide.
+  const db = fakeDb(seed({ 'exercises/cable-fly_chest': { name: 'Renamed', muscleGroup: 'Chest' }, 'exercises/cable-fly_chest-2': { name: 'Other', muscleGroup: 'Chest' } }));
+  ok(await db.tools.create_exercise({ name: 'Cable Fly', muscleGroup: 'Chest' }));
+  assert.equal(oneBatch(db)[0].path, `${ROOT}exercises/cable-fly_chest-3`);
+  assert.deepEqual(db.get('exercises/cable-fly_chest'), { name: 'Renamed', muscleGroup: 'Chest' });
+});
+
+test('create_exercise: a name that gives no id, or 20 taken ids, writes nothing', async () => {
+  const noSlug = fakeDb(seed());
+  refused(await noSlug.tools.create_exercise({ name: '!!!', muscleGroup: 'Chest' }), 'id_unavailable', noSlug);
+
+  const taken: Record<string, Data> = { 'exercises/cable-fly_chest': { name: 'T1', muscleGroup: 'Chest' } };
+  for (let n = 2; n <= 20; n++) taken[`exercises/cable-fly_chest-${n}`] = { name: `T${n}`, muscleGroup: 'Chest' };
+  const full = fakeDb(seed(taken));
+  refused(await full.tools.create_exercise({ name: 'Cable Fly', muscleGroup: 'Chest' }), 'id_unavailable', full);
+});
+
+test('create on an id that appears before the commit: conflict, and nothing is overwritten', async () => {
+  const racer = { name: 'Written by the app', muscleGroup: 'Chest' };
+  const db = fakeDb(seed(), { beforeCommit: store => store.set(`${ROOT}exercises/cable-fly_chest`, racer) });
+  const result = await db.tools.create_exercise({ name: 'Cable Fly', muscleGroup: 'Chest' });
+  assert.equal(result.isError, true);
+  assert.match(result.content[0].text, /^conflict: /);
+  assert.deepEqual(db.get('exercises/cable-fly_chest'), racer);
+
+  const routineRacer = { name: 'Leg Day', order: 9, exercises: [] };
+  const routines = fakeDb(seed(), { beforeCommit: store => store.set(`${ROOT}routines/leg-day`, routineRacer) });
+  const routineResult = await routines.tools.create_routine({ name: 'Leg Day', exerciseIds: ['row_back'] });
+  assert.match(routineResult.content[0].text, /^conflict: /);
+  assert.deepEqual(routines.get('routines/leg-day'), routineRacer);
+  // The batch is atomic: its history version was not written either.
+  assert.equal([...routines.store.keys()].some(p => p.includes('/routineHistory/')), false);
+});
+
+// ─── create_routine ──────────────────────────────────────────────────
+
+test('create_routine: one batch with the routine and its created version, source mcp', async () => {
+  const db = fakeDb(seed());
+  const out = ok(await db.tools.create_routine({ name: 'Pull Day', description: ' Back work ', exerciseIds: ['row_back', 'bench-press_chest'] }));
+  const ops = oneBatch(db);
+  assert.equal(ops.length, 2);
+  assert.deepEqual(ops[0], {
+    kind: 'create',
+    path: `${ROOT}routines/pull-day`,
+    data: {
+      name: 'Pull Day',
+      description: 'Back work',
+      exercises: [entry('row_back', row), entry('bench-press_chest', bench)],
+      order: 3,
+      createdAt: TS,
+      updatedAt: TS,
+    },
+  });
+  const version = ops[1];
+  assert.equal(version.kind, 'create');
+  assert.equal(version.path, `${ROOT}routineHistory/pull-day_${NOW_MS}`);
+  assert.equal(version.data.id, `pull-day_${NOW_MS}`);
+  assert.equal(version.data.routineId, 'pull-day');
+  assert.equal(version.data.routineName, 'Pull Day');
+  assert.equal(version.data.changeType, 'created');
+  assert.equal(version.data.source, 'mcp');
+  assert.equal(version.data.createdAtMs, NOW_MS);
+  assert.equal(version.data.prevHash, null);
+  assert.deepEqual(version.data.snapshot.exercises.map((e: Data) => e.id), ['row_back', 'bench-press_chest']);
+  assert.deepEqual(out, {
+    ok: true,
+    routine: {
+      id: 'pull-day',
+      name: 'Pull Day',
+      description: 'Back work',
+      exercises: [
+        { id: 'row_back', name: 'Row', muscleGroup: 'Back', setStructure: 'normal' },
+        { id: 'bench-press_chest', name: 'Bench Press', muscleGroup: 'Chest', setStructure: 'normal' },
+      ],
+    },
+    historyRecorded: true,
+  });
+});
+
+test('create_routine: the first routine gets order 0 and an empty description', async () => {
+  const db = fakeDb({ 'exercises/row_back': row });
+  ok(await db.tools.create_routine({ name: 'Pull Day', exerciseIds: ['row_back'] }));
+  const routine = oneBatch(db)[0].data;
+  assert.equal(routine.order, 0);
+  assert.equal(routine.description, '');
+});
+
+test('create_routine: a taken id gets the app suffix and the existing routine is not touched', async () => {
+  const db = fakeDb(seed());
+  const before = JSON.stringify(db.get('routines/push-day'));
+  ok(await db.tools.create_routine({ name: 'Push Day', exerciseIds: ['row_back'] }));
+  assert.equal(oneBatch(db)[0].path, `${ROOT}routines/push-day-2`);
+  assert.equal(JSON.stringify(db.get('routines/push-day')), before);
+});
+
+test('create_routine: an id with history of a removed routine chains to its last version', async () => {
+  const old = { id: 'leg-day_5', routineId: 'leg-day', routineName: 'Leg Day', changeType: 'deleted', source: 'routine-editor', createdAtMs: NOW_MS + 50, snapshot: { name: 'Leg Day', description: '', exercises: [] }, snapshotHash: 'aaaaaaaa', prevHash: null };
+  const db = fakeDb(seed({ 'routineHistory/leg-day_5': old }));
+  ok(await db.tools.create_routine({ name: 'Leg Day', exerciseIds: ['row_back'] }));
+  const [version] = versionsOf(oneBatch(db));
+  assert.equal(version.data.prevHash, 'aaaaaaaa');
+  assert.equal(version.data.createdAtMs, NOW_MS + 51, 'after the latest stored version');
+});
+
+test('create_routine: an unknown exercise id, a repeated id or a name with no id writes nothing', async () => {
+  const unknown = fakeDb(seed());
+  refused(await unknown.tools.create_routine({ name: 'Pull Day', exerciseIds: ['row_back', 'nope'] }), 'not_found', unknown);
+
+  const repeated = fakeDb(seed());
+  refused(await repeated.tools.create_routine({ name: 'Pull Day', exerciseIds: ['row_back', 'row_back'] }), 'already_in_routine', repeated);
+
+  const noSlug = fakeDb(seed());
+  refused(await noSlug.tools.create_routine({ name: '!!!', exerciseIds: ['row_back'] }), 'id_unavailable', noSlug);
+
+  const reserved = fakeDb(seed());
+  refused(await reserved.tools.create_routine({ name: '__x__', exerciseIds: ['row_back'] }), 'id_unavailable', reserved);
+});
+
+// ─── add_exercise_to_routine ─────────────────────────────────────────
+
+test('add: one batch, a merge of exercises + updatedAt only, plus baseline and updated versions', async () => {
+  const db = fakeDb(seed());
+  const out = ok(await db.tools.add_exercise_to_routine({ routineId: 'push-day', exerciseId: 'row_back' }));
+  const ops = oneBatch(db);
+  assert.equal(ops.length, 3);
+  assert.deepEqual(ops[0], {
+    kind: 'set',
+    path: `${ROOT}routines/push-day`,
+    data: {
+      exercises: [entry('bench-press_chest', bench, 'superset'), entry('dips_triceps', dips), entry('row_back', row)],
+      updatedAt: TS,
+    },
+    options: { merge: true },
+  });
+
+  // The routine had no history: the planner backfills its pre-edit state first.
+  const [baseline, updated] = versionsOf(ops);
+  assert.equal(baseline.kind, 'create');
+  assert.equal(baseline.data.changeType, 'baseline');
+  assert.equal(baseline.data.source, 'backfill');
+  assert.equal(baseline.data.snapshot.exercises.length, 2);
+  assert.equal(updated.kind, 'create');
+  assert.equal(updated.data.changeType, 'updated');
+  assert.equal(updated.data.source, 'mcp');
+  assert.equal(updated.data.prevHash, baseline.data.snapshotHash);
+  assert.ok(baseline.data.createdAtMs < updated.data.createdAtMs);
+  assert.equal(updated.path, `${ROOT}routineHistory/${updated.data.id}`);
+
+  // The merge keeps every other field of the stored routine.
+  const stored = db.get('routines/push-day')!;
+  assert.equal(stored.name, 'Push Day');
+  assert.equal(stored.description, 'Chest and triceps');
+  assert.equal(stored.order, 2);
+  assert.equal(stored.createdAt, CREATED_AT);
+  assert.equal(stored.legacyField, 'keep me');
+  assert.equal(stored.updatedAt, TS);
+  assert.equal(stored.exercises.length, 3);
+
+  assert.equal(out.historyRecorded, true);
+  assert.deepEqual(out.routine.exercises.map((e: Data) => e.id), ['bench-press_chest', 'dips_triceps', 'row_back']);
+});
+
+test('add: `index` inserts at that position, 0 and end included', async () => {
+  for (const [index, expected] of [
+    [0, ['row_back', 'bench-press_chest', 'dips_triceps']],
+    [1, ['bench-press_chest', 'row_back', 'dips_triceps']],
+    [2, ['bench-press_chest', 'dips_triceps', 'row_back']],
+  ] as const) {
+    const db = fakeDb(seed());
+    ok(await db.tools.add_exercise_to_routine({ routineId: 'push-day', exerciseId: 'row_back', index }));
+    assert.deepEqual(oneBatch(db)[0].data.exercises.map((e: Data) => e.id), expected);
+  }
+});
+
+test('add: with stored history the new version chains to the latest one and no baseline is written', async () => {
+  const v1 = { id: 'push-day_1', routineId: 'push-day', routineName: 'Push Day', changeType: 'created', source: 'routine-editor', createdAtMs: NOW_MS - 2000, snapshot: {}, snapshotHash: '11111111', prevHash: null };
+  const v2 = { ...v1, id: 'push-day_2', changeType: 'updated', createdAtMs: NOW_MS - 1000, snapshotHash: '22222222', prevHash: '11111111' };
+  const other = { ...v1, id: 'other_9', routineId: 'other', createdAtMs: NOW_MS + 999, snapshotHash: '99999999' };
+  const db = fakeDb(seed({ 'routineHistory/push-day_2': v2, 'routineHistory/push-day_1': v1, 'routineHistory/other_9': other }));
+  ok(await db.tools.add_exercise_to_routine({ routineId: 'push-day', exerciseId: 'row_back' }));
+  const versions = versionsOf(oneBatch(db));
+  assert.equal(versions.length, 1);
+  assert.equal(versions[0].data.changeType, 'updated');
+  assert.equal(versions[0].data.source, 'mcp');
+  assert.equal(versions[0].data.prevHash, '22222222');
+  assert.equal(versions[0].data.createdAtMs, NOW_MS);
+});
+
+test('add: refusals write nothing', async () => {
+  const dup = fakeDb(seed());
+  refused(await dup.tools.add_exercise_to_routine({ routineId: 'push-day', exerciseId: 'dips_triceps' }), 'already_in_routine', dup);
+
+  const noExercise = fakeDb(seed());
+  refused(await noExercise.tools.add_exercise_to_routine({ routineId: 'push-day', exerciseId: 'nope' }), 'not_found', noExercise);
+
+  const noRoutine = fakeDb(seed());
+  refused(await noRoutine.tools.add_exercise_to_routine({ routineId: 'nope', exerciseId: 'row_back' }), 'not_found', noRoutine);
+
+  const pastEnd = fakeDb(seed());
+  refused(await pastEnd.tools.add_exercise_to_routine({ routineId: 'push-day', exerciseId: 'row_back', index: 3 }), 'slot_mismatch', pastEnd);
+
+  const many = Array.from({ length: MAX_ROUTINE_EXERCISES }, (_, i) => entry(`ex-${i}`, { name: `Ex ${i}`, muscleGroup: 'Chest' }));
+  const full = fakeDb(seed({ 'routines/push-day': { ...pushDay(), exercises: many } }));
+  refused(await full.tools.add_exercise_to_routine({ routineId: 'push-day', exerciseId: 'row_back' }), 'routine_full', full);
+});
+
+// ─── replace_exercise_in_routine ─────────────────────────────────────
+
+test('replace: the slot keeps its position and set structure; one batch, source mcp', async () => {
+  const db = fakeDb(seed());
+  const out = ok(await db.tools.replace_exercise_in_routine({ routineId: 'push-day', index: 0, expectedExerciseId: 'bench-press_chest', newExerciseId: 'row_back' }));
+  const ops = oneBatch(db);
+  assert.deepEqual(ops[0].data, { exercises: [entry('row_back', row, 'superset'), entry('dips_triceps', dips)], updatedAt: TS });
+  assert.deepEqual(ops[0].options, { merge: true });
+  const versions = versionsOf(ops);
+  assert.deepEqual(versions.map(v => [v.data.changeType, v.data.source]), [['baseline', 'backfill'], ['updated', 'mcp']]);
+  assert.deepEqual(out.routine.exercises[0], { id: 'row_back', name: 'Row', muscleGroup: 'Back', setStructure: 'superset' });
+});
+
+test('replace: a wrong expected id writes nothing (slot_mismatch)', async () => {
+  const wrongId = fakeDb(seed());
+  refused(
+    await wrongId.tools.replace_exercise_in_routine({ routineId: 'push-day', index: 0, expectedExerciseId: 'dips_triceps', newExerciseId: 'row_back' }),
+    'slot_mismatch',
+    wrongId,
+  );
+  const pastEnd = fakeDb(seed());
+  refused(
+    await pastEnd.tools.replace_exercise_in_routine({ routineId: 'push-day', index: 5, expectedExerciseId: 'bench-press_chest', newExerciseId: 'row_back' }),
+    'slot_mismatch',
+    pastEnd,
+  );
+});
+
+test('replace: an exercise already in the routine, or an unknown one, writes nothing', async () => {
+  const dup = fakeDb(seed());
+  refused(
+    await dup.tools.replace_exercise_in_routine({ routineId: 'push-day', index: 0, expectedExerciseId: 'bench-press_chest', newExerciseId: 'dips_triceps' }),
+    'already_in_routine',
+    dup,
+  );
+  const unknown = fakeDb(seed());
+  refused(
+    await unknown.tools.replace_exercise_in_routine({ routineId: 'push-day', index: 0, expectedExerciseId: 'bench-press_chest', newExerciseId: 'nope' }),
+    'not_found',
+    unknown,
+  );
+});
+
+// ─── remove_exercise_from_routine ────────────────────────────────────
+
+test('remove: one batch, the rest keep their order; the library exercise stays', async () => {
+  const db = fakeDb(seed());
+  ok(await db.tools.remove_exercise_from_routine({ routineId: 'push-day', exerciseId: 'bench-press_chest' }));
+  const ops = oneBatch(db);
+  assert.deepEqual(ops[0].data, { exercises: [entry('dips_triceps', dips)], updatedAt: TS });
+  assert.deepEqual(versionsOf(ops).map(v => v.data.source), ['backfill', 'mcp']);
+  assert.deepEqual(db.get('exercises/bench-press_chest'), bench);
+});
+
+test('remove: the last exercise, or one that is not in the routine, writes nothing', async () => {
+  const last = fakeDb(seed({ 'routines/push-day': { ...pushDay(), exercises: [entry('dips_triceps', dips)] } }));
+  refused(await last.tools.remove_exercise_from_routine({ routineId: 'push-day', exerciseId: 'dips_triceps' }), 'last_exercise', last);
+
+  const absent = fakeDb(seed());
+  refused(await absent.tools.remove_exercise_from_routine({ routineId: 'push-day', exerciseId: 'row_back' }), 'not_in_routine', absent);
+});
+
+// ─── reorder_routine_exercises ───────────────────────────────────────
+
+test('reorder: one batch with the new order; entries keep their fields', async () => {
+  const db = fakeDb(seed());
+  ok(await db.tools.reorder_routine_exercises({ routineId: 'push-day', exerciseIds: ['dips_triceps', 'bench-press_chest'] }));
+  const ops = oneBatch(db);
+  assert.deepEqual(ops[0].data, { exercises: [entry('dips_triceps', dips), entry('bench-press_chest', bench, 'superset')], updatedAt: TS });
+  assert.deepEqual(versionsOf(ops).map(v => [v.data.changeType, v.data.source]), [['baseline', 'backfill'], ['updated', 'mcp']]);
+});
+
+test('reorder: a different id set writes nothing (order_mismatch)', async () => {
+  for (const exerciseIds of [
+    ['dips_triceps'],
+    ['dips_triceps', 'bench-press_chest', 'row_back'],
+    ['dips_triceps', 'row_back'],
+    ['dips_triceps', 'dips_triceps'],
+  ]) {
+    const db = fakeDb(seed());
+    refused(await db.tools.reorder_routine_exercises({ routineId: 'push-day', exerciseIds }), 'order_mismatch', db);
+  }
+});
+
+test('reorder: the same order records no new version', async () => {
+  const db = fakeDb(seed());
+  const out = ok(await db.tools.reorder_routine_exercises({ routineId: 'push-day', exerciseIds: ['bench-press_chest', 'dips_triceps'] }));
+  assert.deepEqual(versionsOf(oneBatch(db)).map(v => v.data.changeType), ['baseline']);
+  assert.equal(out.historyRecorded, false);
+});
+
+// ─── History and stored data the tools cannot trust ──────────────────
+
+test('a truncated history read refuses with conflict and writes nothing', async () => {
+  const history: Record<string, Data> = {};
+  for (let i = 0; i <= MAX_ROUTINE_HISTORY; i++) {
+    history[`routineHistory/push-day_${i}`] = { routineId: 'push-day', createdAtMs: i, snapshotHash: 'x' };
+  }
+  const db = fakeDb(seed(history));
+  refused(await db.tools.add_exercise_to_routine({ routineId: 'push-day', exerciseId: 'row_back' }), 'conflict', db);
+});
+
+test('a stored version or routine entry the tool cannot read refuses with conflict', async () => {
+  const badVersion = fakeDb(seed({ 'routineHistory/push-day_1': { routineId: 'push-day', snapshotHash: 'x' } }));
+  refused(await badVersion.tools.add_exercise_to_routine({ routineId: 'push-day', exerciseId: 'row_back' }), 'conflict', badVersion);
+
+  const badEntry = fakeDb(seed({ 'routines/push-day': { ...pushDay(), exercises: [{ name: 'No id', muscleGroup: 'Chest' }, entry('dips_triceps', dips)] } }));
+  refused(await badEntry.tools.remove_exercise_from_routine({ routineId: 'push-day', exerciseId: 'dips_triceps' }), 'conflict', badEntry);
+
+  const twice = fakeDb(seed({ 'routines/push-day': { ...pushDay(), exercises: [entry('dips_triceps', dips), entry('dips_triceps', dips), entry('row_back', row)] } }));
+  refused(await twice.tools.remove_exercise_from_routine({ routineId: 'push-day', exerciseId: 'dips_triceps' }), 'conflict', twice);
+});
+
+// ─── All tools together ──────────────────────────────────────────────
+
+test('every routine tool: exactly one batch and one commit, owner paths only, new versions with source mcp', async () => {
+  const calls: Array<(t: ReturnType<typeof fakeDb>['tools']) => Promise<ToolResult>> = [
+    t => t.create_routine({ name: 'Pull Day', exerciseIds: ['row_back'] }),
+    t => t.add_exercise_to_routine({ routineId: 'push-day', exerciseId: 'row_back', index: 0 }),
+    t => t.replace_exercise_in_routine({ routineId: 'push-day', index: 1, expectedExerciseId: 'dips_triceps', newExerciseId: 'row_back' }),
+    t => t.remove_exercise_from_routine({ routineId: 'push-day', exerciseId: 'dips_triceps' }),
+    t => t.reorder_routine_exercises({ routineId: 'push-day', exerciseIds: ['dips_triceps', 'bench-press_chest'] }),
+  ];
+  for (const call of calls) {
+    const db = fakeDb(seed());
+    ok(await call(db.tools));
+    const ops = oneBatch(db);
+    const routineOps = ops.filter(op => op.path.startsWith(`${ROOT}routines/`));
+    const versions = versionsOf(ops);
+    assert.equal(routineOps.length, 1, 'one routine write');
+    assert.equal(routineOps.length + versions.length, ops.length, 'only the routine and its versions');
+    assert.ok(versions.length >= 1);
+    for (const version of versions) {
+      assert.equal(version.kind, 'create');
+      // The only version that is not from this tool is the planner's backfilled baseline.
+      assert.equal(version.data.source, version.data.changeType === 'baseline' ? 'backfill' : 'mcp');
+    }
+    assert.equal(versions.filter(v => v.data.source === 'mcp').length, 1);
+  }
+});
+
+// ─── Failures ────────────────────────────────────────────────────────
+
+test('a failed read is write_failed with no internal detail, and opens no batch', async () => {
+  const db = fakeDb(seed(), { failRead: true });
+  const results = [
+    await db.tools.create_exercise({ name: 'Cable Fly', muscleGroup: 'Chest' }),
+    await db.tools.create_routine({ name: 'Pull Day', exerciseIds: ['row_back'] }),
+    await db.tools.add_exercise_to_routine({ routineId: 'push-day', exerciseId: 'row_back' }),
+    await db.tools.replace_exercise_in_routine({ routineId: 'push-day', index: 0, expectedExerciseId: 'bench-press_chest', newExerciseId: 'row_back' }),
+    await db.tools.remove_exercise_from_routine({ routineId: 'push-day', exerciseId: 'dips_triceps' }),
+    await db.tools.reorder_routine_exercises({ routineId: 'push-day', exerciseIds: ['dips_triceps', 'bench-press_chest'] }),
+  ];
+  for (const result of results) {
+    assert.equal(result.isError, true);
+    assert.match(result.content[0].text, /^write_failed: /);
+    assert.doesNotMatch(result.content[0].text, /secret|fake-owner|users\//);
+  }
+  assert.equal(db.batches.length, 0);
+});
+
+test('a failed commit is write_failed with no internal detail, and the stored routine is unchanged', async () => {
+  const db = fakeDb(seed(), { failCommit: true });
+  const before = JSON.stringify(db.get('routines/push-day'));
+  const result = await db.tools.add_exercise_to_routine({ routineId: 'push-day', exerciseId: 'row_back' });
+  assert.equal(result.isError, true);
+  assert.match(result.content[0].text, /^write_failed: /);
+  assert.doesNotMatch(result.content[0].text, /secret|fake-owner|users\//);
+  assert.equal(JSON.stringify(db.get('routines/push-day')), before);
+});

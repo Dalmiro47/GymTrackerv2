@@ -50,14 +50,26 @@ export function createRequestLimiter({ perMinute = 60, perHour = 600 }: RequestL
 // Firestore keeps retrying when it cannot be reached; the route's maxDuration is 30s.
 export const TOOL_TIMEOUT_MS = 20_000;
 
-/** Runs a read tool body with a deadline. */
-export function withTimeout<A>(fn: (args: A) => Promise<ToolResult>, timeoutMs = TOOL_TIMEOUT_MS) {
+const TIMEOUT_MESSAGE = {
+  read: (seconds: number) => `Reading the data took longer than ${seconds}s. Try again later.`,
+  // The deadline does not cancel a commit that is already on its way.
+  write: (seconds: number) =>
+    `The change took longer than ${seconds}s and its outcome is unknown: it may have been written. ` +
+    'Read the routine or the exercise again before any retry, and do not repeat the call if the change is there.',
+};
+
+/** Runs a tool body with a deadline. `kind` picks the message: a write may have committed. */
+export function withTimeout<A>(
+  fn: (args: A) => Promise<ToolResult>,
+  timeoutMs = TOOL_TIMEOUT_MS,
+  kind: 'read' | 'write' = 'read',
+) {
   return async (args: A): Promise<ToolResult> => {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const timeout = new Promise<ToolResult>(resolve => {
       timer = setTimeout(() => {
         console.error('[mcp] tool_timeout');
-        resolve(errorResult(`Reading the data took longer than ${timeoutMs / 1000}s. Try again later.`));
+        resolve(errorResult(TIMEOUT_MESSAGE[kind](timeoutMs / 1000)));
       }, timeoutMs);
     });
     try {

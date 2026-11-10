@@ -36,7 +36,7 @@ FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nMIIE...\n-----END PRIVATE KEY
 
 - **Firebase web config**: Firebase Console, Project Settings, "Your apps", add a Web app (`</>`), and copy its values.
 - **Service account**: Project Settings, Service accounts, Generate new private key. It lets the server write the daily AI-usage counter, which the security rules keep read-only for clients. Keep the double quotes above; in the Vercel dashboard paste the same value **without** them, or the quotes become part of the key. Without these two the app still runs, but daily AI limits are silently not enforced (a banner on `/admin` says so).
-- **MCP endpoint** (optional): `MCP_ACCESS_KEY` and `MCP_OWNER_UID` turn on the read-only MCP server at `/api/mcp/<MCP_ACCESS_KEY>`, which serves that one user's data and needs the service account. Without both it answers 401.
+- **MCP endpoint** (optional): `MCP_ACCESS_KEY` and `MCP_OWNER_UID` turn on the MCP server at `/api/mcp/<MCP_ACCESS_KEY>`, which reads that one user's data, can add exercises and routines and edit a routine's exercises (no deletes), and needs the service account. Without both it answers 401.
 - **Google Sign-In**: Firebase Console, Authentication, Sign-in method: enable Google and add your project's support email.
 - **Cloud Firestore**: Firebase Console, Firestore Database: create the database and pick a location, then deploy the rules below before using it.
 
@@ -57,7 +57,7 @@ firebase deploy --only firestore:rules
 
 ## Where things live
 
-- `src/app/`: pages and layouts (App Router): `(app)/` authenticated routes, `login/` login page, `api/coach/` AI coach endpoints, `api/mcp/` read-only MCP server
+- `src/app/`: pages and layouts (App Router): `(app)/` authenticated routes, `login/` login page, `api/coach/` AI coach endpoints, `api/mcp/` MCP server (read and write tools)
 - `src/components/`: shared React components: `ui/` (ShadCN), `layout/` (desktop sidebar, header with the `AppBarActions` slot, mobile `BottomNav`), and one folder per feature (such as `exercises/`)
 - `src/contexts/`: React context providers (such as `AuthContext`)
 - `src/hooks/`: custom React hooks

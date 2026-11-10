@@ -27,6 +27,10 @@ export const MAX_ROUTINES = 50;
 export const MAX_EXERCISES = 300;
 /** Upper bound for one workoutLogs read (one doc per day; the widest tool window is 365 days). */
 export const MAX_LOGS = 366;
+/** Upper bound for one routine's history read. Past it the write tools refuse instead of guessing the latest version. */
+export const MAX_ROUTINE_HISTORY = 500;
+/** How many ids (`base`, `base-2`, ...) a create tool tries before it gives up. */
+export const MAX_ID_CANDIDATES = 20;
 
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -53,7 +57,23 @@ export type McpRepo = {
   getProfile(): Promise<Record<string, unknown> | null>;
 };
 
-export function createRepo(db: ReadDb, uid: string): McpRepo {
+/** Reads only the write tools need. Still reads: this file has no write. */
+export type McpWriteReads = {
+  getExercise(id: string): Promise<RawDoc | null>;
+  /** `order` of the last routine (0 when it has none), or null when there is no routine. */
+  getLastRoutineOrder(): Promise<number | null>;
+  /**
+   * The first id among `baseId`, `baseId-2`, ... that no document uses, like the
+   * app's suffix loop. Null when a candidate is not a safe id or all are taken.
+   */
+  findFreeDocId(collection: 'routines' | 'exercises', baseId: string): Promise<string | null>;
+  /** Every stored version of one routine, in no order; the caller sorts. */
+  listRoutineHistory(routineId: string): Promise<RawList>;
+};
+
+export type McpRepoWithWriteReads = McpRepo & McpWriteReads;
+
+export function createRepo(db: ReadDb, uid: string): McpRepoWithWriteReads {
   if (!isSafeDocId(uid)) throw new Error('bad_owner');
   const root = `users/${uid}`;
 
@@ -93,6 +113,36 @@ export function createRepo(db: ReadDb, uid: string): McpRepo {
     async getProfile() {
       const snap = await db.doc(`${root}/profile/profile`).get();
       return (snap.exists ? snap.data() : undefined) ?? null;
+    },
+
+    async getExercise(id) {
+      if (!isSafeDocId(id)) throw new Error('bad_id');
+      const snap = await db.doc(`${root}/exercises/${id}`).get();
+      const data = snap.exists ? snap.data() : undefined;
+      return data ? { id: snap.id, data } : null;
+    },
+
+    async getLastRoutineOrder() {
+      const last = await list(db.collection(`${root}/routines`).orderBy('order', 'desc'), 1);
+      if (last.rows.length === 0) return null;
+      const order = last.rows[0].data.order;
+      return typeof order === 'number' && Number.isFinite(order) ? order : 0;
+    },
+
+    async findFreeDocId(collection, baseId) {
+      if (collection !== 'routines' && collection !== 'exercises') throw new Error('bad_collection');
+      for (let n = 1; n <= MAX_ID_CANDIDATES; n++) {
+        const candidate = n === 1 ? baseId : `${baseId}-${n}`;
+        if (!isSafeDocId(candidate)) return null;
+        const snap = await db.doc(`${root}/${collection}/${candidate}`).get();
+        if (!snap.exists) return candidate;
+      }
+      return null;
+    },
+
+    async listRoutineHistory(routineId) {
+      if (!isSafeDocId(routineId)) throw new Error('bad_id');
+      return list(db.collection(`${root}/routineHistory`).where('routineId', '==', routineId), MAX_ROUTINE_HISTORY);
     },
   };
 }

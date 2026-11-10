@@ -18,6 +18,7 @@ import {
 import { deleteAllPerformanceEntriesForExercise } from './trainingLogService';
 import { stripUndefinedDeep } from '@/lib/sanitize';
 import { buildExerciseDocId } from '@/lib/ids';
+import { buildExerciseDoc } from '@/lib/exerciseDoc';
 import { defaultExercises } from '@/lib/defaultExercises';
 import { cachedFetch, invalidateCache } from '@/lib/sessionCache';
 
@@ -139,33 +140,7 @@ export async function addExercise(userId: string, data: ExerciseData): Promise<E
     const ref = doc(db, colPath, candidateId);
     const snap = await getDoc(ref);
     if (!snap.exists()) {
-      const raw = {
-        name: data.name.trim(),
-        muscleGroup: data.muscleGroup,
-        targetNotes: data.targetNotes || '',
-        exerciseSetup: data.exerciseSetup || '',
-        progressiveOverload: data.progressiveOverload || '',
-        instructions: data.instructions || '',
-        dataAiHint: data.dataAiHint || '',
-        warmup: data.warmup
-          ? {
-              template: data.warmup.template,
-              isWeightedBodyweight: data.warmup.isWeightedBodyweight,
-              roundingIncrementKg: data.warmup.roundingIncrementKg,
-              overrideSteps: data.warmup.overrideSteps?.map(s => ({
-                type: s.type,
-                percent: s.type === 'PERCENT' ? s.percent : undefined,
-                reps: s.reps,
-                rest: s.rest,
-                appliesTo: s.appliesTo,
-                note: s.note,
-                label: s.type === 'LABEL' ? s.label : undefined,
-              })),
-            }
-          : undefined,
-      };
-
-      const payload = stripUndefinedDeep(raw);
+      const payload = buildExerciseDoc(data);
 
       await setDoc(ref, payload);
       invalidateCache(exercisesCacheKey(userId));

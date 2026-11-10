@@ -3,7 +3,6 @@ import type { Routine, RoutineData } from '@/types';
 import type {
   RoutineChangeSource,
   RoutineChangeType,
-  RoutineSnapshot,
   RoutineVersion,
   RoutineVersionWithDiff,
 } from '@/types/routineHistory';
@@ -15,11 +14,8 @@ import {
   setDoc,
   where,
 } from 'firebase/firestore';
-import {
-  changesForVersion,
-  hashRoutineSnapshot,
-  toRoutineSnapshot,
-} from '@/lib/routineHistory';
+import { changesForVersion } from '@/lib/routineHistory';
+import { planRoutineVersions } from '@/lib/routineHistoryPlan';
 
 /**
  * Routine change history — read/write.
@@ -99,79 +95,34 @@ export const recordRoutineVersion = async (
 
   try {
     const existing = await getRoutineHistory(userId, routineId);
+    const previousState = options?.previousState ?? null;
 
-    // Backfill: a routine that predates this feature has no recorded past. Write
-    // a synthetic 'baseline' from the pre-edit state so the first real change has
-    // something to diff against. We never invent versions older than that — the
-    // earlier edits genuinely weren't recorded.
-    if (existing.length === 0 && options?.previousState) {
-      const baseline = await writeVersion(
-        userId,
-        routineId,
-        options.previousState,
-        'baseline',
-        'backfill',
-        null,
-      );
-      if (baseline) existing.unshift(baseline);
-    }
-
-    const latest = existing[0] ?? null;
-    const snapshot = toRoutineSnapshot(routine);
-    const snapshotHash = hashRoutineSnapshot(snapshot);
-
-    // No-op guard. Deletions always record, since the value is the event itself.
-    if (changeType !== 'deleted' && latest && latest.snapshotHash === snapshotHash) {
-      return null;
-    }
-
-    return await writeVersion(
-      userId,
+    // Which versions to append is decided by the pure planner (shared with the
+    // MCP write tools): a 'baseline' backfill for a routine that predates this
+    // feature, the hash no-op guard, and the prevHash chain.
+    const planned = planRoutineVersions({
       routineId,
-      routine,
+      existing,
+      before: previousState,
+      after: routine,
       changeType,
       source,
-      latest ? latest.snapshotHash : null,
-      snapshot,
-      snapshotHash,
-    );
+      now: Date.now(),
+    });
+
+    for (const version of planned) {
+      await setDoc(doc(db, getHistoryCollectionPath(userId), version.id), version);
+    }
+
+    // The planner puts the baseline first, and only for a routine with no history.
+    const hasBaseline = existing.length === 0 && previousState !== null;
+    return planned[hasBaseline ? 1 : 0] ?? null;
   } catch (error: any) {
     // No PII in logs — routine ID only.
     console.warn(`Could not record routine history for "${routineId}":`, error?.message);
     return null;
   }
 };
-
-async function writeVersion(
-  userId: string,
-  routineId: string,
-  routine: RoutineLike,
-  changeType: RoutineChangeType,
-  source: RoutineChangeSource,
-  prevHash: string | null,
-  precomputedSnapshot?: RoutineSnapshot,
-  precomputedHash?: string,
-): Promise<RoutineVersion | null> {
-  const snapshot = precomputedSnapshot ?? toRoutineSnapshot(routine);
-  const snapshotHash = precomputedHash ?? hashRoutineSnapshot(snapshot);
-  const createdAtMs = Date.now();
-  const id = `${routineId}_${createdAtMs}`;
-
-  const version: RoutineVersion = {
-    id,
-    routineId,
-    routineName: snapshot.name,
-    changeType,
-    source,
-    createdAtMs,
-    snapshot,
-    snapshotHash,
-    prevHash,
-  };
-
-  await setDoc(doc(db, getHistoryCollectionPath(userId), id), version);
-  return version;
-}
 
 /**
  * All versions across all routines, newest first — for the AI Coach context.

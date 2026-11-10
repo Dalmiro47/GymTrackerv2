@@ -13,7 +13,7 @@ npm run coach:eval -- [caseFilter] [--repeat=N] [--no-explain]   # Exercise-coac
 firebase deploy --only firestore:rules   # Owner only, from their own terminal (see Destructive Operations)
 ```
 
-Tests: `npm test` (node:test through tsx; no env file, no network). Only `src/lib/mcp/` has tests; the rest is validated by TypeScript and linting.
+Tests: `npm test` (node:test through tsx; no env file, no network). Tests cover `src/lib/mcp/` and the pure doc builders in `src/lib/`; the rest is validated by TypeScript and linting.
 
 `/dds:brain-sync` (shared skill from the dds-kit plugin) captures a session-state milestone to Open Brain via the `capture_thought` MCP tool.
 
@@ -42,7 +42,8 @@ Next.js 15 App Router; Firebase is the sole backend, with no custom API server f
 - Coach provider (`LLMProvider`, `GroqProvider`, `DEFAULT_MODEL`): `src/lib/ai/llm-provider.ts`
 - Coach context serializers: `src/lib/ai/context-builders.ts`; system prompts (`SWAP_RANKING`, volume targets, overload logic, KNOWN EXERCISES): `src/lib/ai/chat-prompts.ts`
 - Coach UI (own fixed panel, `SegmentRenderer`): `src/components/coach/CoachChatSheet.tsx`
-- MCP server (read-only, owner's data, Admin SDK): `src/app/api/mcp/[key]/route.ts`, `src/lib/mcp/` (`auth.ts`, `repo.server.ts`, `tools.read.ts`, `server.ts`); tests `*.test.ts` beside each module, run with `npm test`
+- MCP server (owner's data, Admin SDK; 6 read tools, 6 write tools): `src/app/api/mcp/[key]/route.ts`, `src/lib/mcp/` (`auth.ts`, `repo.server.ts` reads, `repo.write.server.ts` writes, `tools.read.ts`, `tools.write.ts`, `server.ts`); tests `*.test.ts` beside each module, run with `npm test`
+- Doc builders shared by the app services and the MCP write tools: `src/lib/routineDoc.ts`, `src/lib/exerciseDoc.ts`, `src/lib/routineHistoryPlan.ts`
 - Daily quota: `src/lib/usageQuota.ts`, `src/lib/limits.ts`, `src/lib/firebaseAdmin.ts`
 - Language state (`LanguageProvider`, `gt-lang` mirror, `<html lang>`; set from `UserNav`, or `LanguageToggle` on `/login`): `src/contexts/LanguageContext.tsx`
 - Dictionaries: `src/i18n/en.ts` (source of truth), `src/i18n/es.ts`; display helpers and `detectLanguage()`: `src/i18n/index.ts`
@@ -124,6 +125,9 @@ feedback/{docId}          # Top-level: anyone signed in may create, only the adm
 - In `useTrainingLog`, `currentLog` is *derived* (`useMemo`) from `originalLogState`: never store the deload-transformed view in state or write it back to the baseline, or weight reductions compound and corrupt saved logs.
 - Exercise identity = name + muscleGroup, never name alone: `dedupeExercisesByNameAndMuscle` feeds the shared picker, and keying on name silently hid "Dips" (Triceps) behind "Dips" (Chest).
 - Compare a library exercise with `LoggedExercise.exerciseId`, never `.id` (row id): it never matches, so the filter is a silent no-op that still looks correct (shipped in the Replace picker).
+- MCP writes: a write tool runs only after the user's yes in the chat (no token); the write repo has no delete and no update (`create` for new docs, `set` with merge for a routine's `exercises`); every routine write is ONE batch with its history version (source `'mcp'`; a backfilled baseline keeps `'backfill'`). The Admin SDK skips `firestore.rules`, so the path allowlist in `repo.write.server.ts` is the only scope.
+- An MCP write does not reach an open app: `sessionCache` keeps routines and exercises per session, so the app shows old data until a reload (or the 5-min TTL), and a save from a stale routine editor overwrites the MCP change.
+- `src/lib/routineHistory.ts` holds a raw NUL byte (the hash separator, line 55): the Edit and Write tools refuse the file. Put new history code in another module, and never change the separator (every stored `snapshotHash` depends on it).
 - Service reads are memoized via `src/lib/sessionCache.ts` (per-user keys, 5-min TTL, promise-deduped): any NEW write path must call `invalidateCache` with the matching prefix (`exercises:{uid}`, `routines:{uid}`, `wl:{uid}`) or pages silently serve stale data.
 - `AvailableExercisesSelector` renders the muscle-group grid and filtered list from ONE tree with ONE search `<Input>`: splitting into two `return`s or components remounts the input on the first keystroke and closes the mobile keyboard, invisibly on desktop and to automated tests.
 - `LoggedExerciseCard`'s border is the set-structure channel (`SET_STRUCTURE_COLORS` / `--ss-*`): per-card state cues must not add a ring. State lives in a full-bleed band inside `CardContent`, always mounted with only its colors toggling, so a cue flipping mid-typing can't remount the set inputs.

@@ -33,6 +33,21 @@ export function replaceRoutineExerciseAt(
 }
 
 /**
+ * Insert `exercise` at `index`, or append it when `index` is null.
+ * Returns a new list; the rest keep their order.
+ */
+export function addRoutineExerciseAt(
+  list: RoutineExercise[],
+  index: number | null,
+  exercise: RoutineExercise,
+): RoutineExercise[] {
+  if (index === null) return [...list, exercise];
+  const next = [...list];
+  next.splice(index, 0, exercise);
+  return next;
+}
+
+/**
  * Remove the exercise at `index`, preserving the order of the rest.
  */
 export function removeRoutineExerciseAt(
