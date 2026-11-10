@@ -18,6 +18,7 @@ import {
   serverTimestamp
 } from 'firebase/firestore';
 import { slugify } from '@/lib/utils';
+import { buildRoutineCreateFields, buildRoutineUpdateFields } from '@/lib/routineDoc';
 import { recordRoutineVersion } from '@/services/routineHistoryService';
 import type { RoutineChangeSource } from '@/types/routineHistory';
 import { cachedFetch, invalidateCache } from '@/lib/sessionCache';
@@ -39,21 +40,8 @@ export const addRoutine = async (userId: string, routineData: Omit<RoutineData, 
       newOrder = (lastRoutine.order || 0) + 1;
     }
 
-    const simplifiedExercises = routineData.exercises.map(ex => ({
-        id: ex.id, 
-        name: ex.name,
-        muscleGroup: ex.muscleGroup,
-        targetNotes: ex.targetNotes || '',
-        exerciseSetup: ex.exerciseSetup || '',
-        progressiveOverload: ex.progressiveOverload || '', // NEW
-        dataAiHint: ex.dataAiHint || '',
-        setStructure: ex.setStructure || 'normal',
-    }));
-
     const dataToSave: RoutineData & { createdAt: Timestamp; updatedAt: Timestamp } = {
-      ...routineData,
-      exercises: simplifiedExercises,
-      order: newOrder,
+      ...buildRoutineCreateFields(routineData, newOrder),
       createdAt: serverTimestamp() as Timestamp,
       updatedAt: serverTimestamp() as Timestamp,
     };
@@ -156,21 +144,9 @@ export const updateRoutine = async (
     }
 
     let dataToUpdate: Partial<Omit<RoutineData, 'order'>> & { updatedAt: Timestamp } = {
-        ...routineData, 
-        updatedAt: serverTimestamp() as Timestamp 
+        ...buildRoutineUpdateFields(routineData),
+        updatedAt: serverTimestamp() as Timestamp
     };
-    if (routineData.exercises) {
-        dataToUpdate.exercises = routineData.exercises.map(ex => ({
-            id: ex.id,
-            name: ex.name,
-            muscleGroup: ex.muscleGroup,
-            targetNotes: ex.targetNotes || '',
-            exerciseSetup: ex.exerciseSetup || '',
-            progressiveOverload: ex.progressiveOverload || '', // NEW
-            dataAiHint: ex.dataAiHint || '',
-            setStructure: ex.setStructure || 'normal',
-        }));
-    }
     // Note: The 'order' field is managed by updateRoutinesOrder, not here.
     await updateDoc(routineDocRef, dataToUpdate);
     invalidateCache(routinesCacheKey(userId));

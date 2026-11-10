@@ -24,7 +24,7 @@ import {
 import { AvailableExercisesSelector } from './AvailableExercisesSelector';
 import { SelectedRoutineExercisesList } from './SelectedRoutineExercisesList';
 import { ReplaceExerciseDialog } from '@/components/training-log/ReplaceExerciseDialog';
-import { replaceRoutineExerciseAt } from '@/lib/routineEditing';
+import { addRoutineExerciseAt, replaceRoutineExerciseAt } from '@/lib/routineEditing';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -136,13 +136,9 @@ export function AddEditRoutineDialog({
         const routineExercise: RoutineExercise = { ...exerciseToAdd, setStructure: 'normal' };
         
         if (insertionIndex !== null) {
-            const newList = [...prevSelected];
-            newList.splice(insertionIndex, 0, routineExercise);
-            setInsertionIndex(insertionIndex + 1); 
-            return newList;
-        } else {
-            return [...prevSelected, routineExercise];
+            setInsertionIndex(insertionIndex + 1);
         }
+        return addRoutineExerciseAt(prevSelected, insertionIndex, routineExercise);
 
       } else {
         const indexRemoved = prevSelected.findIndex(e => e.id === exerciseId);

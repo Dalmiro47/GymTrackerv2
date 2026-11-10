@@ -37,6 +37,8 @@ export type RoutineChangeSource =
   | 'routine-editor'
   /** Rewritten because the underlying exercise was edited in the library. */
   | 'exercise-cascade'
+  /** Written by an MCP write tool (Claude, after the owner confirmed the change). */
+  | 'mcp'
   /** Synthesized pre-state for a routine that existed before history was added. */
   | 'backfill';
 

@@ -3,7 +3,9 @@ import { McpServer, WebStandardStreamableHTTPServerTransport } from '@modelconte
 import { authorize, unauthorized, type AuthDeps } from './auth';
 import { createRequestLimiter, type RequestLimits } from './limits';
 import { createRepo, type ReadDb } from './repo.server';
+import { createWriteRepo, type WriteDb } from './repo.write.server';
 import { registerReadTools } from './tools.read';
+import { registerWriteTools } from './tools.write';
 
 /**
  * What the route needs from outside. The route file passes the real env and Admin
@@ -11,7 +13,9 @@ import { registerReadTools } from './tools.read';
  */
 export type McpRouteDeps = AuthDeps & {
   /** Called only after auth passed. */
-  db: () => ReadDb;
+  db: () => ReadDb & WriteDb;
+  /** The Admin SDK's `FieldValue.serverTimestamp()`; stamps `createdAt` / `updatedAt` on routine writes. */
+  serverTimestamp: () => unknown;
   now?: () => Date;
   limits?: RequestLimits;
 };
@@ -40,7 +44,14 @@ export function createMcpRouteHandler(deps: McpRouteDeps) {
 
     try {
       const server = new McpServer({ name: 'gym-tracker', version: '1.0.0' });
-      registerReadTools(server, createRepo(deps.db(), auth.ownerUid), deps.now);
+      const db = deps.db();
+      const repo = createRepo(db, auth.ownerUid);
+      registerReadTools(server, repo, deps.now);
+      registerWriteTools(server, {
+        repo,
+        writes: createWriteRepo(db, auth.ownerUid, deps.serverTimestamp),
+        now: deps.now,
+      });
       const transport = new WebStandardStreamableHTTPServerTransport({
         sessionIdGenerator: undefined,
         enableJsonResponse: true,

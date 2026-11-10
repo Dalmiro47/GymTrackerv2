@@ -50,3 +50,17 @@ test('withTimeout: a slow tool returns an error result', async () => {
   assert.equal(result.isError, true);
   assert.match(result.content[0].text, /Try again later/);
 });
+
+test('withTimeout: a slow write tool says the change may be written and to read before a retry', async () => {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const slow = () => new Promise<ReturnType<typeof jsonResult>>(resolve => {
+    timer = setTimeout(() => resolve(jsonResult('late')), 500);
+  });
+  const result = await withTimeout(slow, 10, 'write')(undefined);
+  clearTimeout(timer);
+  assert.equal(result.isError, true);
+  const text = result.content[0].text;
+  assert.match(text, /may have been written/);
+  assert.match(text, /Read the routine or the exercise again before any retry/);
+  assert.doesNotMatch(text, /Try again later/);
+});

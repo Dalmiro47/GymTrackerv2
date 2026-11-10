@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ReadDb } from './repo.server';
+import type { WriteDb } from './repo.write.server';
 import { createMcpRouteHandler, type McpRouteDeps } from './server';
 
 // Fake values only. Requests are built in memory and handed to the same handler
@@ -14,12 +15,13 @@ const untouchableDb = new Proxy({}, {
   get(_target, prop) {
     throw new Error(`db.${String(prop)} must not be reached in this test`);
   },
-}) as ReadDb;
+}) as ReadDb & WriteDb;
 
 const deps = (over: Partial<McpRouteDeps> = {}): McpRouteDeps => ({
   env: { MCP_ACCESS_KEY: KEY, MCP_OWNER_UID: OWNER },
   isAdminConfigured: () => true,
   db: () => untouchableDb,
+  serverTimestamp: () => 'fake-timestamp',
   ...over,
 });
 
@@ -56,7 +58,20 @@ const initialize = {
   },
 };
 
-test('HTTP: initialize, then tools/list returns exactly the six read tools', async () => {
+const READ_TOOLS = [
+  'get_exercise_history', 'get_profile', 'get_recent_logs', 'get_routine', 'list_exercises', 'list_routines',
+];
+// Write tool -> destructiveHint.
+const WRITE_TOOLS: Record<string, boolean> = {
+  add_exercise_to_routine: false,
+  create_exercise: false,
+  create_routine: false,
+  remove_exercise_from_routine: true,
+  reorder_routine_exercises: false,
+  replace_exercise_in_routine: true,
+};
+
+test('HTTP: initialize, then tools/list returns exactly the six read tools and the six write tools', async () => {
   const handler = createMcpRouteHandler(deps());
 
   const initRes = await handler(post(KEY, initialize), ctx(KEY));
@@ -70,13 +85,22 @@ test('HTTP: initialize, then tools/list returns exactly the six read tools', asy
   assert.equal(listRes.status, 200);
   const list = await rpc(listRes);
   assert.equal(list.id, 2);
-  const tools: Array<{ name: string; annotations?: { readOnlyHint?: boolean }; inputSchema: { properties?: object } }> =
-    list.result.tools;
-  assert.deepEqual(tools.map(t => t.name).sort(), [
-    'get_exercise_history', 'get_profile', 'get_recent_logs', 'get_routine', 'list_exercises', 'list_routines',
-  ]);
+  const tools: Array<{
+    name: string;
+    description?: string;
+    annotations?: { readOnlyHint?: boolean; destructiveHint?: boolean };
+    inputSchema: { properties?: object };
+  }> = list.result.tools;
+  assert.equal(tools.length, 12);
+  assert.deepEqual(tools.map(t => t.name).sort(), [...READ_TOOLS, ...Object.keys(WRITE_TOOLS)].sort());
   for (const tool of tools) {
-    assert.equal(tool.annotations?.readOnlyHint, true, `${tool.name} must be read-only`);
+    if (READ_TOOLS.includes(tool.name)) {
+      assert.equal(tool.annotations?.readOnlyHint, true, `${tool.name} must be read-only`);
+    } else {
+      assert.equal(tool.annotations?.readOnlyHint, false, `${tool.name} is a write tool`);
+      assert.equal(tool.annotations?.destructiveHint, WRITE_TOOLS[tool.name], `${tool.name} destructiveHint`);
+      assert.match(tool.description ?? '', /only after the user confirmed this exact change/);
+    }
     for (const key of Object.keys(tool.inputSchema.properties ?? {})) {
       assert.doesNotMatch(key, /uid|user|owner/i, `${tool.name} must not take ${key}`);
     }
@@ -92,6 +116,21 @@ test('HTTP: a tool call with invalid input never reaches the db', async () => {
   const message = await rpc(res);
   // The SDK reports a schema failure as a JSON-RPC error or as an isError result.
   assert.ok(message.error || message.result?.isError === true);
+});
+
+test('HTTP: a write tool call with invalid input never reaches the db', async () => {
+  const handler = createMcpRouteHandler(deps());
+  const calls = [
+    { name: 'create_exercise', arguments: { name: 'Cable Fly', muscleGroup: 'Pecho' } },
+    { name: 'create_routine', arguments: { name: 'Pull Day', exerciseIds: [] } },
+    { name: 'add_exercise_to_routine', arguments: { routineId: 'a/b', exerciseId: 'row_back' } },
+    { name: 'replace_exercise_in_routine', arguments: { routineId: 'push-day', index: 0, newExerciseId: 'row_back' } },
+  ];
+  for (const [i, params] of calls.entries()) {
+    const res = await handler(post(KEY, { jsonrpc: '2.0', id: 10 + i, method: 'tools/call', params }), ctx(KEY));
+    const message = await rpc(res);
+    assert.ok(message.error || message.result?.isError === true, `${params.name} should be refused`);
+  }
 });
 
 test('HTTP: a wrong key is 401 before anything else runs', async () => {
