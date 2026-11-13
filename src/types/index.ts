@@ -39,6 +39,9 @@ export interface WarmupConfig {
 }
 // --- End Warm-up Types ---
 
+/** How a logged dumbbell weight reads: the weight of one dumbbell, or of both together. */
+export type DumbbellLoad = 'perHand' | 'total';
+
 export interface Exercise {
   id: string; // Firestore document ID
   name: string;
@@ -51,6 +54,9 @@ export interface Exercise {
   warmup?: WarmupConfig;
   userEdited?: boolean; // NEW: flag to indicate user has modified this exercise
   trackProgression?: boolean; // Optional override: force key (true) / accessory (false) in the progression detector
+  // Written by the MCP `update_exercise` tool only; the app has no input and no reader for these two yet.
+  loadIncrementKg?: number; // Smallest weight step of this machine or bar, e.g. 2.5 or 5
+  dumbbellLoad?: DumbbellLoad;
 }
 
 export type ExerciseData = Omit<Exercise, 'id'>;

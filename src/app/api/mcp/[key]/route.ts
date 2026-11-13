@@ -15,6 +15,7 @@ const handler = createMcpRouteHandler({
   isAdminConfigured,
   db: () => adminDb(),
   serverTimestamp: () => FieldValue.serverTimestamp(),
+  removeField: () => FieldValue.delete(),
 });
 
 export { handler as GET, handler as POST, handler as DELETE };

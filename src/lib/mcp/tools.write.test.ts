@@ -2,25 +2,41 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { defaultExercises } from '@/lib/defaultExercises';
 import { displayExerciseName } from '@/lib/exerciseDisplay';
-import { createRepo, MAX_ROUTINE_HISTORY, type ReadDb } from './repo.server';
+import { createRepo, MAX_ROUTINE_HISTORY, MAX_ROUTINES, type ReadDb } from './repo.server';
 import { createWriteRepo, type WriteDb } from './repo.write.server';
 import type { ToolResult } from './results';
 import { createWriteTools, MAX_ROUTINE_EXERCISES, writeToolSchemas } from './tools.write';
 
 // Fake values only. The tools run on the real read repo and the real write repo,
 // over an in-memory fake db that records every call. The fake throws on anything
-// that is not a read, `batch.create`, `batch.set` or `batch.commit` (delete,
-// update, add...), and its `create` fails the whole batch when the document
-// exists, like Firestore.
+// that is not a read, `batch.create`, `batch.set`, `batch.update` or
+// `batch.commit` (delete, add...). Its `create` fails the whole batch when the
+// document exists, and its `update` when the document is missing, like Firestore.
 const OWNER = 'fake-owner';
 const ROOT = `users/${OWNER}/`;
 const NOW_MS = 1_800_000_000_000;
 const NOW = () => new Date(NOW_MS);
 const TS = { sentinel: 'serverTimestamp' };
+const REMOVE = { sentinel: 'removeField' };
 
 type Data = Record<string, any>;
-type Op = { kind: 'create' | 'set'; path: string; data: Data; options?: unknown };
+type Op = { kind: 'create' | 'set' | 'update'; path: string; data: Data; options?: unknown };
 type Batch = { ops: Op[]; commits: number };
+
+/** Firestore `update`: a dotted key is a field path, and the remove sentinel drops the key. */
+function applyUpdate(current: Data, data: Data): Data {
+  const next: Data = { ...current };
+  for (const [key, value] of Object.entries(data)) {
+    const [head, child] = key.split('.');
+    if (child === undefined) {
+      if (value === REMOVE) delete next[head];
+      else next[head] = value;
+    } else {
+      next[head] = { ...next[head], [child]: value };
+    }
+  }
+  return next;
+}
 
 const strict = <T extends object>(target: T, label: string): T =>
   new Proxy(target, {
@@ -30,7 +46,16 @@ const strict = <T extends object>(target: T, label: string): T =>
     },
   });
 
-function fakeDb(seed: Record<string, Data> = {}, hooks: { beforeCommit?: (store: Map<string, Data>) => void; failRead?: boolean; failCommit?: boolean } = {}) {
+function fakeDb(
+  seed: Record<string, Data> = {},
+  hooks: {
+    beforeCommit?: (store: Map<string, Data>) => void;
+    failRead?: boolean;
+    failCommit?: boolean;
+    /** The `code` of the error an `update` on a missing document throws; default the gRPC number. */
+    notFoundCode?: unknown;
+  } = {},
+) {
   const store = new Map<string, Data>(Object.entries(seed).map(([path, data]) => [ROOT + path, data]));
   const batches: Batch[] = [];
   const idOf = (path: string) => path.split('/').pop()!;
@@ -91,14 +116,20 @@ function fakeDb(seed: Record<string, Data> = {}, hooks: { beforeCommit?: (store:
             set(ref: { path: string }, data: Data, options: unknown) {
               batch.ops.push({ kind: 'set', path: ref.path, data, options });
             },
+            update(ref: { path: string }, data: Data) {
+              batch.ops.push({ kind: 'update', path: ref.path, data });
+            },
             async commit() {
               batch.commits++;
               hooks.beforeCommit?.(store);
               if (hooks.failCommit) throw new Error(`secret internal detail ${ROOT}`);
               const taken = batch.ops.find(op => op.kind === 'create' && store.has(op.path));
               if (taken) throw Object.assign(new Error(`6 ALREADY_EXISTS: ${taken.path}`), { code: 6 });
+              const gone = batch.ops.find(op => op.kind === 'update' && !store.has(op.path));
+              if (gone) throw Object.assign(new Error(`5 NOT_FOUND: ${gone.path}`), { code: hooks.notFoundCode ?? 5 });
               for (const op of batch.ops) {
-                store.set(op.path, op.kind === 'set' ? { ...store.get(op.path), ...op.data } : op.data);
+                if (op.kind === 'update') store.set(op.path, applyUpdate(store.get(op.path)!, op.data));
+                else store.set(op.path, op.kind === 'set' ? { ...store.get(op.path), ...op.data } : op.data);
               }
             },
           },
@@ -109,7 +140,7 @@ function fakeDb(seed: Record<string, Data> = {}, hooks: { beforeCommit?: (store:
     'db',
   );
 
-  const tools = createWriteTools({ repo: createRepo(db, OWNER), writes: createWriteRepo(db, OWNER, () => TS), now: NOW });
+  const tools = createWriteTools({ repo: createRepo(db, OWNER), writes: createWriteRepo(db, OWNER, () => TS, () => REMOVE), now: NOW });
   const ops = () => batches.flatMap(b => b.ops);
   const get = (path: string) => store.get(ROOT + path);
   return { tools, batches, ops, get, store };
@@ -179,10 +210,11 @@ const versionsOf = (ops: Op[]) => ops.filter(op => op.path.startsWith(`${ROOT}ro
 
 // ─── Input validation ────────────────────────────────────────────────
 
-test('schemas: exactly the six write tools, and none takes a uid', () => {
+test('schemas: exactly the seven write tools, and none takes a uid', () => {
   assert.deepEqual(Object.keys(writeToolSchemas).sort(), [
     'add_exercise_to_routine', 'create_exercise', 'create_routine',
     'remove_exercise_from_routine', 'reorder_routine_exercises', 'replace_exercise_in_routine',
+    'update_exercise',
   ]);
   for (const [name, schema] of Object.entries(writeToolSchemas)) {
     for (const key of Object.keys(schema.shape)) {
@@ -587,6 +619,298 @@ test('reorder: the same order records no new version', async () => {
   assert.equal(out.historyRecorded, false);
 });
 
+// ─── update_exercise ─────────────────────────────────────────────────
+
+test('schemas: update_exercise takes the id and six optional fields, and refuses every other key', () => {
+  const s = writeToolSchemas.update_exercise;
+  assert.deepEqual(Object.keys(s.shape).sort(), [
+    'dumbbellLoad', 'exerciseId', 'exerciseSetup', 'loadIncrementKg', 'progressiveOverload', 'targetNotes', 'warmupTemplate',
+  ]);
+  assert.deepEqual(s.parse({ exerciseId: 'row_back', targetNotes: '  Lats ' }), { exerciseId: 'row_back', targetNotes: 'Lats' });
+  for (const good of [
+    { exerciseId: 'row_back', targetNotes: '', exerciseSetup: 'y'.repeat(2000), progressiveOverload: '8-12 reps' },
+    { exerciseId: 'row_back', warmupTemplate: 'MACHINE_COMPOUND' },
+    { exerciseId: 'row_back', loadIncrementKg: 0.25, dumbbellLoad: 'perHand' },
+    { exerciseId: 'row_back', loadIncrementKg: 1.25, dumbbellLoad: 'total' },
+    { exerciseId: 'row_back', loadIncrementKg: 25 },
+    { exerciseId: 'row_back', loadIncrementKg: null, dumbbellLoad: null },
+  ]) {
+    assert.equal(s.safeParse(good).success, true, JSON.stringify(good).slice(0, 80));
+  }
+  for (const bad of [
+    { targetNotes: 'Lats' },
+    { exerciseId: 'a/b', targetNotes: 'Lats' },
+    { exerciseId: 'row_back', name: 'Renamed' },
+    { exerciseId: 'row_back', muscleGroup: 'Chest' },
+    { exerciseId: 'row_back', trackProgression: true },
+    { exerciseId: 'row_back', setStructure: 'superset' },
+    { exerciseId: 'row_back', instructions: 'x' },
+    { exerciseId: 'row_back', targetNotes: 'y'.repeat(2001) },
+    { exerciseId: 'row_back', targetNotes: null },
+    { exerciseId: 'row_back', warmupTemplate: 'machine' },
+    { exerciseId: 'row_back', warmupTemplate: null },
+    { exerciseId: 'row_back', loadIncrementKg: 0 },
+    { exerciseId: 'row_back', loadIncrementKg: -2.5 },
+    { exerciseId: 'row_back', loadIncrementKg: 25.25 },
+    { exerciseId: 'row_back', loadIncrementKg: 0.1 },
+    { exerciseId: 'row_back', loadIncrementKg: '2.5' },
+    { exerciseId: 'row_back', dumbbellLoad: 'each' },
+  ]) {
+    assert.equal(s.safeParse(bad).success, false, JSON.stringify(bad).slice(0, 80));
+  }
+});
+
+test('update_exercise: no field, or an unknown id, writes nothing', async () => {
+  const empty = fakeDb(seed());
+  refused(await empty.tools.update_exercise({ exerciseId: 'bench-press_chest' }), 'no_fields', empty);
+
+  const unknown = fakeDb(seed());
+  refused(await unknown.tools.update_exercise({ exerciseId: 'nope', targetNotes: 'x' }), 'not_found', unknown);
+});
+
+test('update_exercise: loadIncrementKg and dumbbellLoad are one update on the exercise and touch no routine', async () => {
+  const db = fakeDb(seed());
+  const out = ok(await db.tools.update_exercise({ exerciseId: 'bench-press_chest', loadIncrementKg: 2.5, dumbbellLoad: 'perHand' }));
+  assert.deepEqual(oneBatch(db), [
+    {
+      kind: 'update',
+      path: `${ROOT}exercises/bench-press_chest`,
+      data: { loadIncrementKg: 2.5, dumbbellLoad: 'perHand', userEdited: true, updatedAt: TS },
+    },
+  ]);
+  // Every other stored field stays.
+  assert.deepEqual(db.get('exercises/bench-press_chest'), { ...bench, loadIncrementKg: 2.5, dumbbellLoad: 'perHand', userEdited: true, updatedAt: TS });
+  assert.deepEqual(out, {
+    ok: true,
+    changed: ['loadIncrementKg', 'dumbbellLoad'],
+    exercise: {
+      id: 'bench-press_chest',
+      name: 'Bench Press',
+      muscleGroup: 'Chest',
+      targetNotes: 'Mid chest',
+      exerciseSetup: 'Flat',
+      progressiveOverload: '6-8',
+      repRange: { min: 6, max: 8 },
+      warmupTemplate: 'HEAVY_BARBELL',
+      loadIncrementKg: 2.5,
+      dumbbellLoad: 'perHand',
+    },
+    routinesUpdated: [],
+  });
+});
+
+test('update_exercise: a text change goes to every routine that holds the exercise, in the same batch, source mcp', async () => {
+  const pullDay = { name: 'Pull Day', order: 3, exercises: [entry('row_back', row)] };
+  const legDay = { name: 'Leg Day', order: 4, exercises: [entry('row_back', row), entry('bench-press_chest', bench)] };
+  const db = fakeDb(seed({ 'routines/pull-day': pullDay, 'routines/leg-day': legDay }));
+  const out = ok(await db.tools.update_exercise({ exerciseId: 'bench-press_chest', targetNotes: ' Upper chest ' }));
+  const ops = oneBatch(db);
+  const edited = { ...bench, targetNotes: 'Upper chest' };
+
+  assert.deepEqual(ops[0], {
+    kind: 'update',
+    path: `${ROOT}exercises/bench-press_chest`,
+    data: { targetNotes: 'Upper chest', userEdited: true, updatedAt: TS },
+  });
+  const routineOps = ops.filter(op => op.path.startsWith(`${ROOT}routines/`));
+  assert.deepEqual(routineOps, [
+    {
+      kind: 'set',
+      path: `${ROOT}routines/push-day`,
+      // The slot keeps its position and set structure.
+      data: { exercises: [entry('bench-press_chest', edited, 'superset'), entry('dips_triceps', dips)], updatedAt: TS },
+      options: { merge: true },
+    },
+    {
+      kind: 'set',
+      path: `${ROOT}routines/leg-day`,
+      data: { exercises: [entry('row_back', row), entry('bench-press_chest', edited)], updatedAt: TS },
+      options: { merge: true },
+    },
+  ]);
+  // A routine without the exercise is not written.
+  assert.equal(db.get('routines/pull-day'), pullDay);
+  assert.equal(db.get('routines/push-day')!.legacyField, 'keep me');
+
+  // One baseline (the state before) and one mcp version per routine.
+  const versions = versionsOf(ops);
+  assert.equal(routineOps.length + versions.length + 1, ops.length);
+  for (const routineId of ['push-day', 'leg-day']) {
+    const own = versions.filter(v => v.data.routineId === routineId);
+    assert.deepEqual(own.map(v => [v.kind, v.data.changeType, v.data.source]), [
+      ['create', 'baseline', 'backfill'],
+      ['create', 'updated', 'mcp'],
+    ]);
+    assert.equal(own[1].data.prevHash, own[0].data.snapshotHash);
+    const snapshotEntry = own[1].data.snapshot.exercises.find((e: Data) => e.id === 'bench-press_chest');
+    assert.equal(snapshotEntry.targetNotes, 'Upper chest');
+  }
+  assert.deepEqual(out.changed, ['targetNotes']);
+  assert.equal(out.exercise.targetNotes, 'Upper chest');
+  assert.deepEqual(out.routinesUpdated, [
+    { id: 'push-day', name: 'Push Day', historyRecorded: true },
+    { id: 'leg-day', name: 'Leg Day', historyRecorded: true },
+  ]);
+});
+
+test('update_exercise: a rep range change rewrites the routine copy but records no new version, like the app', async () => {
+  const db = fakeDb(seed());
+  const out = ok(await db.tools.update_exercise({ exerciseId: 'bench-press_chest', progressiveOverload: '8-12 reps' }));
+  const ops = oneBatch(db);
+  assert.deepEqual(ops[0].data, { progressiveOverload: '8-12 reps', userEdited: true, updatedAt: TS });
+  assert.deepEqual(ops[1].data.exercises[0], entry('bench-press_chest', { ...bench, progressiveOverload: '8-12 reps' }, 'superset'));
+  // The history hash does not hold the rep range: only the backfilled baseline is written.
+  assert.deepEqual(versionsOf(ops).map(v => v.data.changeType), ['baseline']);
+  assert.deepEqual(out.exercise.repRange, { min: 8, max: 12 });
+  assert.deepEqual(out.routinesUpdated, [{ id: 'push-day', name: 'Push Day', historyRecorded: false }]);
+});
+
+test('update_exercise: the routine copy gets the three text fields as the library holds them after the change', async () => {
+  const stale = { ...pushDay(), exercises: [{ ...entry('bench-press_chest', bench, 'superset'), exerciseSetup: 'Old setup' }, entry('dips_triceps', dips)] };
+  const db = fakeDb(seed({ 'routines/push-day': stale }));
+  ok(await db.tools.update_exercise({ exerciseId: 'bench-press_chest', progressiveOverload: '5-8 reps' }));
+  assert.deepEqual(oneBatch(db)[1].data.exercises[0], entry('bench-press_chest', { ...bench, progressiveOverload: '5-8 reps' }, 'superset'));
+});
+
+test('update_exercise: an empty string clears a text field', async () => {
+  const db = fakeDb(seed());
+  const out = ok(await db.tools.update_exercise({ exerciseId: 'bench-press_chest', exerciseSetup: '' }));
+  const ops = oneBatch(db);
+  assert.deepEqual(ops[0].data, { exerciseSetup: '', userEdited: true, updatedAt: TS });
+  assert.equal(ops[1].data.exercises[0].exerciseSetup, '');
+  assert.equal('exerciseSetup' in out.exercise, false);
+});
+
+test('update_exercise: warmupTemplate writes the field path only, keeps the other warm-up keys and touches no routine', async () => {
+  const withRounding = { ...bench, warmup: { template: 'HEAVY_BARBELL', roundingIncrementKg: 2.5, overrideSteps: [{ type: 'LABEL', reps: '10', rest: '60s' }] } };
+  const db = fakeDb(seed({ 'exercises/bench-press_chest': withRounding }));
+  const out = ok(await db.tools.update_exercise({ exerciseId: 'bench-press_chest', warmupTemplate: 'MACHINE_COMPOUND' }));
+  assert.deepEqual(oneBatch(db), [
+    {
+      kind: 'update',
+      path: `${ROOT}exercises/bench-press_chest`,
+      data: { 'warmup.template': 'MACHINE_COMPOUND', userEdited: true, updatedAt: TS },
+    },
+  ]);
+  assert.deepEqual(db.get('exercises/bench-press_chest')!.warmup, { ...withRounding.warmup, template: 'MACHINE_COMPOUND' });
+  assert.deepEqual(out.changed, ['warmupTemplate']);
+  assert.equal(out.exercise.warmupTemplate, 'MACHINE_COMPOUND');
+
+  // An exercise with no stored warm-up gets a warm-up that holds the template.
+  const bare = fakeDb(seed());
+  ok(await bare.tools.update_exercise({ exerciseId: 'row_back', warmupTemplate: 'ISOLATION' }));
+  assert.deepEqual(bare.get('exercises/row_back')!.warmup, { template: 'ISOLATION' });
+});
+
+test('update_exercise: null removes loadIncrementKg and dumbbellLoad', async () => {
+  const stored = { ...bench, loadIncrementKg: 5, dumbbellLoad: 'total' };
+  const db = fakeDb(seed({ 'exercises/bench-press_chest': stored }));
+  const out = ok(await db.tools.update_exercise({ exerciseId: 'bench-press_chest', loadIncrementKg: null, dumbbellLoad: null }));
+  assert.deepEqual(oneBatch(db), [
+    {
+      kind: 'update',
+      path: `${ROOT}exercises/bench-press_chest`,
+      data: { loadIncrementKg: REMOVE, dumbbellLoad: REMOVE, userEdited: true, updatedAt: TS },
+    },
+  ]);
+  const after = db.get('exercises/bench-press_chest')!;
+  assert.equal('loadIncrementKg' in after, false);
+  assert.equal('dumbbellLoad' in after, false);
+  assert.deepEqual(out.changed, ['loadIncrementKg', 'dumbbellLoad']);
+  assert.equal('loadIncrementKg' in out.exercise, false);
+  assert.equal('dumbbellLoad' in out.exercise, false);
+
+  // One of the two: the other stays.
+  const one = fakeDb(seed({ 'exercises/bench-press_chest': stored }));
+  ok(await one.tools.update_exercise({ exerciseId: 'bench-press_chest', dumbbellLoad: null }));
+  assert.equal(one.get('exercises/bench-press_chest')!.loadIncrementKg, 5);
+  assert.equal('dumbbellLoad' in one.get('exercises/bench-press_chest')!, false);
+});
+
+test('update_exercise: values equal to the stored ones open no batch', async () => {
+  const stored = { ...bench, loadIncrementKg: 5 };
+  const db = fakeDb(seed({ 'exercises/bench-press_chest': stored }));
+  const out = ok(
+    await db.tools.update_exercise({
+      exerciseId: 'bench-press_chest',
+      targetNotes: 'Mid chest',
+      warmupTemplate: 'HEAVY_BARBELL',
+      loadIncrementKg: 5,
+      // Not stored, so there is nothing to remove.
+      dumbbellLoad: null,
+    }),
+  );
+  assert.equal(db.batches.length, 0);
+  assert.deepEqual(out.changed, []);
+  assert.deepEqual(out.routinesUpdated, []);
+  assert.equal(out.exercise.loadIncrementKg, 5);
+  assert.equal(db.get('exercises/bench-press_chest'), stored);
+});
+
+test('update_exercise: only the changed fields are written', async () => {
+  const db = fakeDb(seed());
+  const out = ok(await db.tools.update_exercise({ exerciseId: 'bench-press_chest', targetNotes: 'Mid chest', loadIncrementKg: 2.5 }));
+  assert.deepEqual(oneBatch(db), [
+    { kind: 'update', path: `${ROOT}exercises/bench-press_chest`, data: { loadIncrementKg: 2.5, userEdited: true, updatedAt: TS } },
+  ]);
+  assert.deepEqual(out.changed, ['loadIncrementKg']);
+});
+
+test('update_exercise: an exercise removed before the commit fails the batch; no document appears and no routine changes', async () => {
+  const db = fakeDb(seed(), { beforeCommit: store => store.delete(`${ROOT}exercises/bench-press_chest`) });
+  const routineBefore = JSON.stringify(db.get('routines/push-day'));
+  const result = await db.tools.update_exercise({ exerciseId: 'bench-press_chest', targetNotes: 'Upper chest', loadIncrementKg: 2.5 });
+  assert.equal(result.isError, true);
+  assert.match(result.content[0].text, /^conflict: /);
+  assert.doesNotMatch(result.content[0].text, /fake-owner|users\//);
+  assert.equal(db.store.has(`${ROOT}exercises/bench-press_chest`), false);
+  assert.equal(JSON.stringify(db.get('routines/push-day')), routineBefore);
+  assert.equal([...db.store.keys()].some(p => p.includes('/routineHistory/')), false);
+});
+
+test('update_exercise: a missing document is a conflict for the numeric gRPC code and for the string form', async () => {
+  for (const notFoundCode of [5, 'not-found']) {
+    const db = fakeDb(seed(), { notFoundCode, beforeCommit: store => store.delete(`${ROOT}exercises/bench-press_chest`) });
+    const result = await db.tools.update_exercise({ exerciseId: 'bench-press_chest', loadIncrementKg: 2.5 });
+    assert.equal(result.isError, true, `code ${String(notFoundCode)}`);
+    assert.match(result.content[0].text, /^conflict: .*Nothing was written\./, `code ${String(notFoundCode)}`);
+    assert.equal(db.store.has(`${ROOT}exercises/bench-press_chest`), false);
+  }
+  // Any other failure of the commit stays write_failed.
+  const other = fakeDb(seed(), { notFoundCode: 13, beforeCommit: store => store.delete(`${ROOT}exercises/bench-press_chest`) });
+  const result = await other.tools.update_exercise({ exerciseId: 'bench-press_chest', loadIncrementKg: 2.5 });
+  assert.match(result.content[0].text, /^write_failed: /);
+});
+
+test('update_exercise: a routine list or a routine the tool cannot read in full refuses a text change', async () => {
+  const many: Record<string, Data> = {};
+  for (let i = 0; i <= MAX_ROUTINES; i++) many[`routines/r-${i}`] = { name: `R ${i}`, order: 10 + i, exercises: [entry('row_back', row)] };
+  const truncated = fakeDb(seed(many));
+  refused(await truncated.tools.update_exercise({ exerciseId: 'bench-press_chest', targetNotes: 'Upper chest' }), 'conflict', truncated);
+
+  const unreadable = { ...pushDay(), exercises: [{ name: 'No id', muscleGroup: 'Chest' }, entry('bench-press_chest', bench)] };
+  const badEntry = fakeDb(seed({ 'routines/push-day': unreadable }));
+  refused(await badEntry.tools.update_exercise({ exerciseId: 'bench-press_chest', targetNotes: 'Upper chest' }), 'conflict', badEntry);
+
+  const badVersion = fakeDb(seed({ 'routineHistory/push-day_1': { routineId: 'push-day', snapshotHash: 'x' } }));
+  refused(await badVersion.tools.update_exercise({ exerciseId: 'bench-press_chest', targetNotes: 'Upper chest' }), 'conflict', badVersion);
+
+  // A library-only field reads no routine, so the same data does not stop it.
+  const libraryOnly = fakeDb(seed(many));
+  ok(await libraryOnly.tools.update_exercise({ exerciseId: 'bench-press_chest', loadIncrementKg: 2.5 }));
+  assert.equal(oneBatch(libraryOnly).length, 1);
+});
+
+test('update_exercise: a failed commit is write_failed, and nothing changed', async () => {
+  const db = fakeDb(seed(), { failCommit: true });
+  const before = JSON.stringify([...db.store.entries()]);
+  const result = await db.tools.update_exercise({ exerciseId: 'bench-press_chest', targetNotes: 'Upper chest' });
+  assert.equal(result.isError, true);
+  assert.match(result.content[0].text, /^write_failed: /);
+  assert.doesNotMatch(result.content[0].text, /secret|fake-owner|users\//);
+  assert.equal(JSON.stringify([...db.store.entries()]), before);
+});
+
 // ─── History and stored data the tools cannot trust ──────────────────
 
 test('a truncated history read refuses with conflict and writes nothing', async () => {
@@ -648,6 +972,7 @@ test('a failed read is write_failed with no internal detail, and opens no batch'
     await db.tools.replace_exercise_in_routine({ routineId: 'push-day', index: 0, expectedExerciseId: 'bench-press_chest', newExerciseId: 'row_back' }),
     await db.tools.remove_exercise_from_routine({ routineId: 'push-day', exerciseId: 'dips_triceps' }),
     await db.tools.reorder_routine_exercises({ routineId: 'push-day', exerciseIds: ['dips_triceps', 'bench-press_chest'] }),
+    await db.tools.update_exercise({ exerciseId: 'bench-press_chest', targetNotes: 'Upper chest' }),
   ];
   for (const result of results) {
     assert.equal(result.isError, true);
