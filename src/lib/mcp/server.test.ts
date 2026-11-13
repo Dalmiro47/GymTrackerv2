@@ -22,6 +22,7 @@ const deps = (over: Partial<McpRouteDeps> = {}): McpRouteDeps => ({
   isAdminConfigured: () => true,
   db: () => untouchableDb,
   serverTimestamp: () => 'fake-timestamp',
+  removeField: () => 'fake-remove',
   ...over,
 });
 
@@ -70,9 +71,10 @@ const WRITE_TOOLS: Record<string, boolean> = {
   remove_exercise_from_routine: true,
   reorder_routine_exercises: false,
   replace_exercise_in_routine: true,
+  update_exercise: true,
 };
 
-test('HTTP: initialize, then tools/list returns exactly the seven read tools and the six write tools', async () => {
+test('HTTP: initialize, then tools/list returns exactly the seven read tools and the seven write tools', async () => {
   const handler = createMcpRouteHandler(deps());
 
   const initRes = await handler(post(KEY, initialize), ctx(KEY));
@@ -92,7 +94,7 @@ test('HTTP: initialize, then tools/list returns exactly the seven read tools and
     annotations?: { readOnlyHint?: boolean; destructiveHint?: boolean };
     inputSchema: { properties?: object };
   }> = list.result.tools;
-  assert.equal(tools.length, 13);
+  assert.equal(tools.length, 14);
   assert.deepEqual(tools.map(t => t.name).sort(), [...READ_TOOLS, ...Object.keys(WRITE_TOOLS)].sort());
   for (const tool of tools) {
     if (READ_TOOLS.includes(tool.name)) {

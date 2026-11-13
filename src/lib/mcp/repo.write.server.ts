@@ -1,11 +1,12 @@
 // server-only: src/lib/mcp/repo.write.server.ts
 // Write access for the MCP endpoint. It can add a document (`create`, which fails
-// when the id is taken) and merge fields into a routine (`set` with merge), and
-// nothing else: the `WriteDb` type has no other write method to call.
+// when the id is taken), merge fields into a routine (`set` with merge) and change
+// the editable fields of an exercise (`update`, which fails when the document is
+// gone), and nothing else: the `WriteDb` type has no other write method to call.
 // Every path is rooted at users/{uid}; the route passes MCP_OWNER_UID, never a
 // value from the request. This file has no read: the tools read through
 // repo.server.ts and validate before they call anything here.
-import type { ExerciseData, RoutineData } from '@/types';
+import type { DumbbellLoad, ExerciseData, RoutineData, WarmupTemplate } from '@/types';
 import type { RoutineVersion } from '@/types/routineHistory';
 import type { RoutineExerciseEntry } from '@/lib/routineDoc';
 import { isSafeDocId } from './repo.server';
@@ -16,6 +17,8 @@ export type WriteBatch = {
   /** Fails the whole batch when the document already exists. */
   create(ref: WriteDocRef, data: Record<string, unknown>): unknown;
   set(ref: WriteDocRef, data: Record<string, unknown>, options: { merge: true }): unknown;
+  /** Fails the whole batch when the document does not exist. A dotted key is a field path. */
+  update(ref: WriteDocRef, data: Record<string, unknown>): unknown;
   commit(): Promise<unknown>;
 };
 
@@ -27,6 +30,25 @@ export type WriteDb = {
 
 const WRITE_COLLECTIONS = ['routines', 'exercises', 'routineHistory'] as const;
 type WriteCollection = (typeof WRITE_COLLECTIONS)[number];
+
+const EXERCISE_TEXT_FIELDS = ['targetNotes', 'exerciseSetup', 'progressiveOverload'] as const;
+const EXERCISE_REMOVABLE_FIELDS = ['loadIncrementKg', 'dumbbellLoad'] as const;
+
+/** The only fields of an exercise this repo can change. A key left out stays as stored. */
+export type ExerciseFieldChange = {
+  /** '' clears the text. */
+  targetNotes?: string;
+  exerciseSetup?: string;
+  progressiveOverload?: string;
+  /** Written as `warmup.template`; every other warm-up key stays. */
+  warmupTemplate?: WarmupTemplate;
+  /** null takes the field off the document. */
+  loadIncrementKg?: number | null;
+  dumbbellLoad?: DumbbellLoad | null;
+};
+
+/** One routine that holds the exercise: its new exercise list and the versions to append. */
+export type RoutineCascade = { id: string; exercises: RoutineExerciseEntry[]; versions: RoutineVersion[] };
 
 export type McpWriteRepo = {
   /** One batch: the new exercise. */
@@ -42,13 +64,25 @@ export type McpWriteRepo = {
     fields: { exercises: RoutineExerciseEntry[] },
     versions: RoutineVersion[],
   ): Promise<void>;
+  /**
+   * One batch: the given fields of an existing exercise, plus `userEdited` and
+   * `updatedAt` as the app writes them, plus each routine's exercise list and its
+   * history versions. The batch fails, and writes nothing, when the exercise is gone.
+   */
+  updateExerciseFields(id: string, change: ExerciseFieldChange, routines: RoutineCascade[]): Promise<void>;
 };
 
 /**
- * `serverTimestamp` is the Admin SDK's `FieldValue.serverTimestamp()`, passed in
- * by the route so this module and its tests never load firebase-admin.
+ * `serverTimestamp` and `removeField` are the Admin SDK's `FieldValue` sentinels
+ * (the server time, and "take this field off the document"), passed in by the
+ * route so this module and its tests never load firebase-admin.
  */
-export function createWriteRepo(db: WriteDb, uid: string, serverTimestamp: () => unknown): McpWriteRepo {
+export function createWriteRepo(
+  db: WriteDb,
+  uid: string,
+  serverTimestamp: () => unknown,
+  removeField: () => unknown,
+): McpWriteRepo {
   if (!isSafeDocId(uid)) throw new Error('bad_owner');
   const root = `users/${uid}`;
 
@@ -89,6 +123,35 @@ export function createWriteRepo(db: WriteDb, uid: string, serverTimestamp: () =>
       const batch = db.batch();
       batch.set(target, { exercises: fields.exercises, updatedAt: serverTimestamp() }, { merge: true });
       for (const version of history) batch.create(version.ref, version.data);
+      await batch.commit();
+    },
+
+    async updateExerciseFields(id, change, routines) {
+      const target = ref('exercises', id);
+      // Only the keys named here reach the document, whatever the argument holds.
+      const fields: Record<string, unknown> = {};
+      for (const key of EXERCISE_TEXT_FIELDS) {
+        if (typeof change[key] === 'string') fields[key] = change[key];
+      }
+      if (change.warmupTemplate !== undefined) fields['warmup.template'] = change.warmupTemplate;
+      for (const key of EXERCISE_REMOVABLE_FIELDS) {
+        const value = change[key];
+        if (value !== undefined) fields[key] = value === null ? removeField() : value;
+      }
+      if (Object.keys(fields).length === 0) throw new Error('empty_change');
+
+      const cascades = routines.map(routine => ({
+        target: ref('routines', routine.id),
+        exercises: routine.exercises,
+        history: versionRefs(routine.id, routine.versions),
+      }));
+
+      const batch = db.batch();
+      batch.update(target, { ...fields, userEdited: true, updatedAt: serverTimestamp() });
+      for (const cascade of cascades) {
+        batch.set(cascade.target, { exercises: cascade.exercises, updatedAt: serverTimestamp() }, { merge: true });
+        for (const version of cascade.history) batch.create(version.ref, version.data);
+      }
       await batch.commit();
     },
   };

@@ -71,6 +71,16 @@ function names(libraryId: string | undefined, storedName: unknown, language: Lan
   return shown !== name ? { name, displayName: shown } : { name };
 }
 
+/** Equipment facts of a library exercise; each key is present only when the document holds a valid value. */
+function equipmentOf(data: Record<string, unknown>) {
+  const warmup = typeof data.warmup === 'object' && data.warmup !== null ? (data.warmup as Record<string, unknown>) : {};
+  return {
+    warmupTemplate: str(warmup.template),
+    loadIncrementKg: num(data.loadIncrementKg) ?? undefined,
+    dumbbellLoad: data.dumbbellLoad === 'perHand' || data.dumbbellLoad === 'total' ? data.dumbbellLoad : undefined,
+  };
+}
+
 const languageOf = (profile: Record<string, unknown> | null): Language =>
   isLanguage(profile?.language) ? profile.language : DEFAULT_LANGUAGE;
 
@@ -206,6 +216,8 @@ export function createReadTools(repo: ReadToolsRepo, now: () => Date = () => new
               ...ex,
               progressiveOverload,
               repRange: parseRepRange(progressiveOverload),
+              // Library fields only: the routine's copy does not hold them.
+              ...(lib ? equipmentOf(lib.data) : {}),
               // Only present when false: the exercise is gone from the library.
               ...(lib ? {} : { inLibrary: false }),
             };
@@ -225,6 +237,7 @@ export function createReadTools(repo: ReadToolsRepo, now: () => Date = () => new
             targetNotes: str(doc.data.targetNotes),
             progressiveOverload: str(doc.data.progressiveOverload),
             exerciseSetup: str(doc.data.exerciseSetup),
+            ...equipmentOf(doc.data),
           }))
           .sort((a, b) => a.name.localeCompare(b.name, 'en', { sensitivity: 'base' }));
         return jsonResult({ returned: exercises.length, truncated: list.truncated, exercises });
@@ -399,7 +412,9 @@ export function createReadTools(repo: ReadToolsRepo, now: () => Date = () => new
 
 const NAMES_NOTE =
   '`name` is the stored name; `displayName` appears only when the app shows a different (Spanish) name.';
-const UTC_NOTE = 'The window is cut on the server\'s UTC date, so it can be one day wider than the local view.';
+const EQUIPMENT_NOTE =
+  'When set: warmupTemplate, loadIncrementKg (smallest weight step in kg) and dumbbellLoad ("perHand" = one dumbbell, "total" = both).';
+const UTC_NOTE ='The window is cut on the server\'s UTC date, so it can be one day wider than the local view.';
 const STATUS_NOTE =
   'status "planned" means the exercise was saved as a plan and its sets are a copy of the last session, not a lift.';
 
@@ -425,7 +440,7 @@ export function registerReadTools(server: McpServer, repo: ReadToolsRepo, now?: 
       description:
         `One routine with its exercises. progressiveOverload is the rep range from the exercise library and ` +
         `repRange its parsed form (null when it has no numeric range); inLibrary false means the exercise is no ` +
-        `longer in the library and the range is the routine's stored copy. ${NAMES_NOTE}`,
+        `longer in the library and the range is the routine's stored copy. ${EQUIPMENT_NOTE} ${NAMES_NOTE}`,
       inputSchema: toolSchemas.get_routine,
       annotations,
     },
@@ -438,7 +453,7 @@ export function registerReadTools(server: McpServer, repo: ReadToolsRepo, now?: 
       title: 'List exercises',
       description:
         `The exercise library (at most 300), sorted by stored name. targetNotes is the target area, ` +
-        `progressiveOverload the rep range. ${NAMES_NOTE}`,
+        `progressiveOverload the rep range. ${EQUIPMENT_NOTE} ${NAMES_NOTE}`,
       inputSchema: toolSchemas.list_exercises,
       annotations,
     },

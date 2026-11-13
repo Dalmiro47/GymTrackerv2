@@ -16,6 +16,8 @@ export type McpRouteDeps = AuthDeps & {
   db: () => ReadDb & WriteDb;
   /** The Admin SDK's `FieldValue.serverTimestamp()`; stamps `createdAt` / `updatedAt` on routine writes. */
   serverTimestamp: () => unknown;
+  /** The Admin SDK's `FieldValue.delete()`; takes one field off an exercise document. */
+  removeField: () => unknown;
   now?: () => Date;
   limits?: RequestLimits;
 };
@@ -49,7 +51,7 @@ export function createMcpRouteHandler(deps: McpRouteDeps) {
       registerReadTools(server, repo, deps.now);
       registerWriteTools(server, {
         repo,
-        writes: createWriteRepo(db, auth.ownerUid, deps.serverTimestamp),
+        writes: createWriteRepo(db, auth.ownerUid, deps.serverTimestamp, deps.removeField),
         now: deps.now,
       });
       const transport = new WebStandardStreamableHTTPServerTransport({

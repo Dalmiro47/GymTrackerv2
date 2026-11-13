@@ -291,6 +291,57 @@ test('list_exercises: passes the filter, sorts by stored name, drops heavy field
   });
 });
 
+test('list_exercises and get_routine: warm-up template, load increment and dumbbell mode, only when stored', async () => {
+  const machine = {
+    name: 'Chest Press',
+    muscleGroup: 'Chest',
+    warmup: { template: 'MACHINE_COMPOUND', roundingIncrementKg: 2.5 },
+    loadIncrementKg: 5,
+    trackProgression: true,
+  };
+  const dumbbell = { name: 'DB Curl', muscleGroup: 'Biceps', loadIncrementKg: 1.25, dumbbellLoad: 'perHand' };
+  // Values the app could not have written are not passed on.
+  const odd = { name: 'Odd', muscleGroup: 'Abs', loadIncrementKg: '5', dumbbellLoad: 'each', warmup: 'NONE' };
+
+  const listed = body(
+    await fakeRepo({
+      exercises: [
+        { id: 'chest-press', data: machine },
+        { id: 'db-curl', data: dumbbell },
+        { id: 'odd', data: odd },
+      ],
+    }).tools.list_exercises({}),
+  );
+  assert.deepEqual(listed.exercises, [
+    { id: 'chest-press', name: 'Chest Press', muscleGroup: 'Chest', warmupTemplate: 'MACHINE_COMPOUND', loadIncrementKg: 5 },
+    { id: 'db-curl', name: 'DB Curl', muscleGroup: 'Biceps', loadIncrementKg: 1.25, dumbbellLoad: 'perHand' },
+    { id: 'odd', name: 'Odd', muscleGroup: 'Abs' },
+  ]);
+
+  const routine = body(
+    await fakeRepo({
+      routine: {
+        id: 'arms',
+        data: {
+          name: 'Arms',
+          exercises: [
+            { id: 'chest-press', name: 'Chest Press', muscleGroup: 'Chest' },
+            { id: 'db-curl', name: 'DB Curl', muscleGroup: 'Biceps' },
+            // Gone from the library: the routine copy holds none of these fields.
+            { id: 'gone', name: 'Gone', muscleGroup: 'Back', loadIncrementKg: 5 },
+          ],
+        },
+      },
+      library: { 'chest-press': machine, 'db-curl': dumbbell },
+    }).tools.get_routine({ id: 'arms' }),
+  );
+  assert.deepEqual(routine.exercises, [
+    { id: 'chest-press', name: 'Chest Press', muscleGroup: 'Chest', setStructure: 'normal', repRange: null, warmupTemplate: 'MACHINE_COMPOUND', loadIncrementKg: 5 },
+    { id: 'db-curl', name: 'DB Curl', muscleGroup: 'Biceps', setStructure: 'normal', repRange: null, loadIncrementKg: 1.25, dumbbellLoad: 'perHand' },
+    { id: 'gone', name: 'Gone', muscleGroup: 'Back', setStructure: 'normal', repRange: null, inLibrary: false },
+  ]);
+});
+
 // ─── Logs ────────────────────────────────────────────────────────────
 
 const benchSets = [{ id: 's1', reps: 8, weight: 80 }, { id: 's2', reps: null, weight: null }];

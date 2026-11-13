@@ -1,24 +1,25 @@
 // server-only: src/lib/mcp/tools.write.ts
-// The write tools of the MCP endpoint: they add exercises and routines and edit
-// the exercise list of a routine. No tool takes a uid, and none removes a
-// document. Every check runs before the batch is opened, so a refused call writes
+// The write tools of the MCP endpoint: they add exercises and routines, edit the
+// exercise list of a routine and edit a few fields of an exercise. No tool takes
+// a uid, and none removes a document. Every check runs before the batch is opened, so a refused call writes
 // nothing. Documents come only from the builders the app uses (routineDoc,
 // exerciseDoc, routineHistoryPlan), so the app and the MCP store the same shape.
 import { z } from 'zod4';
 import type { McpServer } from '@modelcontextprotocol/server';
 import type { Exercise, ExerciseData, MuscleGroup, RoutineExercise } from '@/types';
 import type { RoutineVersion } from '@/types/routineHistory';
-import { MUSCLE_GROUPS_LIST } from '@/lib/constants';
+import { MUSCLE_GROUPS_LIST, WARMUP_TEMPLATES } from '@/lib/constants';
 import { buildExerciseDoc } from '@/lib/exerciseDoc';
 import { displayExerciseName } from '@/lib/exerciseDisplay';
 import { buildExerciseDocId, toSlug } from '@/lib/ids';
 import { buildRoutineCreateFields, buildRoutineUpdateFields, type RoutineExerciseEntry } from '@/lib/routineDoc';
 import { addRoutineExerciseAt, removeRoutineExerciseAt, replaceRoutineExerciseAt } from '@/lib/routineEditing';
 import { planRoutineVersions } from '@/lib/routineHistoryPlan';
+import { parseRepRange } from '@/lib/repGoal';
 import { slugify } from '@/lib/utils';
 import { withTimeout } from './limits';
-import { isSafeDocId, type McpRepoWithWriteReads } from './repo.server';
-import type { McpWriteRepo } from './repo.write.server';
+import { isSafeDocId, type McpRepoWithWriteReads, type RawDoc } from './repo.server';
+import type { ExerciseFieldChange, McpWriteRepo, RoutineCascade } from './repo.write.server';
 import { errorResult, jsonResult, type ToolResult } from './results';
 
 // ─── Limits (MCP only; the app has no upper bounds) ──────────────────
@@ -29,6 +30,9 @@ export const MAX_TEXT_LENGTH = 2000;
 export const MAX_ROUTINE_EXERCISES = 30;
 /** A stored routine may be longer than the MCP limit; a reorder must still be able to name every id. */
 const MAX_REORDER_IDS = 100;
+export const MAX_LOAD_INCREMENT_KG = 25;
+const LOAD_INCREMENT_STEP_KG = 0.25;
+const DUMBBELL_LOADS = ['perHand', 'total'] as const;
 
 // ─── Input schemas ───────────────────────────────────────────────────
 
@@ -87,6 +91,32 @@ export const writeToolSchemas = {
       .max(MAX_REORDER_IDS)
       .describe('Every exercise id of the routine, once each, in the new order'),
   }),
+  // Strict: a key this tool does not edit (name, muscleGroup...) is refused, not dropped.
+  update_exercise: z.strictObject({
+    exerciseId: docId.describe('Exercise id from list_exercises'),
+    targetNotes: text.describe('Target area, e.g. "Upper chest"; "" clears it'),
+    exerciseSetup: text.describe('Setup notes, e.g. seat position; "" clears it'),
+    progressiveOverload: text.describe('Rep range, written like "8-12 reps"; "" clears it'),
+    warmupTemplate: z.enum(WARMUP_TEMPLATES).optional().describe('Warm-up template'),
+    loadIncrementKg: z
+      .number()
+      .gt(0)
+      .max(MAX_LOAD_INCREMENT_KG)
+      .multipleOf(LOAD_INCREMENT_STEP_KG)
+      .nullable()
+      .optional()
+      .describe(
+        'Smallest weight step in kg, in the same unit as the logged weight, e.g. 2.5 or 5: above 0, at most 25, a multiple of 0.25; ' +
+          'with dumbbellLoad "total", a step of 2 kg per dumbbell is 4; null removes it',
+      ),
+    dumbbellLoad: z
+      .enum(DUMBBELL_LOADS)
+      .nullable()
+      .optional()
+      .describe(
+        '"perHand": the logged weight is the weight of one dumbbell. "total": the logged weight is both dumbbells added together. null removes it',
+      ),
+  }),
 };
 
 type Args<K extends keyof typeof writeToolSchemas> = z.infer<(typeof writeToolSchemas)[K]>;
@@ -103,6 +133,7 @@ export type WriteErrorCode =
   | 'order_mismatch'
   | 'routine_full'
   | 'id_unavailable'
+  | 'no_fields'
   | 'conflict'
   | 'write_failed';
 
@@ -139,6 +170,12 @@ const isAlreadyExists = (error: unknown): boolean => {
   return code === 6 || code === 'already-exists' || code === 'ALREADY_EXISTS';
 };
 
+/** gRPC NOT_FOUND (5): a batch `update` met a document that is no longer there. */
+const isNotFound = (error: unknown): boolean => {
+  const code = (error as { code?: unknown } | null)?.code;
+  return code === 5 || code === 'not-found' || code === 'NOT_FOUND';
+};
+
 /** Runs the one batch of a tool. A batch is atomic: a failed commit writes nothing. */
 async function commit(name: string, write: () => Promise<void>): Promise<void> {
   try {
@@ -146,6 +183,9 @@ async function commit(name: string, write: () => Promise<void>): Promise<void> {
   } catch (error) {
     if (isAlreadyExists(error)) {
       refuse('conflict', `A document with the same id was created at the same time. ${NOTHING_WRITTEN} Read the data again, then retry.`);
+    }
+    if (isNotFound(error)) {
+      refuse('conflict', `The document to change was removed at the same time. ${NOTHING_WRITTEN} Read the data again.`);
     }
     console.error(`[mcp] ${name}_commit_failed`);
     refuse('write_failed', 'The write did not complete. Read the routine or the exercise again before any retry.');
@@ -158,6 +198,31 @@ const str = (v: unknown): string | undefined => (typeof v === 'string' && v.trim
 
 const identityKey = (name: string, muscleGroup: string) =>
   `${name.trim().toLowerCase()}::${muscleGroup.trim().toLowerCase()}`;
+
+const EXERCISE_TEXT_FIELDS = ['targetNotes', 'exerciseSetup', 'progressiveOverload'] as const;
+
+const textOf = (data: Record<string, unknown>, key: (typeof EXERCISE_TEXT_FIELDS)[number]): string =>
+  typeof data[key] === 'string' ? (data[key] as string) : '';
+
+const warmupTemplateOf = (data: Record<string, unknown>): string | undefined =>
+  typeof data.warmup === 'object' && data.warmup !== null ? str((data.warmup as { template?: unknown }).template) : undefined;
+
+/** An exercise as `update_exercise` answers it: the fields the tool can change, plus the parsed rep range. */
+const exerciseOut = (id: string, data: Record<string, unknown>) => {
+  const progressiveOverload = str(data.progressiveOverload);
+  return {
+    id,
+    name: str(data.name) ?? '',
+    muscleGroup: str(data.muscleGroup) ?? '',
+    targetNotes: str(data.targetNotes),
+    exerciseSetup: str(data.exerciseSetup),
+    progressiveOverload,
+    repRange: parseRepRange(progressiveOverload),
+    warmupTemplate: warmupTemplateOf(data),
+    loadIncrementKg: typeof data.loadIncrementKg === 'number' ? data.loadIncrementKg : undefined,
+    dumbbellLoad: str(data.dumbbellLoad),
+  };
+};
 
 type StoredRoutine = { id: string; name: string; description?: string; exercises: RoutineExercise[] };
 
@@ -200,6 +265,11 @@ export function createWriteTools({ repo, writes, now = () => new Date() }: Write
   async function loadRoutine(id: string): Promise<StoredRoutine> {
     const doc = await repo.getRoutine(id);
     if (!doc) return refuse('not_found', `No routine with id "${id}". ${NOTHING_WRITTEN}`);
+    return toStoredRoutine(doc);
+  }
+
+  function toStoredRoutine(doc: RawDoc): StoredRoutine {
+    const id = doc.id;
     const raw = Array.isArray(doc.data.exercises) ? doc.data.exercises : [];
     // The whole list is rewritten, so an entry this code cannot read must stop the
     // tool: rewriting it would lose or corrupt that entry.
@@ -425,6 +495,99 @@ export function createWriteTools({ repo, writes, now = () => new Date() }: Write
         const next = exerciseIds.map(id => byId.get(id)!);
         return saveExercises('reorder_routine_exercises', routine, next);
       }),
+
+    update_exercise: ({ exerciseId, ...input }: Args<'update_exercise'>) =>
+      run('update_exercise', async () => {
+        if (Object.values(input).every(value => value === undefined)) {
+          refuse('no_fields', `Give at least one field to change. ${NOTHING_WRITTEN}`);
+        }
+        const doc = await repo.getExercise(exerciseId);
+        if (!doc) return refuse('not_found', `No exercise with id "${exerciseId}" in the library. ${NOTHING_WRITTEN}`);
+        const stored = doc.data;
+        if (!str(stored.name) || !str(stored.muscleGroup)) {
+          return refuse('conflict', `The stored exercise "${exerciseId}" has no name or muscle group. ${NOTHING_WRITTEN} Fix it in the app.`);
+        }
+
+        // Only what differs from the stored document is written.
+        const change: ExerciseFieldChange = {};
+        for (const key of EXERCISE_TEXT_FIELDS) {
+          const next = input[key]?.trim();
+          if (next !== undefined && next !== textOf(stored, key)) change[key] = next;
+        }
+        if (input.warmupTemplate !== undefined && input.warmupTemplate !== warmupTemplateOf(stored)) {
+          change.warmupTemplate = input.warmupTemplate;
+        }
+        const differs = (next: unknown, current: unknown) => (next === null ? current !== undefined : next !== current);
+        if (input.loadIncrementKg !== undefined && differs(input.loadIncrementKg, stored.loadIncrementKg)) {
+          change.loadIncrementKg = input.loadIncrementKg;
+        }
+        if (input.dumbbellLoad !== undefined && differs(input.dumbbellLoad, stored.dumbbellLoad)) {
+          change.dumbbellLoad = input.dumbbellLoad;
+        }
+
+        const changed = Object.keys(change);
+        if (changed.length === 0) {
+          return { ok: true, changed, exercise: exerciseOut(doc.id, stored), routinesUpdated: [] };
+        }
+
+        // The document as it reads after the write, for the routine copies and the answer.
+        const after: Record<string, unknown> = { ...stored };
+        for (const key of EXERCISE_TEXT_FIELDS) {
+          if (change[key] !== undefined) after[key] = change[key];
+        }
+        if (change.warmupTemplate !== undefined) {
+          const warmup = typeof stored.warmup === 'object' && stored.warmup !== null ? stored.warmup : {};
+          after.warmup = { ...warmup, template: change.warmupTemplate };
+        }
+        for (const key of ['loadIncrementKg', 'dumbbellLoad'] as const) {
+          if (change[key] === null) delete after[key];
+          else if (change[key] !== undefined) after[key] = change[key];
+        }
+
+        // Same cascade as the Exercises page: a routine keeps a copy of the three
+        // text fields, so every routine that holds the exercise gets the new text.
+        const cascades: RoutineCascade[] = [];
+        const routinesUpdated: Array<{ id: string; name: string; historyRecorded: boolean }> = [];
+        if (EXERCISE_TEXT_FIELDS.some(key => change[key] !== undefined)) {
+          const texts = {
+            targetNotes: textOf(after, 'targetNotes'),
+            exerciseSetup: textOf(after, 'exerciseSetup'),
+            progressiveOverload: textOf(after, 'progressiveOverload'),
+          };
+          const list = await repo.listRoutines();
+          if (list.truncated) {
+            refuse('conflict', `There are too many routines to update every copy of this exercise. ${NOTHING_WRITTEN}`);
+          }
+          const nowMs = now().getTime();
+          for (const row of list.rows) {
+            const raw: unknown[] = Array.isArray(row.data.exercises) ? row.data.exercises : [];
+            const holds = raw.some(ex => typeof ex === 'object' && ex !== null && (ex as { id?: unknown }).id === exerciseId);
+            if (!holds) continue;
+            const routine = toStoredRoutine(row);
+            const next = routine.exercises.map(ex => (ex.id === exerciseId ? { ...ex, ...texts } : ex));
+            const fields = buildRoutineUpdateFields({ exercises: next }) as { exercises: RoutineExerciseEntry[] };
+            const before = { name: routine.name, description: routine.description, exercises: routine.exercises };
+            const versions = planRoutineVersions({
+              routineId: routine.id,
+              existing: await loadHistory(routine.id),
+              before,
+              after: { ...before, exercises: fields.exercises },
+              changeType: 'updated',
+              source: 'mcp',
+              now: nowMs,
+            });
+            cascades.push({ id: routine.id, exercises: fields.exercises, versions });
+            routinesUpdated.push({
+              id: routine.id,
+              name: routine.name,
+              historyRecorded: versions.some(v => v.changeType === 'updated'),
+            });
+          }
+        }
+
+        await commit('update_exercise', () => writes.updateExerciseFields(exerciseId, change, cascades));
+        return { ok: true, changed, exercise: exerciseOut(doc.id, after), routinesUpdated };
+      }),
   };
 }
 
@@ -517,5 +680,26 @@ export function registerWriteTools(server: McpServer, deps: WriteToolDeps) {
       annotations: additive,
     },
     guard(tools.reorder_routine_exercises),
+  );
+
+  server.registerTool(
+    'update_exercise',
+    {
+      title: 'Update exercise',
+      description:
+        `Changes fields of one library exercise: target notes, setup notes, rep range text, warm-up template, load increment ` +
+        `and dumbbell mode. Only the fields given are written; the name and the muscle group cannot be changed here. ` +
+        `A text change is also copied into every routine that holds the exercise. A warm-up template change applies to new ` +
+        `log days only. An edited text of a default exercise is no longer translated in the app. ` +
+        `dumbbellLoad "perHand": the logged weight is the weight of one dumbbell. ` +
+        `dumbbellLoad "total": the logged weight is both dumbbells added together. ` +
+        `loadIncrementKg is in the same unit as the logged weight: with "total", a step of 2 kg per dumbbell is 4. ` +
+        `The answer lists the ` +
+        `fields that changed and repRange as the app reads it (null when the text has no numeric range). ` +
+        `${CONFIRM_NOTE} ${RESULT_NOTE}`,
+      inputSchema: writeToolSchemas.update_exercise,
+      annotations: destructive,
+    },
+    guard(tools.update_exercise),
   );
 }
