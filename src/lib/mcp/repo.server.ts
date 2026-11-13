@@ -7,7 +7,7 @@
 export type ReadSnapshot = { id: string; exists: boolean; data(): Record<string, unknown> | undefined };
 
 export type ReadQuery = {
-  where(field: string, op: '==' | '>=', value: string): ReadQuery;
+  where(field: string, op: '==' | '>=' | '<=', value: string): ReadQuery;
   orderBy(field: string, direction?: 'asc' | 'desc'): ReadQuery;
   limit(n: number): ReadQuery;
   get(): Promise<{ docs: ReadSnapshot[] }>;
@@ -54,6 +54,8 @@ export type McpRepo = {
   listExercises(muscleGroup?: string): Promise<RawList>;
   /** Logs with `date >= fromYmd`, newest first, at most `max`. */
   getLogsSince(fromYmd: string, max: number): Promise<RawList>;
+  /** Logs with `fromYmd <= date <= toYmd`, oldest first, at most `max`. */
+  getLogsBetween(fromYmd: string, toYmd: string, max: number): Promise<RawList>;
   getProfile(): Promise<Record<string, unknown> | null>;
 };
 
@@ -108,6 +110,16 @@ export function createRepo(db: ReadDb, uid: string): McpRepoWithWriteReads {
       if (!YMD.test(fromYmd)) throw new Error('bad_date');
       if (!Number.isInteger(max) || max < 1 || max > MAX_LOGS) throw new Error('bad_bound');
       return list(db.collection(`${root}/workoutLogs`).where('date', '>=', fromYmd).orderBy('date', 'desc'), max);
+    },
+
+    async getLogsBetween(fromYmd, toYmd, max) {
+      if (!YMD.test(fromYmd) || !YMD.test(toYmd) || fromYmd > toYmd) throw new Error('bad_date');
+      if (!Number.isInteger(max) || max < 1 || max > MAX_LOGS) throw new Error('bad_bound');
+      // Both bounds and the orderBy are on `date`, so no composite index is needed.
+      return list(
+        db.collection(`${root}/workoutLogs`).where('date', '>=', fromYmd).where('date', '<=', toYmd).orderBy('date', 'asc'),
+        max,
+      );
     },
 
     async getProfile() {
