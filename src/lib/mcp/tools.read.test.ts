@@ -162,12 +162,51 @@ test('list_routines: compact shape, set structure defaults to normal', async () 
         description: 'Chest and triceps',
         order: 0,
         exercises: [
-          { id: seeded.id, name: seeded.name, muscleGroup: seeded.muscleGroup, setStructure: 'superset' },
+          // A superset with no partner.
+          { id: seeded.id, name: seeded.name, muscleGroup: seeded.muscleGroup, setStructure: 'superset', groupIncomplete: true },
           { id: 'my-lift', name: 'My Lift', muscleGroup: 'Back', setStructure: 'normal' },
         ],
       },
     ],
   });
+});
+
+test('get_routine and list_routines: a group number per full superset or triset, groupIncomplete on a broken run', async () => {
+  const e = (id: string, setStructure?: string) => ({ id, name: id, muscleGroup: 'Chest', ...(setStructure ? { setStructure } : {}) });
+  const doc: RawDoc = {
+    id: 'arms',
+    data: {
+      name: 'Arms',
+      order: 0,
+      exercises: [
+        e('a', 'superset'), e('b', 'superset'), e('c', 'superset'), e('d', 'superset'),
+        e('x'),
+        e('e', 'triset'), e('f', 'triset'), e('g', 'triset'),
+        e('y', 'dropSet'),
+        e('h', 'superset'), e('i', 'superset'), e('j', 'superset'),
+        e('k', 'triset'),
+      ],
+    },
+  };
+  const expected = [
+    ['a', 1, undefined], ['b', 1, undefined], ['c', 2, undefined], ['d', 2, undefined],
+    ['x', undefined, undefined],
+    ['e', 3, undefined], ['f', 3, undefined], ['g', 3, undefined],
+    ['y', undefined, undefined],
+    // 3 supersets: the app links the first two; the whole run is flagged.
+    ['h', 4, true], ['i', 4, true], ['j', undefined, true],
+    ['k', undefined, true],
+  ];
+  const marks = (exercises: Array<Record<string, unknown>>) => exercises.map(ex => [ex.id, ex.group, ex.groupIncomplete]);
+
+  const one = body(await fakeRepo({ routine: doc }).tools.get_routine({ id: 'arms' }));
+  assert.deepEqual(marks(one.exercises), expected);
+  // Absent, not null or false, when it does not apply.
+  assert.equal('group' in one.exercises[4], false);
+  assert.equal('groupIncomplete' in one.exercises[0], false);
+
+  const all = body(await fakeRepo({ routines: [doc] }).tools.list_routines({}));
+  assert.deepEqual(marks(all.routines[0].exercises), expected);
 });
 
 test('names: displayName only for an untouched seeded exercise on a Spanish profile', async () => {
@@ -230,7 +269,7 @@ test('get_routine: rep range joined from the exercise library, old fields untouc
   });
   const out = body(await tools.get_routine({ id: 'push-day' }));
   assert.deepEqual(out.exercises, [
-    { id: 'bench', name: 'Bench', muscleGroup: 'Chest', setStructure: 'superset', progressiveOverload: '8-12 reps', repRange: { min: 8, max: 12 } },
+    { id: 'bench', name: 'Bench', muscleGroup: 'Chest', setStructure: 'superset', groupIncomplete: true, progressiveOverload: '8-12 reps', repRange: { min: 8, max: 12 } },
     { id: 'plank', name: 'Plank', muscleGroup: 'Abs', setStructure: 'normal', progressiveOverload: 'As long as possible', repRange: null },
     { id: 'dips', name: 'Dips', muscleGroup: 'Triceps', setStructure: 'normal', repRange: null },
     { id: 'bench', name: 'Bench', muscleGroup: 'Chest', setStructure: 'normal', progressiveOverload: '8-12 reps', repRange: { min: 8, max: 12 } },

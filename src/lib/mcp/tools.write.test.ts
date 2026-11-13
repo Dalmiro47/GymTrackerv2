@@ -210,11 +210,11 @@ const versionsOf = (ops: Op[]) => ops.filter(op => op.path.startsWith(`${ROOT}ro
 
 // ─── Input validation ────────────────────────────────────────────────
 
-test('schemas: exactly the seven write tools, and none takes a uid', () => {
+test('schemas: exactly the eight write tools, and none takes a uid', () => {
   assert.deepEqual(Object.keys(writeToolSchemas).sort(), [
     'add_exercise_to_routine', 'create_exercise', 'create_routine',
     'remove_exercise_from_routine', 'reorder_routine_exercises', 'replace_exercise_in_routine',
-    'update_exercise',
+    'set_routine_set_structure', 'update_exercise',
   ]);
   for (const [name, schema] of Object.entries(writeToolSchemas)) {
     for (const key of Object.keys(schema.shape)) {
@@ -617,6 +617,260 @@ test('reorder: the same order records no new version', async () => {
   const out = ok(await db.tools.reorder_routine_exercises({ routineId: 'push-day', exerciseIds: ['bench-press_chest', 'dips_triceps'] }));
   assert.deepEqual(versionsOf(oneBatch(db)).map(v => v.data.changeType), ['baseline']);
   assert.equal(out.historyRecorded, false);
+});
+
+// ─── set_routine_set_structure ───────────────────────────────────────
+
+/** A routine entry for the group tests; only the id and the structure matter. */
+const g = (id: string, setStructure = 'normal') => entry(id, { name: id.toUpperCase(), muscleGroup: 'Chest' }, setStructure);
+const armsDb = (exercises: Data[], extra: Record<string, Data> = {}) =>
+  fakeDb(seed({ 'routines/arms': { name: 'Arms', description: '', order: 5, exercises }, ...extra }));
+const structuresOf = (db: ReturnType<typeof fakeDb>) =>
+  (db.get('routines/arms')!.exercises as Data[]).map(e => `${e.id}:${e.setStructure}`);
+
+test('schemas: set_routine_set_structure takes a routine id, one of the five structures and 1 to 100 safe ids', () => {
+  const s = writeToolSchemas.set_routine_set_structure;
+  assert.deepEqual(Object.keys(s.shape).sort(), ['exerciseIds', 'routineId', 'setStructure']);
+  for (const setStructure of ['normal', 'superset', 'triset', 'dropSet', 'restPause']) {
+    assert.equal(s.safeParse({ routineId: 'arms', setStructure, exerciseIds: ['a', 'b'] }).success, true, setStructure);
+  }
+  for (const bad of [
+    { routineId: 'arms', setStructure: 'giant set', exerciseIds: ['a'] },
+    { routineId: 'arms', setStructure: 'Superset', exerciseIds: ['a', 'b'] },
+    { routineId: 'arms', setStructure: 'superset', exerciseIds: [] },
+    { routineId: 'arms', setStructure: 'superset', exerciseIds: ['a/b', 'c'] },
+    { routineId: 'a/b', setStructure: 'superset', exerciseIds: ['a', 'b'] },
+    { routineId: 'arms', setStructure: 'normal', exerciseIds: Array.from({ length: 101 }, (_, i) => `ex-${i}`) },
+    { routineId: 'arms', exerciseIds: ['a', 'b'] },
+    { routineId: 'arms', setStructure: 'superset' },
+  ]) {
+    assert.equal(s.safeParse(bad).success, false, JSON.stringify(bad).slice(0, 80));
+  }
+});
+
+test('set structure: a superset on 2 consecutive ids is one batch with a baseline and an updated version, source mcp', async () => {
+  const db = armsDb([g('a'), g('b'), g('c')]);
+  const out = ok(await db.tools.set_routine_set_structure({ routineId: 'arms', setStructure: 'superset', exerciseIds: ['a', 'b'] }));
+  const ops = oneBatch(db);
+  assert.equal(ops.length, 3);
+  assert.deepEqual(ops[0], {
+    kind: 'set',
+    path: `${ROOT}routines/arms`,
+    data: { exercises: [g('a', 'superset'), g('b', 'superset'), g('c')], updatedAt: TS },
+    options: { merge: true },
+  });
+  const [baseline, updated] = versionsOf(ops);
+  assert.deepEqual([baseline.data.changeType, baseline.data.source], ['baseline', 'backfill']);
+  assert.deepEqual(baseline.data.snapshot.exercises.map((e: Data) => e.setStructure), ['normal', 'normal', 'normal']);
+  assert.deepEqual([updated.data.changeType, updated.data.source], ['updated', 'mcp']);
+  assert.deepEqual(updated.data.snapshot.exercises.map((e: Data) => e.setStructure), ['superset', 'superset', 'normal']);
+  assert.equal(updated.data.prevHash, baseline.data.snapshotHash);
+  assert.notEqual(updated.data.snapshotHash, baseline.data.snapshotHash);
+  assert.equal(out.historyRecorded, true);
+  assert.deepEqual(out.routine.exercises.map((e: Data) => e.setStructure), ['superset', 'superset', 'normal']);
+  // The merge keeps the other fields of the routine.
+  assert.equal(db.get('routines/arms')!.name, 'Arms');
+  assert.equal(db.get('routines/arms')!.order, 5);
+});
+
+test('set structure: with stored history a pure structure change adds one updated version, source mcp', async () => {
+  const v1 = { id: 'arms_1', routineId: 'arms', routineName: 'Arms', changeType: 'created', source: 'routine-editor', createdAtMs: NOW_MS - 1000, snapshot: {}, snapshotHash: '11111111', prevHash: null };
+  const db = armsDb([g('a'), g('b'), g('c')], { 'routineHistory/arms_1': v1 });
+  ok(await db.tools.set_routine_set_structure({ routineId: 'arms', setStructure: 'dropSet', exerciseIds: ['c'] }));
+  const versions = versionsOf(oneBatch(db));
+  assert.deepEqual(versions.map(v => [v.data.changeType, v.data.source, v.data.prevHash]), [['updated', 'mcp', '11111111']]);
+});
+
+test('set structure: the order of the ids does not matter, their positions do', async () => {
+  const reversed = armsDb([g('a'), g('b'), g('c'), g('d')]);
+  ok(await reversed.tools.set_routine_set_structure({ routineId: 'arms', setStructure: 'superset', exerciseIds: ['c', 'b'] }));
+  assert.deepEqual(structuresOf(reversed), ['a:normal', 'b:superset', 'c:superset', 'd:normal']);
+
+  const triset = armsDb([g('a'), g('b'), g('c'), g('d')]);
+  ok(await triset.tools.set_routine_set_structure({ routineId: 'arms', setStructure: 'triset', exerciseIds: ['d', 'b', 'c'] }));
+  assert.deepEqual(structuresOf(triset), ['a:normal', 'b:triset', 'c:triset', 'd:triset']);
+
+  const apart = armsDb([g('a'), g('b'), g('c'), g('d')]);
+  refused(await apart.tools.set_routine_set_structure({ routineId: 'arms', setStructure: 'superset', exerciseIds: ['a', 'c'] }), 'not_consecutive', apart);
+
+  const apartTriset = armsDb([g('a'), g('b'), g('c'), g('d')]);
+  refused(await apartTriset.tools.set_routine_set_structure({ routineId: 'arms', setStructure: 'triset', exerciseIds: ['a', 'b', 'd'] }), 'not_consecutive', apartTriset);
+});
+
+test('set structure: a superset takes exactly 2 different ids and a triset exactly 3 (group_size)', async () => {
+  for (const [setStructure, exerciseIds] of [
+    ['superset', ['a']],
+    ['superset', ['a', 'b', 'c']],
+    ['superset', ['a', 'a']],
+    ['triset', ['a', 'b']],
+    ['triset', ['a', 'b', 'c', 'd']],
+  ] as const) {
+    const db = armsDb([g('a'), g('b'), g('c'), g('d')]);
+    refused(await db.tools.set_routine_set_structure({ routineId: 'arms', setStructure, exerciseIds: [...exerciseIds] }), 'group_size', db);
+  }
+});
+
+test('set structure: an unknown routine, an id outside the routine or a stored duplicate writes nothing', async () => {
+  const noRoutine = armsDb([g('a'), g('b')]);
+  refused(await noRoutine.tools.set_routine_set_structure({ routineId: 'nope', setStructure: 'superset', exerciseIds: ['a', 'b'] }), 'not_found', noRoutine);
+
+  const absent = armsDb([g('a'), g('b')]);
+  refused(await absent.tools.set_routine_set_structure({ routineId: 'arms', setStructure: 'superset', exerciseIds: ['a', 'row_back'] }), 'not_in_routine', absent);
+
+  const twice = armsDb([g('a'), g('b'), g('a')]);
+  refused(await twice.tools.set_routine_set_structure({ routineId: 'arms', setStructure: 'dropSet', exerciseIds: ['a'] }), 'conflict', twice);
+});
+
+test('set structure: a call that leaves an incomplete group writes nothing (incomplete_group)', async () => {
+  // A third superset next to a pair.
+  const third = armsDb([g('a', 'superset'), g('b', 'superset'), g('c'), g('d')]);
+  const result = await third.tools.set_routine_set_structure({ routineId: 'arms', setStructure: 'superset', exerciseIds: ['b', 'c'] });
+  refused(result, 'incomplete_group', third);
+  assert.match(result.content[0].text, /incomplete superset.*"a", "b", "c"/);
+  assert.match(result.content[0].text, /Nothing was written\./);
+
+  for (const [setStructure, exerciseIds] of [
+    ['normal', ['a']],
+    ['dropSet', ['b']],
+    ['triset', ['b', 'c', 'd']],
+  ] as const) {
+    const db = armsDb([g('a', 'superset'), g('b', 'superset'), g('c'), g('d', 'superset'), g('e', 'superset')]);
+    refused(await db.tools.set_routine_set_structure({ routineId: 'arms', setStructure, exerciseIds: [...exerciseIds] }), 'incomplete_group', db);
+  }
+
+  // Two members of a triset to a superset leave the third one alone.
+  const triset = armsDb([g('a', 'triset'), g('b', 'triset'), g('c', 'triset')]);
+  refused(await triset.tools.set_routine_set_structure({ routineId: 'arms', setStructure: 'superset', exerciseIds: ['a', 'b'] }), 'incomplete_group', triset);
+});
+
+test('set structure: whole groups can be undone, added next to each other, or changed without a position rule', async () => {
+  const undo = armsDb([g('a', 'superset'), g('b', 'superset'), g('c')]);
+  ok(await undo.tools.set_routine_set_structure({ routineId: 'arms', setStructure: 'normal', exerciseIds: ['b', 'a'] }));
+  assert.deepEqual(structuresOf(undo), ['a:normal', 'b:normal', 'c:normal']);
+
+  const secondPair = armsDb([g('a', 'superset'), g('b', 'superset'), g('c'), g('d')]);
+  ok(await secondPair.tools.set_routine_set_structure({ routineId: 'arms', setStructure: 'superset', exerciseIds: ['c', 'd'] }));
+  assert.deepEqual(structuresOf(secondPair), ['a:superset', 'b:superset', 'c:superset', 'd:superset']);
+
+  const dropSets = armsDb([g('a'), g('b'), g('c')]);
+  ok(await dropSets.tools.set_routine_set_structure({ routineId: 'arms', setStructure: 'dropSet', exerciseIds: ['c', 'a'] }));
+  assert.deepEqual(structuresOf(dropSets), ['a:dropSet', 'b:normal', 'c:dropSet']);
+
+  const trisetToNormal = armsDb([g('a', 'triset'), g('b', 'triset'), g('c', 'triset')]);
+  ok(await trisetToNormal.tools.set_routine_set_structure({ routineId: 'arms', setStructure: 'restPause', exerciseIds: ['a', 'b', 'c'] }));
+  assert.deepEqual(structuresOf(trisetToNormal), ['a:restPause', 'b:restPause', 'c:restPause']);
+});
+
+test('set structure: an incomplete group that is already stored and untouched does not block a valid change', async () => {
+  const lone = () => [g('a', 'superset'), g('x'), g('b'), g('c'), g('d', 'triset')];
+
+  const unrelated = armsDb(lone());
+  ok(await unrelated.tools.set_routine_set_structure({ routineId: 'arms', setStructure: 'superset', exerciseIds: ['b', 'c'] }));
+  assert.deepEqual(structuresOf(unrelated), ['a:superset', 'x:normal', 'b:superset', 'c:superset', 'd:triset']);
+
+  // One broken group is repaired while the other one stays.
+  const repair = armsDb(lone());
+  ok(await repair.tools.set_routine_set_structure({ routineId: 'arms', setStructure: 'normal', exerciseIds: ['a'] }));
+  assert.deepEqual(structuresOf(repair), ['a:normal', 'x:normal', 'b:normal', 'c:normal', 'd:triset']);
+
+  // The lone member gets its partner.
+  const complete = armsDb([g('a', 'superset'), g('b'), g('c')]);
+  ok(await complete.tools.set_routine_set_structure({ routineId: 'arms', setStructure: 'superset', exerciseIds: ['a', 'b'] }));
+  assert.deepEqual(structuresOf(complete), ['a:superset', 'b:superset', 'c:normal']);
+
+  // A change to the broken group that leaves it broken is still refused.
+  const changed = armsDb([g('a', 'superset'), g('b', 'superset'), g('c', 'superset'), g('d')]);
+  refused(await changed.tools.set_routine_set_structure({ routineId: 'arms', setStructure: 'dropSet', exerciseIds: ['b'] }), 'incomplete_group', changed);
+});
+
+test('set structure: a call that changes nothing answers ok and opens no batch', async () => {
+  const db = armsDb([g('a', 'superset'), g('b', 'superset'), { ...g('c'), setStructure: undefined }]);
+  const before = JSON.stringify(db.get('routines/arms'));
+  const out = ok(await db.tools.set_routine_set_structure({ routineId: 'arms', setStructure: 'superset', exerciseIds: ['a', 'b'] }));
+  assert.equal(db.batches.length, 0);
+  assert.equal(JSON.stringify(db.get('routines/arms')), before);
+  assert.deepEqual(out, {
+    ok: true,
+    changed: false,
+    routine: {
+      id: 'arms',
+      name: 'Arms',
+      exercises: [
+        { id: 'a', name: 'A', muscleGroup: 'Chest', setStructure: 'superset' },
+        { id: 'b', name: 'B', muscleGroup: 'Chest', setStructure: 'superset' },
+        { id: 'c', name: 'C', muscleGroup: 'Chest', setStructure: 'normal' },
+      ],
+    },
+    historyRecorded: false,
+  });
+
+  // A stored entry without the field is normal already.
+  const normal = ok(await db.tools.set_routine_set_structure({ routineId: 'arms', setStructure: 'normal', exerciseIds: ['c'] }));
+  assert.equal(normal.changed, false);
+  assert.equal(db.batches.length, 0);
+});
+
+// ─── Group guard on the other routine tools ──────────────────────────
+
+test('add: a position inside a group writes nothing; before, after and between groups are fine', async () => {
+  const pairs = () => [g('a', 'superset'), g('b', 'superset'), g('c', 'superset'), g('d', 'superset')];
+  for (const index of [1, 3]) {
+    const db = armsDb(pairs());
+    const result = await db.tools.add_exercise_to_routine({ routineId: 'arms', exerciseId: 'row_back', index });
+    refused(result, 'incomplete_group', db);
+    assert.match(result.content[0].text, /Use a position before or after the group\./);
+  }
+  for (const index of [0, 2, 4, undefined]) {
+    const db = armsDb(pairs());
+    ok(await db.tools.add_exercise_to_routine({ routineId: 'arms', exerciseId: 'row_back', index }));
+    assert.equal(structuresOf(db).length, 5);
+  }
+});
+
+test('remove: a member of a group writes nothing; an exercise outside a group is removed', async () => {
+  const list = () => [g('a', 'superset'), g('b', 'superset'), g('x'), g('c', 'triset'), g('d', 'triset'), g('e', 'triset')];
+  for (const exerciseId of ['a', 'b', 'd']) {
+    const db = armsDb(list());
+    const result = await db.tools.remove_exercise_from_routine({ routineId: 'arms', exerciseId });
+    refused(result, 'incomplete_group', db);
+    assert.match(result.content[0].text, /set_routine_set_structure first\./);
+  }
+  const db = armsDb(list());
+  ok(await db.tools.remove_exercise_from_routine({ routineId: 'arms', exerciseId: 'x' }));
+  assert.deepEqual(structuresOf(db), ['a:superset', 'b:superset', 'c:triset', 'd:triset', 'e:triset']);
+
+  // Removing the extra member of an incomplete run repairs it.
+  const repair = armsDb([g('a', 'superset'), g('b', 'superset'), g('c', 'superset')]);
+  ok(await repair.tools.remove_exercise_from_routine({ routineId: 'arms', exerciseId: 'c' }));
+  assert.deepEqual(structuresOf(repair), ['a:superset', 'b:superset']);
+});
+
+test('reorder: an order that splits a group writes nothing; a group moved as a whole is stored', async () => {
+  const list = () => [g('a', 'superset'), g('b', 'superset'), g('x'), g('y')];
+  const split = armsDb(list());
+  const result = await split.tools.reorder_routine_exercises({ routineId: 'arms', exerciseIds: ['a', 'x', 'b', 'y'] });
+  refused(result, 'incomplete_group', split);
+  assert.match(result.content[0].text, /Keep the exercises of a group next to each other/);
+
+  const moved = armsDb(list());
+  ok(await moved.tools.reorder_routine_exercises({ routineId: 'arms', exerciseIds: ['x', 'b', 'a', 'y'] }));
+  assert.deepEqual(structuresOf(moved), ['x:normal', 'b:superset', 'a:superset', 'y:normal']);
+
+  // Two pairs moved next to each other are still two pairs.
+  const merged = armsDb([g('a', 'superset'), g('b', 'superset'), g('x'), g('c', 'superset'), g('d', 'superset')]);
+  ok(await merged.tools.reorder_routine_exercises({ routineId: 'arms', exerciseIds: ['x', 'a', 'b', 'c', 'd'] }));
+  assert.equal(merged.batches.length, 1);
+});
+
+test('replace: a swap inside a group is never refused and keeps the structure', async () => {
+  const pair = armsDb([g('a', 'superset'), g('b', 'superset'), g('c')]);
+  ok(await pair.tools.replace_exercise_in_routine({ routineId: 'arms', index: 1, expectedExerciseId: 'b', newExerciseId: 'row_back' }));
+  assert.deepEqual(structuresOf(pair), ['a:superset', 'row_back:superset', 'c:normal']);
+
+  // Also inside a group that is already incomplete: the swap does not change it.
+  const broken = armsDb([g('a', 'superset'), g('b', 'superset'), g('c', 'superset')]);
+  ok(await broken.tools.replace_exercise_in_routine({ routineId: 'arms', index: 2, expectedExerciseId: 'c', newExerciseId: 'row_back' }));
+  assert.deepEqual(structuresOf(broken), ['a:superset', 'b:superset', 'row_back:superset']);
 });
 
 // ─── update_exercise ─────────────────────────────────────────────────
