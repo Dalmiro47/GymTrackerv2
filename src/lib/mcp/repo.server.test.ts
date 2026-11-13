@@ -160,6 +160,31 @@ test('getLogsSince: refuses a malformed date or a bad bound without touching the
   assert.equal(calls.length, 0);
 });
 
+test('getLogsBetween: both bounds on date, oldest first, bounded', async () => {
+  const { db, calls } = fakeDb({ collections: { [`${ROOT}workoutLogs`]: rows(9) } });
+  const result = await createRepo(db, OWNER).getLogsBetween('2026-11-09', '2026-11-15', 7);
+  assert.equal(calls[0].path, `${ROOT}workoutLogs`);
+  assert.deepEqual(calls[0].ops, [
+    ['where', 'date', '>=', '2026-11-09'],
+    ['where', 'date', '<=', '2026-11-15'],
+    ['orderBy', 'date', 'asc'],
+    ['limit', 8],
+  ]);
+  assert.equal(result.rows.length, 7);
+  assert.equal(result.truncated, true);
+});
+
+test('getLogsBetween: refuses a malformed or reversed range or a bad bound without touching the db', async () => {
+  const { db, calls } = fakeDb();
+  const repo = createRepo(db, OWNER);
+  await assert.rejects(repo.getLogsBetween('monday', '2026-11-15', 7));
+  await assert.rejects(repo.getLogsBetween('2026-11-09', '2026-W46', 7));
+  await assert.rejects(repo.getLogsBetween('2026-11-15', '2026-11-09', 7));
+  await assert.rejects(repo.getLogsBetween('2026-11-09', '2026-11-15', 0));
+  await assert.rejects(repo.getLogsBetween('2026-11-09', '2026-11-15', 1000));
+  assert.equal(calls.length, 0);
+});
+
 test('getRoutine: found, missing, and ids that could leave the collection', async () => {
   const path = `${ROOT}routines/push-day`;
   const { db, calls } = fakeDb({ docs: { [path]: { name: 'Push Day' } } });

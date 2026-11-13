@@ -59,7 +59,8 @@ const initialize = {
 };
 
 const READ_TOOLS = [
-  'get_exercise_history', 'get_profile', 'get_recent_logs', 'get_routine', 'list_exercises', 'list_routines',
+  'get_exercise_history', 'get_profile', 'get_recent_logs', 'get_routine', 'get_week_status', 'list_exercises',
+  'list_routines',
 ];
 // Write tool -> destructiveHint.
 const WRITE_TOOLS: Record<string, boolean> = {
@@ -71,7 +72,7 @@ const WRITE_TOOLS: Record<string, boolean> = {
   replace_exercise_in_routine: true,
 };
 
-test('HTTP: initialize, then tools/list returns exactly the six read tools and the six write tools', async () => {
+test('HTTP: initialize, then tools/list returns exactly the seven read tools and the six write tools', async () => {
   const handler = createMcpRouteHandler(deps());
 
   const initRes = await handler(post(KEY, initialize), ctx(KEY));
@@ -91,7 +92,7 @@ test('HTTP: initialize, then tools/list returns exactly the six read tools and t
     annotations?: { readOnlyHint?: boolean; destructiveHint?: boolean };
     inputSchema: { properties?: object };
   }> = list.result.tools;
-  assert.equal(tools.length, 12);
+  assert.equal(tools.length, 13);
   assert.deepEqual(tools.map(t => t.name).sort(), [...READ_TOOLS, ...Object.keys(WRITE_TOOLS)].sort());
   for (const tool of tools) {
     if (READ_TOOLS.includes(tool.name)) {
