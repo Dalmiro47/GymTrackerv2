@@ -9,6 +9,7 @@ import { MUSCLE_GROUPS_LIST } from '@/lib/constants';
 import { displayExerciseName } from '@/lib/exerciseDisplay';
 import { DEFAULT_LANGUAGE, isLanguage, type Language } from '@/i18n';
 import { parseRepRange } from '@/lib/repGoal';
+import { groupMarks } from '@/lib/setStructureGroups';
 import { withTimeout } from './limits';
 import { isSafeDocId, type McpRepo, type McpWriteReads, type RawDoc, type RawList } from './repo.server';
 import { errorResult, jsonResult, type ToolResult } from './results';
@@ -85,17 +86,20 @@ const languageOf = (profile: Record<string, unknown> | null): Language =>
   isLanguage(profile?.language) ? profile.language : DEFAULT_LANGUAGE;
 
 function routineOut(doc: RawDoc, language: Language) {
+  const exercises = records(doc.data.exercises).map(ex => ({
+    id: str(ex.id) ?? '',
+    ...names(str(ex.id), ex.name, language),
+    muscleGroup: str(ex.muscleGroup) ?? '',
+    setStructure: str(ex.setStructure) ?? 'normal',
+  }));
+  // `group` and `groupIncomplete`, each present only when it applies.
+  const marks = groupMarks(exercises);
   return {
     id: doc.id,
     name: str(doc.data.name) ?? '',
     description: str(doc.data.description),
     order: num(doc.data.order) ?? undefined,
-    exercises: records(doc.data.exercises).map(ex => ({
-      id: str(ex.id) ?? '',
-      ...names(str(ex.id), ex.name, language),
-      muscleGroup: str(ex.muscleGroup) ?? '',
-      setStructure: str(ex.setStructure) ?? 'normal',
-    })),
+    exercises: exercises.map((ex, i) => ({ ...ex, ...marks[i] })),
   };
 }
 
@@ -414,6 +418,9 @@ const NAMES_NOTE =
   '`name` is the stored name; `displayName` appears only when the app shows a different (Spanish) name.';
 const EQUIPMENT_NOTE =
   'When set: warmupTemplate, loadIncrementKg (smallest weight step in kg) and dumbbellLoad ("perHand" = one dumbbell, "total" = both).';
+const GROUP_NOTE =
+  'Supersets and trisets: exercises with the same `group` number are done together; groupIncomplete true marks a ' +
+  'superset or triset that lacks a partner (a superset is exactly 2 exercises in a row, a triset exactly 3).';
 const UTC_NOTE ='The window is cut on the server\'s UTC date, so it can be one day wider than the local view.';
 const STATUS_NOTE =
   'status "planned" means the exercise was saved as a plan and its sets are a copy of the last session, not a lift.';
@@ -426,7 +433,7 @@ export function registerReadTools(server: McpServer, repo: ReadToolsRepo, now?: 
     'list_routines',
     {
       title: 'List routines',
-      description: `The owner's workout routines in app order (at most 50), each with its exercises. ${NAMES_NOTE}`,
+      description: `The owner's workout routines in app order (at most 50), each with its exercises. ${GROUP_NOTE} ${NAMES_NOTE}`,
       inputSchema: toolSchemas.list_routines,
       annotations,
     },
@@ -440,7 +447,7 @@ export function registerReadTools(server: McpServer, repo: ReadToolsRepo, now?: 
       description:
         `One routine with its exercises. progressiveOverload is the rep range from the exercise library and ` +
         `repRange its parsed form (null when it has no numeric range); inLibrary false means the exercise is no ` +
-        `longer in the library and the range is the routine's stored copy. ${EQUIPMENT_NOTE} ${NAMES_NOTE}`,
+        `longer in the library and the range is the routine's stored copy. ${GROUP_NOTE} ${EQUIPMENT_NOTE} ${NAMES_NOTE}`,
       inputSchema: toolSchemas.get_routine,
       annotations,
     },

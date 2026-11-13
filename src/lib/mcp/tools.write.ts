@@ -16,7 +16,9 @@ import { buildRoutineCreateFields, buildRoutineUpdateFields, type RoutineExercis
 import { addRoutineExerciseAt, removeRoutineExerciseAt, replaceRoutineExerciseAt } from '@/lib/routineEditing';
 import { planRoutineVersions } from '@/lib/routineHistoryPlan';
 import { parseRepRange } from '@/lib/repGoal';
+import { groupSizeOf, newIncompleteRuns } from '@/lib/setStructureGroups';
 import { slugify } from '@/lib/utils';
+import { SET_STRUCTURE_OPTIONS } from '@/types/setStructure';
 import { withTimeout } from './limits';
 import { isSafeDocId, type McpRepoWithWriteReads, type RawDoc } from './repo.server';
 import type { ExerciseFieldChange, McpWriteRepo, RoutineCascade } from './repo.write.server';
@@ -91,6 +93,17 @@ export const writeToolSchemas = {
       .max(MAX_REORDER_IDS)
       .describe('Every exercise id of the routine, once each, in the new order'),
   }),
+  set_routine_set_structure: z.object({
+    routineId: docId.describe('Routine id from list_routines'),
+    setStructure: z.enum(SET_STRUCTURE_OPTIONS).describe('The set structure to give to every exercise in exerciseIds'),
+    exerciseIds: z
+      .array(docId)
+      .min(1)
+      .max(MAX_REORDER_IDS)
+      .describe(
+        'Ids of exercises of the routine, each once, in any order: exactly 2 for superset, exactly 3 for triset, 1 or more for the others',
+      ),
+  }),
   // Strict: a key this tool does not edit (name, muscleGroup...) is refused, not dropped.
   update_exercise: z.strictObject({
     exerciseId: docId.describe('Exercise id from list_exercises'),
@@ -132,6 +145,9 @@ export type WriteErrorCode =
   | 'last_exercise'
   | 'order_mismatch'
   | 'routine_full'
+  | 'group_size'
+  | 'not_consecutive'
+  | 'incomplete_group'
   | 'id_unavailable'
   | 'no_fields'
   | 'conflict'
@@ -300,9 +316,30 @@ export function createWriteTools({ repo, writes, now = () => new Date() }: Write
     return list.rows.map(row => ({ ...(row.data as unknown as RoutineVersion), id: row.id }));
   }
 
-  /** Stores a new exercise list for an existing routine: one batch with its history versions. */
-  async function saveExercises(tool: string, routine: StoredRoutine, next: RoutineExercise[]) {
+  /**
+   * Stores a new exercise list for an existing routine: one batch with its history versions.
+   * It refuses a list that creates or changes an incomplete superset or triset; an
+   * incomplete group that was already stored and is untouched is tolerated. `groupHint`
+   * tells the caller what to do instead. `groupsBefore` is the list the groups are
+   * compared with, when it is not the stored one.
+   */
+  async function saveExercises(
+    tool: string,
+    routine: StoredRoutine,
+    next: RoutineExercise[],
+    groupHint: string,
+    groupsBefore: RoutineExercise[] = routine.exercises,
+  ) {
     const fields = buildRoutineUpdateFields({ exercises: next }) as { exercises: RoutineExerciseEntry[] };
+    const [broken] = newIncompleteRuns(groupsBefore, fields.exercises);
+    if (broken) {
+      refuse(
+        'incomplete_group',
+        `This change would leave an incomplete ${broken.structure} in routine "${routine.id}": ` +
+          `${broken.ids.map(id => `"${id}"`).join(', ')}. A superset is exactly 2 exercises next to each other and a triset ` +
+          `exactly 3. ${NOTHING_WRITTEN} ${groupHint}`,
+      );
+    }
     const before = { name: routine.name, description: routine.description, exercises: routine.exercises };
     const versions = planRoutineVersions({
       routineId: routine.id,
@@ -436,7 +473,7 @@ export function createWriteTools({ repo, writes, now = () => new Date() }: Write
         }
         const exercise = await loadExercise(exerciseId);
         const next = addRoutineExerciseAt(routine.exercises, index ?? null, { ...exercise, setStructure: 'normal' });
-        return saveExercises('add_exercise_to_routine', routine, next);
+        return saveExercises('add_exercise_to_routine', routine, next, 'Use a position before or after the group.');
       }),
 
     replace_exercise_in_routine: ({ routineId, index, expectedExerciseId, newExerciseId }: Args<'replace_exercise_in_routine'>) =>
@@ -455,7 +492,9 @@ export function createWriteTools({ repo, writes, now = () => new Date() }: Write
         const exercise = await loadExercise(newExerciseId);
         // Same helper as the routine editor: the slot keeps its position and set structure.
         const next = replaceRoutineExerciseAt(routine.exercises, index, exercise);
-        return saveExercises('replace_exercise_in_routine', routine, next);
+        // The groups are compared with the new id already in the slot: a swap changes no group.
+        const groupsBefore = routine.exercises.map((ex, i) => (i === index ? { ...ex, id: newExerciseId } : ex));
+        return saveExercises('replace_exercise_in_routine', routine, next, 'Read the routine again.', groupsBefore);
       }),
 
     remove_exercise_from_routine: ({ routineId, exerciseId }: Args<'remove_exercise_from_routine'>) =>
@@ -472,7 +511,12 @@ export function createWriteTools({ repo, writes, now = () => new Date() }: Write
           refuse('last_exercise', `"${exerciseId}" is the only exercise of routine "${routineId}", and a routine needs at least 1. ${NOTHING_WRITTEN}`);
         }
         const next = removeRoutineExerciseAt(routine.exercises, routine.exercises.findIndex(ex => ex.id === exerciseId));
-        return saveExercises('remove_exercise_from_routine', routine, next);
+        return saveExercises(
+          'remove_exercise_from_routine',
+          routine,
+          next,
+          'Set every exercise of the group to normal with set_routine_set_structure first.',
+        );
       }),
 
     reorder_routine_exercises: ({ routineId, exerciseIds }: Args<'reorder_routine_exercises'>) =>
@@ -493,7 +537,64 @@ export function createWriteTools({ repo, writes, now = () => new Date() }: Write
         }
         const byId = new Map(routine.exercises.map(ex => [ex.id, ex]));
         const next = exerciseIds.map(id => byId.get(id)!);
-        return saveExercises('reorder_routine_exercises', routine, next);
+        return saveExercises(
+          'reorder_routine_exercises',
+          routine,
+          next,
+          'Keep the exercises of a group next to each other, or set the group to normal with set_routine_set_structure first.',
+        );
+      }),
+
+    set_routine_set_structure: ({ routineId, setStructure, exerciseIds }: Args<'set_routine_set_structure'>) =>
+      run('set_routine_set_structure', async () => {
+        const ids = [...new Set(exerciseIds)];
+        const size = groupSizeOf(setStructure);
+        if (size > 1 && ids.length !== size) {
+          refuse(
+            'group_size',
+            `A ${setStructure} is exactly ${size} different exercises; exerciseIds holds ${ids.length}. ${NOTHING_WRITTEN}`,
+          );
+        }
+        const routine = await loadRoutine(routineId);
+        for (const id of ids) {
+          const matches = routine.exercises.filter(ex => ex.id === id).length;
+          if (matches === 0) {
+            refuse('not_in_routine', `Exercise "${id}" is not in routine "${routineId}". ${NOTHING_WRITTEN} Read the routine again.`);
+          }
+          if (matches > 1) {
+            refuse('conflict', `Exercise "${id}" is in routine "${routineId}" more than once. ${NOTHING_WRITTEN} Edit it in the app.`);
+          }
+        }
+        if (size > 1) {
+          // The order of exerciseIds does not matter; their positions in the routine do.
+          const positions = ids.map(id => routine.exercises.findIndex(ex => ex.id === id));
+          if (Math.max(...positions) - Math.min(...positions) !== size - 1) {
+            refuse(
+              'not_consecutive',
+              `The exercises of a ${setStructure} must be next to each other in routine "${routineId}". ${NOTHING_WRITTEN} ` +
+                `Call reorder_routine_exercises first.`,
+            );
+          }
+        }
+
+        const named = new Set(ids);
+        if (routine.exercises.every(ex => !named.has(ex.id) || (ex.setStructure || 'normal') === setStructure)) {
+          // Nothing differs from the stored routine: no write, no history version.
+          const { exercises } = buildRoutineUpdateFields({ exercises: routine.exercises }) as { exercises: RoutineExerciseEntry[] };
+          return {
+            ok: true,
+            changed: false,
+            routine: routineOut(routine.id, routine.name, routine.description, exercises),
+            historyRecorded: false,
+          };
+        }
+        const next = routine.exercises.map(ex => (named.has(ex.id) ? { ...ex, setStructure } : ex));
+        return saveExercises(
+          'set_routine_set_structure',
+          routine,
+          next,
+          'Name every exercise of a group in one call: 2 for a superset, 3 for a triset; to undo a group, set all of its exercises to normal.',
+        );
       }),
 
     update_exercise: ({ exerciseId, ...input }: Args<'update_exercise'>) =>
@@ -680,6 +781,25 @@ export function registerWriteTools(server: McpServer, deps: WriteToolDeps) {
       annotations: additive,
     },
     guard(tools.reorder_routine_exercises),
+  );
+
+  server.registerTool(
+    'set_routine_set_structure',
+    {
+      title: 'Set routine set structure',
+      description:
+        `Sets the set structure (normal, superset, triset, dropSet, restPause) of exercises in one routine. ` +
+        `A superset is exactly 2 exercises and a triset exactly 3. They must be next to each other in the routine order; ` +
+        `call reorder_routine_exercises first when they are not. The app groups consecutive exercises of the same type ` +
+        `from the top: 4 supersets in a row are two pairs. normal, dropSet and restPause apply to each exercise alone ` +
+        `and take 1 or more ids. To undo a superset or triset, set all of its exercises to normal in one call. ` +
+        `The call is refused when it would leave an incomplete group. The change applies to new log days; a saved log ` +
+        `keeps its structure. Before calling, describe the resulting groups to the user and wait for their yes. ` +
+        `${CONFIRM_NOTE} ${RESULT_NOTE}`,
+      inputSchema: writeToolSchemas.set_routine_set_structure,
+      annotations: destructive,
+    },
+    guard(tools.set_routine_set_structure),
   );
 
   server.registerTool(
