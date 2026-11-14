@@ -61,6 +61,7 @@ test('withTimeout: a slow write tool says the change may be written and to read 
   assert.equal(result.isError, true);
   const text = result.content[0].text;
   assert.match(text, /may have been written/);
-  assert.match(text, /Read the routine or the exercise again before any retry/);
+  assert.match(text, /Read the data again before any retry/);
+  assert.doesNotMatch(text, /routine|exercise/);
   assert.doesNotMatch(text, /Try again later/);
 });

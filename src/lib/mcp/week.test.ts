@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { addDays, berlinYmd, isRealYmd, isoWeekOf, weekRange } from './week';
+import { addDays, berlinMidnightMs, berlinYmd, isRealYmd, isoWeekOf, weekRange } from './week';
 
 const weekAt = (iso: string) => isoWeekOf(berlinYmd(new Date(iso)));
 
@@ -78,5 +78,25 @@ test('isRealYmd: a real calendar day only', () => {
   }
   for (const bad of ['2026-02-30', '2027-02-29', '2026-13-01', '2026-00-10', '2026-1-1', '2026-11-16T00:00', '0026-11-16', 'today', '', '..', 'a/b', 20261116, null, undefined]) {
     assert.equal(isRealYmd(bad), false, `should be refused: ${String(bad)}`);
+  }
+});
+
+test('berlinMidnightMs: 00:00 in Berlin, in winter and in summer time', () => {
+  // Winter (CET, UTC+1) and summer (CEST, UTC+2).
+  assert.equal(berlinMidnightMs('2027-01-15'), Date.parse('2027-01-14T23:00:00Z'));
+  assert.equal(berlinMidnightMs('2026-07-06'), Date.parse('2026-07-05T22:00:00Z'));
+  // The days the clocks change: midnight is still in the old offset.
+  assert.equal(berlinMidnightMs('2026-03-29'), Date.parse('2026-03-28T23:00:00Z'));
+  assert.equal(berlinMidnightMs('2026-10-25'), Date.parse('2026-10-24T22:00:00Z'));
+  // The day after each change.
+  assert.equal(berlinMidnightMs('2026-03-30'), Date.parse('2026-03-29T22:00:00Z'));
+  assert.equal(berlinMidnightMs('2026-10-26'), Date.parse('2026-10-25T23:00:00Z'));
+});
+
+test('berlinMidnightMs: the instant falls on that Berlin day, and one millisecond before is the day before', () => {
+  for (const day of ['2027-01-15', '2026-07-06', '2026-03-29', '2026-10-25']) {
+    const ms = berlinMidnightMs(day);
+    assert.equal(berlinYmd(new Date(ms)), day);
+    assert.equal(berlinYmd(new Date(ms - 1)), addDays(day, -1));
   }
 });

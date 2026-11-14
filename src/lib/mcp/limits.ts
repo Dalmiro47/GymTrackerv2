@@ -55,7 +55,7 @@ const TIMEOUT_MESSAGE = {
   // The deadline does not cancel a commit that is already on its way.
   write: (seconds: number) =>
     `The change took longer than ${seconds}s and its outcome is unknown: it may have been written. ` +
-    'Read the routine or the exercise again before any retry, and do not repeat the call if the change is there.',
+    'Read the data again before any retry, and do not repeat the call if the change is there.',
 };
 
 /** Runs a tool body with a deadline. `kind` picks the message: a write may have committed. */

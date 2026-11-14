@@ -27,6 +27,24 @@ const toUtcMs = (ymd: string) => {
   const [y, m, d] = ymd.split('-').map(Number);
   return Date.UTC(y, m - 1, d);
 };
+
+const HOUR_MS = 3_600_000;
+
+/**
+ * The instant of 00:00 in Berlin on a calendar day, in ms. The app stamps a
+ * performance entry with the local midnight of the log's day (`parseISO` in the
+ * owner's browser), so the server must use Berlin's midnight, not UTC's.
+ * Berlin is UTC+1 or UTC+2, and its clocks never change at midnight.
+ */
+export function berlinMidnightMs(ymd: string): number {
+  const utcMidnight = toUtcMs(ymd);
+  for (const offsetHours of [1, 2]) {
+    const candidate = utcMidnight - offsetHours * HOUR_MS;
+    // Midnight is the first instant of the day: it is on `ymd`, and the millisecond before is not.
+    if (berlinYmd(new Date(candidate)) === ymd && berlinYmd(new Date(candidate - 1)) !== ymd) return candidate;
+  }
+  return utcMidnight - HOUR_MS;
+}
 const fromUtcMs = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 const YMD = /^[1-9]\d{3}-\d{2}-\d{2}$/;
 

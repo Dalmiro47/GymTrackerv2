@@ -6,6 +6,10 @@ import { createRepo, MAX_ROUTINE_HISTORY, MAX_ROUTINES, type ReadDb } from './re
 import { createWriteRepo, type WriteDb } from './repo.write.server';
 import type { ToolResult } from './results';
 import { createWriteTools, MAX_ROUTINE_EXERCISES, writeToolSchemas } from './tools.write';
+import { berlinMidnightMs } from './week';
+import type { WorkoutLog } from '@/types';
+import { planPerformanceEntry } from '@/lib/performanceEntryPlan';
+import { buildWorkoutLogDoc } from '@/lib/workoutLogDoc';
 
 // Fake values only. The tools run on the real read repo and the real write repo,
 // over an in-memory fake db that records every call. The fake throws on anything
@@ -79,7 +83,16 @@ function fakeDb(
           readGuard();
           let rows = [...store.entries()].filter(([p]) => p.startsWith(`${path}/`) && !p.slice(path.length + 1).includes('/'));
           for (const op of ops) {
-            if (op[0] === 'where') rows = rows.filter(([, d]) => d[op[1] as string] === op[3]);
+            if (op[0] === 'where') {
+              const [, field, operator, value] = op as [string, string, string, any];
+              rows = rows.filter(([, d]) => {
+                const stored = d[field];
+                if (operator === 'array-contains') return Array.isArray(stored) && stored.includes(value);
+                if (operator === '>=') return stored !== undefined && stored >= value;
+                if (operator === '<=') return stored !== undefined && stored <= value;
+                return stored === value;
+              });
+            }
             if (op[0] === 'orderBy') {
               const field = op[1] as string;
               const sign = op[2] === 'desc' ? -1 : 1;
@@ -131,7 +144,8 @@ function fakeDb(
               if (gone) throw Object.assign(new Error(`5 NOT_FOUND: ${gone.path}`), { code: hooks.notFoundCode ?? 5 });
               for (const op of batch.ops) {
                 if (op.kind === 'update') store.set(op.path, applyUpdate(store.get(op.path)!, op.data));
-                else store.set(op.path, op.kind === 'set' ? { ...store.get(op.path), ...op.data } : op.data);
+                else if (op.kind === 'set') store.set(op.path, applyUpdate(store.get(op.path) ?? {}, op.data));
+                else store.set(op.path, op.data);
               }
             },
           },
@@ -212,11 +226,11 @@ const versionsOf = (ops: Op[]) => ops.filter(op => op.path.startsWith(`${ROOT}ro
 
 // ─── Input validation ────────────────────────────────────────────────
 
-test('schemas: exactly the nine write tools, and none takes a uid', () => {
+test('schemas: exactly the twelve write tools, and none takes a uid', () => {
   assert.deepEqual(Object.keys(writeToolSchemas).sort(), [
-    'add_exercise_to_routine', 'create_exercise', 'create_routine',
+    'add_exercise_to_routine', 'create_exercise', 'create_routine', 'finish_workout', 'log_set',
     'remove_exercise_from_routine', 'reorder_routine_exercises', 'replace_exercise_in_routine',
-    'set_routine_set_structure', 'set_schedule_day', 'update_exercise',
+    'set_routine_set_structure', 'set_schedule_day', 'start_workout', 'update_exercise',
   ]);
   for (const [name, schema] of Object.entries(writeToolSchemas)) {
     for (const key of Object.keys(schema.shape)) {
@@ -1398,4 +1412,665 @@ test('a failed commit is write_failed with no internal detail, and the stored ro
   assert.match(result.content[0].text, /^write_failed: /);
   assert.doesNotMatch(result.content[0].text, /secret|fake-owner|users\//);
   assert.equal(JSON.stringify(db.get('routines/push-day')), before);
+});
+
+// ─── Workout session: start_workout, log_set, finish_workout ─────────
+// NOW is 2027-01-15 09:00 in Berlin.
+
+const YESTERDAY = '2027-01-14';
+const LAST_WEEK = '2027-01-08';
+const BENCH = 'bench-press_chest';
+const DIPS = 'dips_triceps';
+const LOG_PATH = new RegExp(`^users/${OWNER}/(workoutLogs/\\d{4}-\\d{2}-\\d{2}|performanceEntries/[^/]+)$`);
+
+const benchEntry = () => ({
+  lastPerformedDate: berlinMidnightMs(LAST_WEEK),
+  lastPerformedSets: [{ reps: 8, weight: 80 }, { reps: 7, weight: 80 }],
+  personalRecord: { reps: 8, weight: 80, date: berlinMidnightMs(LAST_WEEK), logId: LAST_WEEK },
+});
+
+const lastWeekLog = () => ({
+  id: LAST_WEEK,
+  date: LAST_WEEK,
+  routineId: 'push-day',
+  routineName: 'Push Day',
+  notes: '',
+  isDeload: false,
+  exerciseIds: [BENCH, DIPS],
+  exercises: [
+    { id: 'old-row-1', exerciseId: BENCH, name: 'Bench Press', muscleGroup: 'Chest', performed: true, sets: [{ id: 'o1', reps: 8, weight: 80 }, { id: 'o2', reps: 7, weight: 80 }] },
+    { id: 'old-row-2', exerciseId: DIPS, name: 'Dips', muscleGroup: 'Triceps', performed: true, sets: [{ id: 'o3', reps: 10, weight: 0 }] },
+  ],
+});
+
+const gymSeed = (extra: Record<string, Data> = {}) =>
+  seed({
+    [`workoutLogs/${LAST_WEEK}`]: lastWeekLog(),
+    [`performanceEntries/${BENCH}`]: benchEntry(),
+    ...extra,
+  });
+
+const setId = (date: string, exerciseId: string, index: number) => `set-${date}-${exerciseId}-${index}-${NOW_MS}`;
+
+/** The open log `start_workout` stores for push-day on `date`. */
+const openLog = (date = TODAY): Data => ({
+  id: date,
+  date,
+  routineId: 'push-day',
+  routineName: 'Push Day',
+  notes: '',
+  isDeload: false,
+  deloadApplied: false,
+  sessionOpen: true,
+  startedAt: NOW_MS,
+  exerciseIds: [BENCH, DIPS],
+  exercises: [
+    {
+      id: `${BENCH}-${date}-0-${NOW_MS}`,
+      exerciseId: BENCH,
+      name: 'Bench Press',
+      muscleGroup: 'Chest',
+      exerciseSetup: 'Flat',
+      progressiveOverload: '6-8',
+      notes: '',
+      sets: [{ id: setId(date, BENCH, 0), reps: 8, weight: 80 }, { id: setId(date, BENCH, 1), reps: 7, weight: 80 }],
+      warmupConfig: { template: 'HEAVY_BARBELL' },
+      setStructure: 'superset',
+      performed: false,
+    },
+    {
+      id: `${DIPS}-${date}-1-${NOW_MS}`,
+      exerciseId: DIPS,
+      name: 'Dips',
+      muscleGroup: 'Triceps',
+      exerciseSetup: '',
+      progressiveOverload: '',
+      notes: '',
+      sets: [{ id: setId(date, DIPS, 0), reps: 10, weight: 0 }],
+      warmupConfig: { template: 'BODYWEIGHT', isWeightedBodyweight: false },
+      performed: false,
+    },
+  ],
+});
+
+const withOpenLog = (extra: Record<string, Data> = {}, date = TODAY) => gymSeed({ [`workoutLogs/${date}`]: openLog(date), ...extra });
+
+/** `count` batches so far; the last one has one commit and only log and performance entry paths. */
+const lastLogBatch = (db: ReturnType<typeof fakeDb>, count: number) => {
+  assert.equal(db.batches.length, count, `expected ${count} batches`);
+  const batch = db.batches[count - 1];
+  assert.equal(batch.commits, 1);
+  for (const op of batch.ops) assert.match(op.path, LOG_PATH);
+  return batch.ops;
+};
+
+test('schemas: start_workout takes an optional routine id and nothing else', () => {
+  const s = writeToolSchemas.start_workout;
+  assert.deepEqual(s.parse({}), {});
+  assert.deepEqual(s.parse({ routineId: 'push-day' }), { routineId: 'push-day' });
+  assert.equal(s.safeParse({ routineId: 'a/b' }).success, false);
+  assert.equal(s.safeParse({ routineId: 'push-day', date: TODAY }).success, false);
+});
+
+test('schemas: log_set takes reps 1 to 99, weight 0 to 999 in 0.5 steps and a set number from 1', () => {
+  const s = writeToolSchemas.log_set;
+  const base = { exerciseId: BENCH, setNumber: 1, weight: 82.5, reps: 8 };
+  assert.deepEqual(s.parse(base), base);
+  assert.equal(s.safeParse({ ...base, weight: 0, reps: 99, setNumber: 20, overwrite: true }).success, true);
+  assert.equal(s.safeParse({ ...base, weight: 999 }).success, true);
+  for (const bad of [
+    { ...base, weight: 82.3 },
+    { ...base, weight: -5 },
+    { ...base, weight: 999.5 },
+    { ...base, weight: '80' },
+    { ...base, reps: 0 },
+    { ...base, reps: 100 },
+    { ...base, reps: 7.5 },
+    { ...base, setNumber: 0 },
+    { ...base, setNumber: 21 },
+    { ...base, setNumber: 1.5 },
+    { ...base, exerciseId: 'a/b' },
+    { ...base, overwrite: 'yes' },
+    { ...base, date: TODAY },
+    { exerciseId: BENCH, setNumber: 1, weight: 80 },
+  ]) {
+    assert.equal(s.safeParse(bad).success, false, JSON.stringify(bad).slice(0, 80));
+  }
+});
+
+test('schemas: finish_workout takes coach notes of 1 to 2000 characters', () => {
+  const s = writeToolSchemas.finish_workout;
+  assert.deepEqual(s.parse({ coachNotes: '  Good session ' }), { coachNotes: 'Good session' });
+  assert.equal(s.safeParse({ coachNotes: 'x'.repeat(2000) }).success, true);
+  assert.equal(s.safeParse({ coachNotes: 'x'.repeat(2001) }).success, false);
+  assert.equal(s.safeParse({ coachNotes: '   ' }).success, false);
+  assert.equal(s.safeParse({}).success, false);
+  // durationMin is optional: whole minutes from 1 to 300.
+  assert.deepEqual(s.parse({ coachNotes: 'x', durationMin: 75 }), { coachNotes: 'x', durationMin: 75 });
+  assert.equal(s.safeParse({ coachNotes: 'x', durationMin: 1 }).success, true);
+  assert.equal(s.safeParse({ coachNotes: 'x', durationMin: 300 }).success, true);
+  for (const durationMin of [0, 301, 45.5, -10, '60', null]) {
+    assert.equal(s.safeParse({ coachNotes: 'x', durationMin }).success, false, `durationMin ${String(durationMin)} should be refused`);
+  }
+  assert.equal(s.safeParse({ coachNotes: 'x', duration: 60 }).success, false);
+});
+
+test('start_workout: one create at workoutLogs/{today in Berlin}; every exercise planned, with the sets of the last session', async () => {
+  const db = fakeDb(gymSeed());
+  const out = ok(await db.tools.start_workout({ routineId: 'push-day' }));
+  const ops = lastLogBatch(db, 1);
+  assert.equal(ops.length, 1);
+  assert.equal(ops[0].kind, 'create');
+  assert.equal(ops[0].path, `${ROOT}workoutLogs/${TODAY}`);
+  assert.deepEqual(db.get(`workoutLogs/${TODAY}`), openLog());
+  assert.equal(out.ok, true);
+  assert.equal(out.date, TODAY);
+  assert.equal(out.routineId, 'push-day');
+  assert.equal(out.routineName, 'Push Day');
+  assert.deepEqual(out.exercises.map((ex: Data) => [ex.exerciseId, ex.status]), [[BENCH, 'planned'], [DIPS, 'planned']]);
+  assert.deepEqual(out.next, { exerciseId: BENCH, name: 'Bench Press' });
+  // No performance entry is written at the start: nothing was lifted.
+  assert.deepEqual(db.get(`performanceEntries/${BENCH}`), benchEntry());
+});
+
+test('start_workout: the date is the Berlin day, also when UTC is still the day before', async () => {
+  // 2027-01-15 23:30 UTC is 2027-01-16 00:30 in Berlin.
+  const db = fakeDb(gymSeed(), { now: () => new Date('2027-01-15T23:30:00Z') });
+  const out = ok(await db.tools.start_workout({ routineId: 'push-day' }));
+  assert.equal(out.date, '2027-01-16');
+  assert.equal(db.get('workoutLogs/2027-01-16')!.sessionOpen, true);
+});
+
+test('start_workout: the sets come from the newest log that is not a deload, then from the performance entry, else none', async () => {
+  const deload = { ...lastWeekLog(), id: '2027-01-12', date: '2027-01-12', isDeload: true, exercises: [{ ...lastWeekLog().exercises[0], sets: [{ id: 'x', reps: 8, weight: 40 }] }], exerciseIds: [BENCH] };
+  const db = fakeDb(
+    seed({
+      'workoutLogs/2027-01-12': deload,
+      [`performanceEntries/${DIPS}`]: { lastPerformedDate: 1, lastPerformedSets: [{ reps: 12, weight: 5 }], personalRecord: null },
+      'routines/push-day': { ...pushDay(), exercises: [entry(BENCH, bench), entry(DIPS, dips), entry('row_back', row)] },
+    }),
+  );
+  ok(await db.tools.start_workout({ routineId: 'push-day' }));
+  const stored = db.get(`workoutLogs/${TODAY}`)!;
+  // Bench: only a deload log holds it and it has no entry, so it starts with no set.
+  assert.deepEqual(stored.exercises[0].sets, []);
+  assert.deepEqual(stored.exercises[1].sets, [{ id: setId(TODAY, DIPS, 0), reps: 12, weight: 5 }]);
+  assert.deepEqual(stored.exercises[2].sets, []);
+  assert.equal(stored.exercises.every((ex: Data) => ex.performed === false), true);
+});
+
+test('start_workout: with no routine id it takes the one routine scheduled today', async () => {
+  const scheduled = { date: TODAY, items: [{ kind: 'activity', activity: 'boxing' }, { kind: 'routine', routineId: 'push-day', routineName: 'Old name' }] };
+  const db = fakeDb(gymSeed({ [`schedule/${TODAY}`]: scheduled }));
+  const out = ok(await db.tools.start_workout({}));
+  assert.equal(out.routineId, 'push-day');
+  assert.equal(db.get(`workoutLogs/${TODAY}`)!.routineName, 'Push Day');
+});
+
+test('start_workout: no routine scheduled today, or more than one, writes nothing', async () => {
+  const none = fakeDb(gymSeed());
+  refused(await none.tools.start_workout({}), 'no_scheduled_routine', none);
+  const rest = fakeDb(gymSeed({ [`schedule/${TODAY}`]: { date: TODAY, items: [{ kind: 'rest' }] } }));
+  refused(await rest.tools.start_workout({}), 'no_scheduled_routine', rest);
+  const two = fakeDb(
+    gymSeed({
+      'routines/pull-day': { name: 'Pull Day', order: 3, exercises: [entry('row_back', row)] },
+      [`schedule/${TODAY}`]: { date: TODAY, items: [{ kind: 'routine', routineId: 'push-day', routineName: 'Push Day' }, { kind: 'routine', routineId: 'pull-day', routineName: 'Pull Day' }] },
+    }),
+  );
+  const result = await two.tools.start_workout({});
+  refused(result, 'ambiguous_schedule', two);
+  assert.match(result.content[0].text, /push-day/);
+  assert.match(result.content[0].text, /pull-day/);
+});
+
+test('start_workout: a log of today that exists is never touched (log_exists), also a planned one', async () => {
+  const planned = openLog();
+  delete planned.sessionOpen;
+  const db = fakeDb(gymSeed({ [`workoutLogs/${TODAY}`]: planned }));
+  refused(await db.tools.start_workout({ routineId: 'push-day' }), 'log_exists', db);
+  assert.deepEqual(db.get(`workoutLogs/${TODAY}`), planned);
+  const finished = fakeDb(gymSeed({ [`workoutLogs/${TODAY}`]: { ...openLog(), sessionOpen: false, coachNotes: 'done' } }));
+  refused(await finished.tools.start_workout({ routineId: 'push-day' }), 'log_exists', finished);
+});
+
+test('start_workout: an open session of today or yesterday refuses a new one (session_open)', async () => {
+  const today = fakeDb(withOpenLog());
+  refused(await today.tools.start_workout({ routineId: 'push-day' }), 'session_open', today);
+  const yesterday = fakeDb(withOpenLog({}, YESTERDAY));
+  const result = await yesterday.tools.start_workout({ routineId: 'push-day' });
+  refused(result, 'session_open', yesterday);
+  assert.match(result.content[0].text, new RegExp(YESTERDAY));
+  assert.equal(yesterday.get(`workoutLogs/${TODAY}`), undefined);
+});
+
+test('start_workout: an unknown routine, an empty one or one with an exercise twice writes nothing', async () => {
+  const db = fakeDb(gymSeed());
+  refused(await db.tools.start_workout({ routineId: 'nope' }), 'not_found', db);
+  const empty = fakeDb(gymSeed({ 'routines/push-day': { ...pushDay(), exercises: [] } }));
+  refused(await empty.tools.start_workout({ routineId: 'push-day' }), 'conflict', empty);
+  const twice = fakeDb(gymSeed({ 'routines/push-day': { ...pushDay(), exercises: [entry(BENCH, bench), entry(BENCH, bench)] } }));
+  refused(await twice.tools.start_workout({ routineId: 'push-day' }), 'conflict', twice);
+});
+
+test('start_workout: a log created at the same time is a conflict and is not overwritten', async () => {
+  const other = { id: TODAY, date: TODAY, notes: 'from the app', exercises: [], exerciseIds: [] };
+  const db = fakeDb(gymSeed(), { beforeCommit: store => store.set(`${ROOT}workoutLogs/${TODAY}`, other) });
+  const result = await db.tools.start_workout({ routineId: 'push-day' });
+  assert.equal(result.isError, true);
+  assert.match(result.content[0].text, /^conflict: /);
+  assert.equal(db.get(`workoutLogs/${TODAY}`), other);
+});
+
+test('log_set: the first set replaces the copied sets and marks the exercise performed; one batch with its performance entry', async () => {
+  const db = fakeDb(withOpenLog());
+  const out = ok(await db.tools.log_set({ exerciseId: BENCH, setNumber: 1, weight: 82.5, reps: 8 }));
+  const ops = lastLogBatch(db, 1);
+  assert.deepEqual(ops.map(op => [op.kind, op.path]), [
+    ['update', `${ROOT}workoutLogs/${TODAY}`],
+    ['set', `${ROOT}performanceEntries/${BENCH}`],
+  ]);
+  assert.deepEqual(Object.keys(ops[0].data).sort(), ['exerciseIds', 'exercises']);
+  const stored = db.get(`workoutLogs/${TODAY}`)!;
+  assert.deepEqual(stored.exercises[0], { ...openLog().exercises[0], performed: true, sets: [{ id: setId(TODAY, BENCH, 0), reps: 8, weight: 82.5 }] });
+  // The other exercise and every root field stay as stored.
+  assert.deepEqual(stored.exercises[1], openLog().exercises[1]);
+  assert.deepEqual({ ...stored, exercises: null }, { ...openLog(), exercises: null });
+  assert.deepEqual(out, {
+    ok: true,
+    changed: true,
+    date: TODAY,
+    exercise: { exerciseId: BENCH, name: 'Bench Press', sets: [{ setNumber: 1, weight: 82.5, reps: 8 }] },
+    personalRecord: { weight: 82.5, reps: 8 },
+    newPersonalRecord: true,
+    next: { exerciseId: DIPS, name: 'Dips' },
+  });
+});
+
+test('log_set: a PR goes up with the Berlin midnight of the log day as its date', async () => {
+  const db = fakeDb(withOpenLog());
+  ok(await db.tools.log_set({ exerciseId: BENCH, setNumber: 1, weight: 82.5, reps: 8 }));
+  const midnight = Date.parse('2027-01-14T23:00:00Z');
+  assert.deepEqual(db.get(`performanceEntries/${BENCH}`), {
+    lastPerformedDate: midnight,
+    lastPerformedSets: [{ reps: 8, weight: 82.5 }],
+    personalRecord: { reps: 8, weight: 82.5, date: midnight, logId: TODAY },
+  });
+  // A set that is not better keeps the PR.
+  const out = ok(await db.tools.log_set({ exerciseId: BENCH, setNumber: 2, weight: 80, reps: 8 }));
+  assert.equal(out.newPersonalRecord, false);
+  assert.deepEqual(out.personalRecord, { weight: 82.5, reps: 8 });
+  assert.deepEqual(db.get(`performanceEntries/${BENCH}`)!.personalRecord, { reps: 8, weight: 82.5, date: midnight, logId: TODAY });
+  assert.deepEqual(db.get(`performanceEntries/${BENCH}`)!.lastPerformedSets, [{ reps: 8, weight: 82.5 }, { reps: 8, weight: 80 }]);
+});
+
+test('log_set: in summer time the PR date is 22:00 UTC of the day before', async () => {
+  const day = '2026-07-06';
+  const db = fakeDb(seed({ [`workoutLogs/${day}`]: openLog(day) }), { now: () => new Date('2026-07-06T16:00:00Z') });
+  ok(await db.tools.log_set({ exerciseId: BENCH, setNumber: 1, weight: 60, reps: 5 }));
+  const entryNow = db.get(`performanceEntries/${BENCH}`)!;
+  assert.equal(entryNow.lastPerformedDate, Date.parse('2026-07-05T22:00:00Z'));
+  assert.equal(entryNow.personalRecord.date, Date.parse('2026-07-05T22:00:00Z'));
+});
+
+test('log_set: the next set is appended; a gap in the set number writes nothing', async () => {
+  const db = fakeDb(withOpenLog());
+  ok(await db.tools.log_set({ exerciseId: BENCH, setNumber: 1, weight: 82.5, reps: 8 }));
+  const out = ok(await db.tools.log_set({ exerciseId: BENCH, setNumber: 2, weight: 82.5, reps: 6 }));
+  assert.deepEqual(out.exercise.sets, [{ setNumber: 1, weight: 82.5, reps: 8 }, { setNumber: 2, weight: 82.5, reps: 6 }]);
+  assert.deepEqual(db.get(`workoutLogs/${TODAY}`)!.exercises[0].sets, [
+    { id: setId(TODAY, BENCH, 0), reps: 8, weight: 82.5 },
+    { id: setId(TODAY, BENCH, 1), reps: 6, weight: 82.5 },
+  ]);
+  const result = await db.tools.log_set({ exerciseId: BENCH, setNumber: 4, weight: 82.5, reps: 6 });
+  assert.equal(result.isError, true);
+  assert.match(result.content[0].text, /^set_number: /);
+  assert.equal(db.batches.length, 2);
+
+  // On a planned exercise the copied sets do not count: the first set is number 1.
+  const fresh = fakeDb(withOpenLog());
+  refused(await fresh.tools.log_set({ exerciseId: BENCH, setNumber: 2, weight: 80, reps: 8 }), 'set_number', fresh);
+});
+
+test('log_set: a retry with the same values writes nothing and answers changed false', async () => {
+  const db = fakeDb(withOpenLog());
+  ok(await db.tools.log_set({ exerciseId: BENCH, setNumber: 1, weight: 82.5, reps: 8 }));
+  const before = structuredClone(db.get(`workoutLogs/${TODAY}`));
+  const out = ok(await db.tools.log_set({ exerciseId: BENCH, setNumber: 1, weight: 82.5, reps: 8 }));
+  assert.equal(out.changed, false);
+  assert.deepEqual(out.exercise.sets, [{ setNumber: 1, weight: 82.5, reps: 8 }]);
+  assert.equal(db.batches.length, 1);
+  assert.deepEqual(db.get(`workoutLogs/${TODAY}`), before);
+});
+
+test('log_set: a different value at a logged set number needs overwrite (set_exists)', async () => {
+  const db = fakeDb(withOpenLog());
+  ok(await db.tools.log_set({ exerciseId: BENCH, setNumber: 1, weight: 82.5, reps: 8 }));
+  const result = await db.tools.log_set({ exerciseId: BENCH, setNumber: 1, weight: 85, reps: 8 });
+  assert.equal(result.isError, true);
+  assert.match(result.content[0].text, /^set_exists: /);
+  assert.equal(db.batches.length, 1);
+
+  const out = ok(await db.tools.log_set({ exerciseId: BENCH, setNumber: 1, weight: 85, reps: 8, overwrite: true }));
+  assert.equal(out.changed, true);
+  lastLogBatch(db, 2);
+  // The set keeps its id.
+  assert.deepEqual(db.get(`workoutLogs/${TODAY}`)!.exercises[0].sets, [{ id: setId(TODAY, BENCH, 0), reps: 8, weight: 85 }]);
+  assert.deepEqual(db.get(`performanceEntries/${BENCH}`)!.personalRecord, { reps: 8, weight: 85, date: berlinMidnightMs(TODAY), logId: TODAY });
+});
+
+test('log_set: an overwrite that lowers the set behind the PR rescans the other logs, and the PR goes down', async () => {
+  const db = fakeDb(withOpenLog());
+  ok(await db.tools.log_set({ exerciseId: BENCH, setNumber: 1, weight: 825, reps: 8 }));
+  assert.equal(db.get(`performanceEntries/${BENCH}`)!.personalRecord.weight, 825);
+  const out = ok(await db.tools.log_set({ exerciseId: BENCH, setNumber: 1, weight: 82.5, reps: 8, overwrite: true }));
+  // 82.5 today is still above the 80 of last week.
+  assert.deepEqual(db.get(`performanceEntries/${BENCH}`)!.personalRecord, { reps: 8, weight: 82.5, date: berlinMidnightMs(TODAY), logId: TODAY });
+  assert.deepEqual(out.personalRecord, { weight: 82.5, reps: 8 });
+
+  ok(await db.tools.log_set({ exerciseId: BENCH, setNumber: 1, weight: 70, reps: 8, overwrite: true }));
+  // Now last week is the best log: the PR is its set, with its date and log id.
+  assert.deepEqual(db.get(`performanceEntries/${BENCH}`)!.personalRecord, {
+    reps: 8,
+    weight: 80,
+    date: berlinMidnightMs(LAST_WEEK),
+    logId: LAST_WEEK,
+  });
+  assert.deepEqual(db.get(`performanceEntries/${BENCH}`)!.lastPerformedSets, [{ reps: 8, weight: 70 }]);
+  lastLogBatch(db, 3);
+});
+
+test('log_set: the PR rescan skips planned exercises, and with no other log the PR is the lowered set', async () => {
+  const plannedCopy = { ...lastWeekLog(), id: '2027-01-10', date: '2027-01-10', exercises: [{ ...lastWeekLog().exercises[0], performed: false, sets: [{ id: 'p', reps: 8, weight: 200 }] }], exerciseIds: [BENCH] };
+  const db = fakeDb(seed({ [`workoutLogs/${TODAY}`]: openLog(), 'workoutLogs/2027-01-10': plannedCopy }));
+  ok(await db.tools.log_set({ exerciseId: BENCH, setNumber: 1, weight: 90, reps: 5 }));
+  ok(await db.tools.log_set({ exerciseId: BENCH, setNumber: 1, weight: 60, reps: 5, overwrite: true }));
+  assert.deepEqual(db.get(`performanceEntries/${BENCH}`)!.personalRecord, { reps: 5, weight: 60, date: berlinMidnightMs(TODAY), logId: TODAY });
+});
+
+test('log_set: a set with weight 0 is stored, and is no PR', async () => {
+  const db = fakeDb(withOpenLog());
+  const out = ok(await db.tools.log_set({ exerciseId: DIPS, setNumber: 1, weight: 0, reps: 12 }));
+  assert.deepEqual(db.get(`workoutLogs/${TODAY}`)!.exercises[1].sets, [{ id: setId(TODAY, DIPS, 0), reps: 12, weight: 0 }]);
+  assert.equal(db.get(`workoutLogs/${TODAY}`)!.exercises[1].performed, true);
+  assert.equal(out.personalRecord, null);
+  assert.equal(out.newPersonalRecord, false);
+  assert.deepEqual(db.get(`performanceEntries/${DIPS}`), { lastPerformedDate: berlinMidnightMs(TODAY), lastPerformedSets: [] });
+  // Bench is still planned, so it is the next exercise.
+  assert.deepEqual(out.next, { exerciseId: BENCH, name: 'Bench Press' });
+});
+
+test('log_set: no open session writes nothing (no_session): no log, a planned log, a finished log, an open log older than yesterday', async () => {
+  const args = { exerciseId: BENCH, setNumber: 1, weight: 80, reps: 8 };
+  const none = fakeDb(gymSeed());
+  refused(await none.tools.log_set(args), 'no_session', none);
+  const planned = openLog();
+  delete planned.sessionOpen;
+  const app = fakeDb(gymSeed({ [`workoutLogs/${TODAY}`]: planned }));
+  refused(await app.tools.log_set(args), 'no_session', app);
+  const closed = fakeDb(gymSeed({ [`workoutLogs/${TODAY}`]: { ...openLog(), sessionOpen: false } }));
+  refused(await closed.tools.log_set(args), 'no_session', closed);
+  const old = fakeDb(gymSeed({ 'workoutLogs/2027-01-13': openLog('2027-01-13') }));
+  refused(await old.tools.log_set(args), 'no_session', old);
+});
+
+test('log_set: a session started yesterday stays open after midnight and keeps its date', async () => {
+  const db = fakeDb(withOpenLog({}, YESTERDAY));
+  const out = ok(await db.tools.log_set({ exerciseId: BENCH, setNumber: 1, weight: 82.5, reps: 8 }));
+  assert.equal(out.date, YESTERDAY);
+  assert.equal(db.get(`workoutLogs/${TODAY}`), undefined);
+  assert.equal(db.get(`workoutLogs/${YESTERDAY}`)!.exercises[0].performed, true);
+  assert.deepEqual(db.get(`performanceEntries/${BENCH}`)!.personalRecord, { reps: 8, weight: 82.5, date: berlinMidnightMs(YESTERDAY), logId: YESTERDAY });
+});
+
+test('log_set: an exercise that is not in the open log writes nothing (not_in_log)', async () => {
+  const db = fakeDb(withOpenLog());
+  refused(await db.tools.log_set({ exerciseId: 'row_back', setNumber: 1, weight: 60, reps: 8 }), 'not_in_log', db);
+});
+
+test('log_set: an exercise that is in the open log more than once writes nothing (ambiguous_exercise)', async () => {
+  const log = openLog();
+  log.exercises.push({ ...log.exercises[0], id: 'second-row' });
+  log.exerciseIds.push(BENCH);
+  const db = fakeDb(gymSeed({ [`workoutLogs/${TODAY}`]: log }));
+  refused(await db.tools.log_set({ exerciseId: BENCH, setNumber: 1, weight: 80, reps: 8 }), 'ambiguous_exercise', db);
+  assert.deepEqual(db.get(`workoutLogs/${TODAY}`), log);
+  assert.deepEqual(db.get(`performanceEntries/${BENCH}`), benchEntry());
+  // An exercise that is there once can still be logged.
+  ok(await db.tools.log_set({ exerciseId: DIPS, setNumber: 1, weight: 0, reps: 10 }));
+});
+
+test('log_set: a log removed before the commit is a conflict; no log and no performance entry appear', async () => {
+  const db = fakeDb(withOpenLog(), { beforeCommit: store => store.delete(`${ROOT}workoutLogs/${TODAY}`) });
+  const result = await db.tools.log_set({ exerciseId: BENCH, setNumber: 1, weight: 100, reps: 8 });
+  assert.equal(result.isError, true);
+  assert.match(result.content[0].text, /^conflict: /);
+  assert.equal(db.get(`workoutLogs/${TODAY}`), undefined);
+  assert.deepEqual(db.get(`performanceEntries/${BENCH}`), benchEntry());
+});
+
+test('log_set: a deload log gets the set and no performance entry, like the app', async () => {
+  const db = fakeDb(gymSeed({ [`workoutLogs/${TODAY}`]: { ...openLog(), isDeload: true } }));
+  ok(await db.tools.log_set({ exerciseId: BENCH, setNumber: 1, weight: 100, reps: 8 }));
+  const ops = lastLogBatch(db, 1);
+  assert.equal(ops.length, 1);
+  assert.deepEqual(db.get(`performanceEntries/${BENCH}`), benchEntry());
+});
+
+test('finish_workout: one update of coachNotes, sessionOpen and duration; untouched exercises stay planned', async () => {
+  const db = fakeDb(withOpenLog({ [`workoutLogs/${TODAY}`]: { ...openLog(), startedAt: NOW_MS - 62 * 60_000 } }));
+  ok(await db.tools.log_set({ exerciseId: BENCH, setNumber: 1, weight: 82.5, reps: 8 }));
+  const before = db.get(`workoutLogs/${TODAY}`)!;
+  const out = ok(await db.tools.finish_workout({ coachNotes: 'Bench up 2.5 kg. Dips skipped.' }));
+  const ops = lastLogBatch(db, 2);
+  assert.deepEqual(ops, [
+    { kind: 'update', path: `${ROOT}workoutLogs/${TODAY}`, data: { coachNotes: 'Bench up 2.5 kg. Dips skipped.', sessionOpen: false, duration: 62 } },
+  ]);
+  // startedAt stays on the log.
+  assert.deepEqual(db.get(`workoutLogs/${TODAY}`), { ...before, coachNotes: 'Bench up 2.5 kg. Dips skipped.', sessionOpen: false, duration: 62 });
+  assert.equal(db.get(`workoutLogs/${TODAY}`)!.startedAt, NOW_MS - 62 * 60_000);
+  assert.deepEqual(out, { ok: true, date: TODAY, performed: 1, planned: 1, duration: 62, coachNotes: 'Bench up 2.5 kg. Dips skipped.' });
+});
+
+test('finish_workout: after it the session is closed: log_set and a second finish write nothing', async () => {
+  const db = fakeDb(withOpenLog());
+  ok(await db.tools.finish_workout({ coachNotes: 'Done.' }));
+  const set = await db.tools.log_set({ exerciseId: BENCH, setNumber: 1, weight: 80, reps: 8 });
+  assert.match(set.content[0].text, /^no_session: /);
+  const again = await db.tools.finish_workout({ coachNotes: 'Again.' });
+  assert.match(again.content[0].text, /^no_session: /);
+  assert.equal(db.batches.length, 1);
+  assert.equal(db.get(`workoutLogs/${TODAY}`)!.coachNotes, 'Done.');
+});
+
+test('finish_workout: no open session writes nothing; a session of yesterday can be finished', async () => {
+  const none = fakeDb(gymSeed());
+  refused(await none.tools.finish_workout({ coachNotes: 'x' }), 'no_session', none);
+  const db = fakeDb(withOpenLog({}, YESTERDAY));
+  const out = ok(await db.tools.finish_workout({ coachNotes: 'Late one.' }));
+  assert.equal(out.date, YESTERDAY);
+  assert.equal(db.get(`workoutLogs/${YESTERDAY}`)!.sessionOpen, false);
+});
+
+test('workout tools: a failed read or commit is write_failed with no internal detail', async () => {
+  const read = fakeDb(withOpenLog(), { failRead: true });
+  for (const result of [
+    await read.tools.start_workout({ routineId: 'push-day' }),
+    await read.tools.log_set({ exerciseId: BENCH, setNumber: 1, weight: 80, reps: 8 }),
+    await read.tools.finish_workout({ coachNotes: 'x' }),
+  ]) {
+    assert.equal(result.isError, true);
+    assert.match(result.content[0].text, /^write_failed: /);
+    assert.doesNotMatch(result.content[0].text, /secret|users\//);
+  }
+  assert.equal(read.batches.length, 0);
+
+  const commit = fakeDb(withOpenLog(), { failCommit: true });
+  const result = await commit.tools.log_set({ exerciseId: BENCH, setNumber: 1, weight: 80, reps: 8 });
+  assert.match(result.content[0].text, /^write_failed: /);
+  assert.match(result.content[0].text, /get_current_workout/);
+  assert.doesNotMatch(result.content[0].text, /secret|users\/|routine/);
+  assert.deepEqual(commit.get(`workoutLogs/${TODAY}`), openLog());
+});
+
+// ─── Parity: a session written by the MCP equals one saved by the app ─
+
+test('parity: start, two sets and finish store the log and the performance entry the app save stores', async () => {
+  const db = fakeDb(gymSeed());
+  ok(await db.tools.start_workout({ routineId: 'push-day' }));
+  ok(await db.tools.log_set({ exerciseId: BENCH, setNumber: 1, weight: 82.5, reps: 8 }));
+  ok(await db.tools.log_set({ exerciseId: BENCH, setNumber: 2, weight: 82.5, reps: 6 }));
+  ok(await db.tools.finish_workout({ coachNotes: 'Bench up.' }));
+
+  // The same session as the app holds it at Save (useTrainingLog.saveCurrentLog): the UI-only
+  // fields are still there, bench was edited and dips still equals its prefill.
+  const benchSets = [
+    { id: setId(TODAY, BENCH, 0), reps: 8, weight: 82.5, isProvisional: false },
+    { id: setId(TODAY, BENCH, 1), reps: 6, weight: 82.5, isProvisional: false },
+  ];
+  const appPayload: WorkoutLog = {
+    id: TODAY,
+    date: TODAY,
+    routineId: 'push-day',
+    routineName: 'Push Day',
+    notes: '',
+    isDeload: false,
+    deloadApplied: false,
+    deloadParams: undefined,
+    exerciseIds: [BENCH, DIPS],
+    exercises: [
+      {
+        id: `${BENCH}-${TODAY}-0-${NOW_MS}`,
+        exerciseId: BENCH,
+        name: 'Bench Press',
+        muscleGroup: 'Chest',
+        exerciseSetup: 'Flat',
+        progressiveOverload: '6-8',
+        sets: benchSets,
+        notes: '',
+        personalRecordDisplay: 'PR: 8x82.5kg',
+        currentPR: { reps: 8, weight: 82.5 },
+        prefill: { sets: [{ reps: 8, weight: 80 }, { reps: 7, weight: 80 }], lastPerformedDate: berlinMidnightMs(LAST_WEEK) },
+        progressionStepKg: null,
+        repeatStreak: 0,
+        warmupConfig: { template: 'HEAVY_BARBELL' },
+        setStructure: 'superset',
+        setStructureOverride: null,
+        performed: true,
+      },
+      {
+        id: `${DIPS}-${TODAY}-1-${NOW_MS}`,
+        exerciseId: DIPS,
+        name: 'Dips',
+        muscleGroup: 'Triceps',
+        exerciseSetup: '',
+        progressiveOverload: '',
+        sets: [{ id: setId(TODAY, DIPS, 0), reps: 10, weight: 0, isProvisional: true }],
+        notes: '',
+        personalRecordDisplay: 'PR: N/A',
+        currentPR: null,
+        isProvisional: true,
+        prefill: { sets: [{ reps: 10, weight: 0 }], lastPerformedDate: null },
+        progressionStepKg: null,
+        repeatStreak: 0,
+        warmupConfig: { template: 'BODYWEIGHT', isWeightedBodyweight: false },
+        setStructure: 'normal',
+        setStructureOverride: null,
+        performed: false,
+      },
+    ],
+  };
+  const app = buildWorkoutLogDoc(TODAY, appPayload);
+
+  // The log: the same document, plus the two fields only the MCP session writes.
+  // The app sends no duration, so its document has none; the MCP session adds startedAt and duration.
+  const { sessionOpen, coachNotes, startedAt, duration, ...mcpLog } = db.get(`workoutLogs/${TODAY}`)!;
+  assert.deepEqual(mcpLog, app.doc);
+  assert.equal(sessionOpen, false);
+  assert.equal(coachNotes, 'Bench up.');
+  assert.equal(startedAt, NOW_MS);
+  assert.equal(duration, 1);
+
+  // The performance entry: what the app's save plans for the performed exercise, merged into the stored entry.
+  const plan = planPerformanceEntry({
+    existing: benchEntry(),
+    sets: benchSets,
+    logDate: TODAY,
+    achievedAtMs: berlinMidnightMs(TODAY),
+    prFromOtherLogs: null,
+  });
+  assert.equal(plan.clearPR, false);
+  assert.deepEqual(db.get(`performanceEntries/${BENCH}`), { ...benchEntry(), ...plan.fields });
+  // A planned exercise gets no performance entry, as in the app.
+  assert.equal(db.get(`performanceEntries/${DIPS}`), undefined);
+  for (const op of db.ops()) assert.match(op.path, LOG_PATH);
+  assert.equal(db.batches.length, 4);
+});
+
+// ─── Workout duration ────────────────────────────────────────────────
+
+const startedMinutesAgo = (minutes: number, extra: Data = {}) =>
+  gymSeed({ [`workoutLogs/${TODAY}`]: { ...openLog(), startedAt: NOW_MS - minutes * 60_000, ...extra } });
+
+test('start_workout: startedAt is the start instant in epoch milliseconds', async () => {
+  const db = fakeDb(gymSeed());
+  ok(await db.tools.start_workout({ routineId: 'push-day' }));
+  assert.equal(db.get(`workoutLogs/${TODAY}`)!.startedAt, NOW_MS);
+  assert.equal('duration' in db.get(`workoutLogs/${TODAY}`)!, false);
+});
+
+test('finish_workout: duration is finish minus startedAt in whole minutes, at least 1', async () => {
+  for (const [minutes, expected] of [[61.6, 62], [61.4, 61], [0, 1], [0.2, 1], [180, 180]] as const) {
+    const db = fakeDb(startedMinutesAgo(minutes));
+    const out = ok(await db.tools.finish_workout({ coachNotes: 'Done.' }));
+    assert.equal(out.duration, expected, `${minutes} minutes`);
+    assert.equal(db.get(`workoutLogs/${TODAY}`)!.duration, expected);
+  }
+});
+
+test('finish_workout: durationMin wins over the computed value', async () => {
+  const db = fakeDb(startedMinutesAgo(62));
+  const out = ok(await db.tools.finish_workout({ coachNotes: 'Done.', durationMin: 45 }));
+  assert.equal(out.duration, 45);
+  assert.equal(db.get(`workoutLogs/${TODAY}`)!.duration, 45);
+  assert.equal(db.get(`workoutLogs/${TODAY}`)!.sessionOpen, false);
+});
+
+test('finish_workout: a computed duration over 180 minutes with no durationMin writes nothing (duration_suspect)', async () => {
+  const db = fakeDb(startedMinutesAgo(181));
+  const result = await db.tools.finish_workout({ coachNotes: 'Done.' });
+  refused(result, 'duration_suspect', db);
+  assert.match(result.content[0].text, /durationMin/);
+  assert.equal(db.get(`workoutLogs/${TODAY}`)!.sessionOpen, true);
+  assert.equal('coachNotes' in db.get(`workoutLogs/${TODAY}`)!, false);
+
+  // With durationMin the same session closes, also above 180.
+  const out = ok(await db.tools.finish_workout({ coachNotes: 'Done.', durationMin: 200 }));
+  assert.equal(out.duration, 200);
+  assert.equal(db.get(`workoutLogs/${TODAY}`)!.duration, 200);
+});
+
+test('finish_workout: a session left open since yesterday is suspect, and durationMin closes it', async () => {
+  const db = fakeDb(gymSeed({ [`workoutLogs/${YESTERDAY}`]: { ...openLog(YESTERDAY), startedAt: NOW_MS - 15 * 3_600_000 } }));
+  refused(await db.tools.finish_workout({ coachNotes: 'Late.' }), 'duration_suspect', db);
+  const out = ok(await db.tools.finish_workout({ coachNotes: 'Late.', durationMin: 70 }));
+  assert.equal(out.date, YESTERDAY);
+  assert.equal(db.get(`workoutLogs/${YESTERDAY}`)!.duration, 70);
+});
+
+test('finish_workout: a log with no readable startedAt, or one in the future, needs durationMin', async () => {
+  for (const startedAt of [undefined, 'yesterday', NaN, NOW_MS + 5 * 60_000]) {
+    const log = { ...openLog(), startedAt };
+    if (startedAt === undefined) delete log.startedAt;
+    const db = fakeDb(gymSeed({ [`workoutLogs/${TODAY}`]: log }));
+    refused(await db.tools.finish_workout({ coachNotes: 'Done.' }), 'duration_suspect', db);
+    const out = ok(await db.tools.finish_workout({ coachNotes: 'Done.', durationMin: 50 }));
+    assert.equal(out.duration, 50);
+  }
+});
+
+test('log_set: startedAt stays on the log', async () => {
+  const db = fakeDb(startedMinutesAgo(30));
+  ok(await db.tools.log_set({ exerciseId: BENCH, setNumber: 1, weight: 82.5, reps: 8 }));
+  assert.equal(db.get(`workoutLogs/${TODAY}`)!.startedAt, NOW_MS - 30 * 60_000);
 });

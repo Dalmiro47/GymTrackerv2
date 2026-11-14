@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createRepo, MAX_EXERCISES, MAX_ROUTINES, MAX_SCHEDULE_DAYS, type ReadDb } from './repo.server';
+import { createRepo, MAX_EXERCISES, MAX_LOGS, MAX_ROUTINES, MAX_SCHEDULE_DAYS, type ReadDb } from './repo.server';
 
 // Fake values only. The fake db records every path and query step, serves canned
 // documents, and throws on anything that is not a read (set, add, update, delete...).
@@ -230,4 +230,33 @@ test('the fake refuses writes, so a repo that wrote would fail these tests', () 
   const { db } = fakeDb();
   assert.throws(() => (db as unknown as { batch(): void }).batch());
   assert.throws(() => (db.doc(`${ROOT}routines/x`) as unknown as { set(v: unknown): void }).set({}));
+});
+
+test('getPerformanceEntry: the entry of one exercise or null; a bad id reads nothing', async () => {
+  const path = `${ROOT}performanceEntries/bench-press_chest`;
+  const { db, calls } = fakeDb({ docs: { [path]: { lastPerformedDate: 5 } } });
+  const repo = createRepo(db, OWNER);
+  assert.deepEqual(await repo.getPerformanceEntry('bench-press_chest'), { lastPerformedDate: 5 });
+  assert.equal(await repo.getPerformanceEntry('nope'), null);
+  assert.deepEqual(calls.map(c => c.path), [path, `${ROOT}performanceEntries/nope`]);
+  const before = calls.length;
+  for (const bad of ['', 'a/b', '.', '..', '__name__', 'x'.repeat(201)]) {
+    await assert.rejects(repo.getPerformanceEntry(bad), `id should be refused: ${bad.slice(0, 12)}`);
+  }
+  assert.equal(calls.length, before);
+});
+
+test('listLogsWithExercise: array-contains on exerciseIds with no orderBy, bounded; a bad id reads nothing', async () => {
+  const { db, calls } = fakeDb({ collections: { [`${ROOT}workoutLogs`]: rows(MAX_LOGS + 2) } });
+  const repo = createRepo(db, OWNER);
+  const result = await repo.listLogsWithExercise('bench-press_chest');
+  assert.equal(calls[0].path, `${ROOT}workoutLogs`);
+  // One field and no orderBy: no composite index is needed.
+  assert.deepEqual(calls[0].ops, [['where', 'exerciseIds', 'array-contains', 'bench-press_chest'], ['limit', MAX_LOGS + 1]]);
+  assert.equal(result.rows.length, MAX_LOGS);
+  assert.equal(result.truncated, true);
+  const before = calls.length;
+  await assert.rejects(repo.listLogsWithExercise('a/b'));
+  await assert.rejects(repo.listLogsWithExercise(''));
+  assert.equal(calls.length, before);
 });

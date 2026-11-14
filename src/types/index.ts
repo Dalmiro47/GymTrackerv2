@@ -122,7 +122,7 @@ export interface WorkoutLog {
   routineName?: string;
   exercises: LoggedExercise[]; // The actual exercises logged for this day
   exerciseIds: string[]; // NEW: Denormalized array of exercise IDs in this log
-  duration?: number; 
+  duration?: number; // Whole minutes. Only the MCP finish_workout tool writes it; the app has no input and no reader yet.
   notes?: string; // Overall notes for the workout session
   isDeload?: boolean; // True if this log was a deload session
   // True once the deload transform (fewer sets, lighter weight) has been
@@ -133,6 +133,10 @@ export interface WorkoutLog {
     volumeMultiplier: number;
     intensityMultiplier: number;
   };
+  // Written by the MCP workout tools only; the app has no input and no reader for these three yet.
+  startedAt?: number; // Epoch milliseconds of start_workout, like the dates of a performance entry
+  sessionOpen?: boolean; // true from start_workout until finish_workout; absent on a log the app created
+  coachNotes?: string; // The coach's summary of the session, written by finish_workout
 }
 
 // For storing the single, latest performance entry per exercise.
