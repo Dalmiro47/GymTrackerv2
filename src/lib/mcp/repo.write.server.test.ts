@@ -73,7 +73,8 @@ function fakeDb(existing: Record<string, Data> = {}) {
               if (gone) throw Object.assign(new Error('5 NOT_FOUND'), { code: 5 });
               for (const op of batch.ops) {
                 if (op.kind === 'update') store.set(op.path, applyUpdate(store.get(op.path)!, op.data));
-                else store.set(op.path, op.kind === 'set' ? { ...store.get(op.path), ...op.data } : op.data);
+                else if (op.kind === 'set') store.set(op.path, applyUpdate(store.get(op.path) ?? {}, op.data));
+                else store.set(op.path, op.data);
               }
             },
           },
@@ -114,14 +115,14 @@ type Forbidden =
   | Extract<keyof WriteBatch, 'delete'>;
 const noForbiddenKey: [Forbidden] extends [never] ? true : false = true;
 
-test('the write surface has no delete, and one update call: the fields of an exercise', () => {
+test('the write surface has no delete, and three update calls: an exercise, the exercises of a log, the end of a session', () => {
   assert.equal(noForbiddenKey, true);
   const { db } = fakeDb();
   const batch = db.batch();
   assert.deepEqual(Object.keys(batch).sort(), ['commit', 'create', 'set', 'update']);
   const source = readFileSync(new URL('./repo.write.server.ts', import.meta.url), 'utf8');
   assert.doesNotMatch(source, /delete/);
-  assert.equal(source.match(/\.update\(/g)?.length, 1);
+  assert.equal(source.match(/\.update\(/g)?.length, 3);
 });
 
 test('the fake refuses a delete or a document update, so a repo that used one would fail these tests', () => {
@@ -374,4 +375,161 @@ test('updateExerciseFields: a missing exercise fails the whole batch; no documen
   assert.equal(store.has(`${ROOT}exercises/cable-fly_chest`), false);
   assert.equal(store.get(`${ROOT}routines/push-day`), routineBefore);
   assert.equal(store.size, 1);
+});
+
+// ─── Workout logs ────────────────────────────────────────────────────
+
+const LOG_DAY = '2027-01-15';
+const LOG_PATH = `${ROOT}workoutLogs/${LOG_DAY}`;
+const logExercises = [{ id: 'row-1', exerciseId: 'cable-fly_chest', name: 'Cable Fly', sets: [], performed: false }];
+const STARTED_AT = 1_800_000_000_000;
+const newLog = { routineId: 'push-day', routineName: 'Push Day', exercises: logExercises, exerciseIds: ['cable-fly_chest'], startedAt: STARTED_AT };
+
+test('createWorkoutLog: one batch, one create at users/{owner}/workoutLogs/{date}, open and never a deload', async () => {
+  const { repo, batches } = fakeDb();
+  // An extra key on the argument must not reach the document.
+  const log = { ...newLog, isDeload: true, sessionOpen: false, coachNotes: 'hacked', duration: 5, id: 'x', date: 'y' } as typeof newLog;
+  await repo.createWorkoutLog(LOG_DAY, log);
+  assert.equal(batches.length, 1);
+  assert.equal(batches[0].commits, 1);
+  assert.deepEqual(batches[0].ops, [
+    {
+      kind: 'create',
+      path: LOG_PATH,
+      data: {
+        id: LOG_DAY,
+        date: LOG_DAY,
+        routineId: 'push-day',
+        routineName: 'Push Day',
+        exercises: logExercises,
+        exerciseIds: ['cable-fly_chest'],
+        notes: '',
+        isDeload: false,
+        deloadApplied: false,
+        sessionOpen: true,
+        startedAt: STARTED_AT,
+      },
+    },
+  ]);
+});
+
+test('createWorkoutLog: a log that exists is never overwritten', async () => {
+  const existing = { id: LOG_DAY, notes: 'mine' };
+  const { repo, store } = fakeDb({ [LOG_PATH]: existing });
+  await assert.rejects(repo.createWorkoutLog(LOG_DAY, newLog));
+  assert.equal(store.get(LOG_PATH), existing);
+});
+
+test('setWorkoutLogExercises: one batch; an update of exercises and exerciseIds, plus a merge per performance entry', async () => {
+  const stored = { id: LOG_DAY, date: LOG_DAY, notes: 'kept', sessionOpen: true, exercises: [], exerciseIds: [] };
+  const perfPath = `${ROOT}performanceEntries/cable-fly_chest`;
+  const { repo, batches, store } = fakeDb({
+    [LOG_PATH]: stored,
+    [perfPath]: { lastPerformedDate: 1, lastPerformedSets: [], personalRecord: { reps: 1, weight: 1, date: 1, logId: 'old' }, other: 'kept' },
+  });
+  const pr = { reps: 8, weight: 80, date: 5, logId: LOG_DAY };
+  // Extra keys on the arguments must not reach a document.
+  const fields = { exercises: logExercises, exerciseIds: ['cable-fly_chest'], notes: 'hacked', sessionOpen: false } as {
+    exercises: typeof logExercises;
+    exerciseIds: string[];
+  };
+  await repo.setWorkoutLogExercises(LOG_DAY, fields, [
+    {
+      exerciseId: 'cable-fly_chest',
+      fields: { lastPerformedSets: [{ reps: 8, weight: 80 }], lastPerformedDate: 5, personalRecord: pr, hacked: true } as object,
+      clearPR: false,
+    },
+  ]);
+  assert.equal(batches.length, 1);
+  assert.equal(batches[0].commits, 1);
+  assert.deepEqual(batches[0].ops, [
+    { kind: 'update', path: LOG_PATH, data: { exercises: logExercises, exerciseIds: ['cable-fly_chest'] } },
+    {
+      kind: 'set',
+      path: perfPath,
+      data: { lastPerformedSets: [{ reps: 8, weight: 80 }], lastPerformedDate: 5, personalRecord: pr },
+      options: { merge: true },
+    },
+  ]);
+  assert.deepEqual(store.get(LOG_PATH), { ...stored, exercises: logExercises, exerciseIds: ['cable-fly_chest'] });
+  assert.equal(store.get(perfPath)!.other, 'kept');
+});
+
+test('setWorkoutLogExercises: clearPR takes the PR off the entry; an entry with nothing to write is left out', async () => {
+  const perfPath = `${ROOT}performanceEntries/cable-fly_chest`;
+  const { repo, batches, store } = fakeDb({
+    [LOG_PATH]: { id: LOG_DAY, exercises: [] },
+    [perfPath]: { lastPerformedDate: 1, personalRecord: { reps: 1, weight: 1, date: 1, logId: LOG_DAY } },
+  });
+  await repo.setWorkoutLogExercises(LOG_DAY, { exercises: logExercises, exerciseIds: ['cable-fly_chest'] }, [
+    { exerciseId: 'cable-fly_chest', fields: { lastPerformedSets: [], lastPerformedDate: 5 }, clearPR: true },
+    { exerciseId: 'row_back', fields: {}, clearPR: false },
+  ]);
+  assert.equal(batches[0].ops.length, 2);
+  assert.deepEqual(batches[0].ops[1].data, { lastPerformedSets: [], lastPerformedDate: 5, personalRecord: REMOVE });
+  assert.deepEqual(store.get(perfPath), { lastPerformedDate: 5, lastPerformedSets: [] });
+  assert.equal(store.has(`${ROOT}performanceEntries/row_back`), false);
+});
+
+test('setWorkoutLogExercises and finishWorkoutLog: a log that is gone fails the whole batch; no document appears', async () => {
+  const { repo, store } = fakeDb();
+  await assert.rejects(
+    repo.setWorkoutLogExercises(LOG_DAY, { exercises: logExercises, exerciseIds: ['cable-fly_chest'] }, [
+      { exerciseId: 'cable-fly_chest', fields: { lastPerformedDate: 5 }, clearPR: false },
+    ]),
+  );
+  await assert.rejects(repo.finishWorkoutLog(LOG_DAY, 'Good session', 60));
+  assert.equal(store.size, 0);
+});
+
+test('finishWorkoutLog: one batch, one update of coachNotes, sessionOpen and duration; every other field stays', async () => {
+  const stored = { id: LOG_DAY, date: LOG_DAY, notes: 'kept', sessionOpen: true, startedAt: STARTED_AT, exercises: logExercises };
+  const { repo, batches, store } = fakeDb({ [LOG_PATH]: stored });
+  await repo.finishWorkoutLog(LOG_DAY, 'Good session', 62);
+  assert.equal(batches.length, 1);
+  assert.deepEqual(batches[0].ops, [{ kind: 'update', path: LOG_PATH, data: { coachNotes: 'Good session', sessionOpen: false, duration: 62 } }]);
+  assert.deepEqual(store.get(LOG_PATH), { ...stored, coachNotes: 'Good session', sessionOpen: false, duration: 62 });
+});
+
+test('workout log writes: a date that is not a real day, a bad id or bad content opens no batch', async () => {
+  const { repo, batches, docPaths } = fakeDb();
+  const fields = { exercises: logExercises, exerciseIds: ['cable-fly_chest'] };
+  for (const bad of ['', 'a/b', '..', 'today', 'push-day', '2027-1-15', '2027-02-30', '2027-01-15x', '2027-01-15/x']) {
+    await assert.rejects(repo.createWorkoutLog(bad, newLog), `date should be refused: ${bad}`);
+    await assert.rejects(repo.setWorkoutLogExercises(bad, fields, []));
+    await assert.rejects(repo.finishWorkoutLog(bad, 'x', 60));
+  }
+  for (const bad of ['', 'a/b', '.', '..', '__name__', 'x'.repeat(201)]) {
+    await assert.rejects(repo.setWorkoutLogExercises(LOG_DAY, fields, [{ exerciseId: bad, fields: { lastPerformedDate: 1 }, clearPR: false }]));
+    await assert.rejects(repo.createWorkoutLog(LOG_DAY, { ...newLog, routineId: bad }));
+  }
+  await assert.rejects(repo.createWorkoutLog(LOG_DAY, { ...newLog, exercises: [] }));
+  await assert.rejects(repo.createWorkoutLog(LOG_DAY, { ...newLog, exercises: 'x' as unknown as typeof logExercises }));
+  await assert.rejects(repo.setWorkoutLogExercises(LOG_DAY, { exercises: [], exerciseIds: [] }, []));
+  await assert.rejects(repo.finishWorkoutLog(LOG_DAY, '', 60));
+  await assert.rejects(repo.finishWorkoutLog(LOG_DAY, 'x'.repeat(2001), 60));
+  await assert.rejects(repo.finishWorkoutLog(LOG_DAY, 7 as unknown as string, 60));
+  // The duration is whole minutes from 1 to 300; the start is a finite number of milliseconds.
+  for (const bad of [0, 301, 45.5, -1, NaN, '60', undefined]) {
+    await assert.rejects(repo.finishWorkoutLog(LOG_DAY, 'x', bad as number), `duration should be refused: ${String(bad)}`);
+  }
+  for (const bad of [NaN, Infinity, -1, 0, '1800000000000', undefined]) {
+    await assert.rejects(repo.createWorkoutLog(LOG_DAY, { ...newLog, startedAt: bad as number }), `startedAt should be refused: ${String(bad)}`);
+  }
+  assert.equal(batches.length, 0);
+  const allowed = new RegExp(`^users/${OWNER}/(workoutLogs/\\d{4}-\\d{2}-\\d{2}|performanceEntries/[^/]+)$`);
+  for (const path of docPaths) assert.match(path, allowed);
+});
+
+test('every workout write path is the owner\'s log of one real day or one performance entry', async () => {
+  const { repo, batches, docPaths } = fakeDb({ [LOG_PATH]: { id: LOG_DAY } });
+  await repo.setWorkoutLogExercises(LOG_DAY, { exercises: logExercises, exerciseIds: ['cable-fly_chest'] }, [
+    { exerciseId: 'cable-fly_chest', fields: { lastPerformedDate: 1 }, clearPR: false },
+  ]);
+  await repo.finishWorkoutLog(LOG_DAY, 'x', 60);
+  await repo.createWorkoutLog('2027-01-16', newLog);
+  const allowed = new RegExp(`^users/${OWNER}/(workoutLogs/\\d{4}-\\d{2}-\\d{2}|performanceEntries/[^/]+)$`);
+  const paths = [...docPaths, ...batches.flatMap(b => b.ops.map(op => op.path))];
+  assert.equal(paths.length, 8);
+  for (const path of paths) assert.match(path, allowed);
 });

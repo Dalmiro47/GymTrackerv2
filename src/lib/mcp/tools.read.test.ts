@@ -98,10 +98,10 @@ const log = (date: string, exercises: Record<string, unknown>[], extra: Record<s
 
 // ─── Input validation ────────────────────────────────────────────────
 
-test('schemas: exactly the seven read tools, and none takes a uid', () => {
+test('schemas: exactly the eight read tools, and none takes a uid', () => {
   assert.deepEqual(Object.keys(toolSchemas).sort(), [
-    'get_exercise_history', 'get_profile', 'get_recent_logs', 'get_routine', 'get_week_status', 'list_exercises',
-    'list_routines',
+    'get_current_workout', 'get_exercise_history', 'get_profile', 'get_recent_logs', 'get_routine', 'get_week_status',
+    'list_exercises', 'list_routines',
   ]);
   for (const [name, schema] of Object.entries(toolSchemas)) {
     for (const key of Object.keys(schema.shape)) {
@@ -800,5 +800,201 @@ test('a repo failure is a generic error result with no internal detail', async (
   for (const result of results) {
     assert.equal(result.isError, true);
     assert.doesNotMatch(result.content[0].text, /secret|fake-owner|users\//);
+  }
+});
+
+// ─── Workout session ─────────────────────────────────────────────────
+// NOW is 2026-03-16 00:30 in Berlin: today is the 16th, yesterday the 15th.
+
+test('get_recent_logs: coachNotes when stored; sessionOpen true only while the session is open', async () => {
+  const set = [{ id: 's', reps: 8, weight: 80 }];
+  const { tools } = fakeRepo({
+    logs: [
+      log('2026-03-16', [{ exerciseId: 'my-lift', name: 'My Lift', sets: set }], { sessionOpen: true }),
+      log('2026-03-14', [{ exerciseId: 'my-lift', name: 'My Lift', sets: set }], { sessionOpen: false, coachNotes: 'Add 2.5 kg next time.', duration: 62, startedAt: 5 }),
+      log('2026-03-12', [{ exerciseId: 'my-lift', name: 'My Lift', sets: set }]),
+    ],
+  });
+  const out = body(await tools.get_recent_logs({ days: 14 }));
+  // duration (whole minutes) only when stored; startedAt is never returned.
+  assert.equal(out.logs[1].duration, 62);
+  assert.equal('duration' in out.logs[0], false);
+  assert.equal('duration' in out.logs[2], false);
+  assert.equal(out.logs.some((l: object) => 'startedAt' in l), false);
+  assert.equal(out.logs[0].sessionOpen, true);
+  assert.equal('coachNotes' in out.logs[0], false);
+  assert.equal(out.logs[1].coachNotes, 'Add 2.5 kg next time.');
+  assert.equal('sessionOpen' in out.logs[1], false);
+  assert.equal('sessionOpen' in out.logs[2], false);
+  assert.equal('coachNotes' in out.logs[2], false);
+});
+
+test('get_week_status: sessionOpen true only while the session is open, and no coachNotes', async () => {
+  const set = [{ id: 's', reps: 8, weight: 80 }];
+  const { tools } = fakeRepo({
+    logs: [
+      log('2026-03-16', [{ exerciseId: 'my-lift', name: 'My Lift', sets: set }], { sessionOpen: true }),
+      log('2026-03-17', [{ exerciseId: 'my-lift', name: 'My Lift', sets: set }], { sessionOpen: false, coachNotes: 'x' }),
+    ],
+  });
+  const out = body(await tools.get_week_status({}));
+  assert.equal(out.days[0].session.sessionOpen, true);
+  assert.equal('sessionOpen' in out.days[1].session, false);
+  assert.equal('coachNotes' in out.days[0].session, false);
+  assert.equal('coachNotes' in out.days[1].session, false);
+});
+
+test('schemas: get_current_workout takes no input', () => {
+  assert.deepEqual(toolSchemas.get_current_workout.parse({}), {});
+});
+
+test('get_current_workout: no open session of today or yesterday is session null, not an error', async () => {
+  const set = [{ id: 's', reps: 8, weight: 80 }];
+  const { tools, calls } = fakeRepo({
+    logs: [
+      log('2026-03-16', [{ exerciseId: 'my-lift', name: 'My Lift', sets: set }]),
+      log('2026-03-15', [{ exerciseId: 'my-lift', name: 'My Lift', sets: set }], { sessionOpen: false }),
+      log('2026-03-14', [{ exerciseId: 'my-lift', name: 'My Lift', sets: set }], { sessionOpen: true }),
+    ],
+  });
+  assert.deepEqual(body(await tools.get_current_workout({})), { today: '2026-03-16', timeZone: 'Europe/Berlin', session: null });
+  // One bounded read of two days, and nothing else.
+  assert.deepEqual(calls, [['getLogsBetween', '2026-03-15', '2026-03-16', 2]]);
+});
+
+const openSession = (date: string) =>
+  log(
+    date,
+    [
+      {
+        exerciseId: seeded.id,
+        name: seeded.name,
+        muscleGroup: seeded.muscleGroup,
+        setStructure: 'superset',
+        performed: true,
+        sets: [{ id: 'a', reps: 8, weight: 82.5 }, { id: 'b', reps: 6, weight: 82.5 }],
+      },
+      {
+        exerciseId: 'my-lift',
+        name: 'My Lift',
+        muscleGroup: 'Back',
+        setStructure: 'normal',
+        setStructureOverride: 'superset',
+        exerciseSetup: 'old setup',
+        progressiveOverload: '10-12 reps',
+        performed: false,
+        sets: [{ id: 'c', reps: 10, weight: 50 }],
+      },
+      { exerciseId: 'gone', name: 'Gone Lift', muscleGroup: 'Legs', progressiveOverload: '5-8 reps', performed: false, sets: [] },
+    ],
+    // NOW is 23:30:00 UTC: the session started 44 minutes and 30 seconds ago.
+    { routineId: 'push-day', routineName: 'Push Day', sessionOpen: true, notes: 'tired', startedAt: Date.parse('2026-03-15T22:45:30Z') },
+  );
+
+const history = [
+  // A deload and a planned copy are not a last session.
+  log('2026-03-13', [{ exerciseId: 'my-lift', name: 'My Lift', sets: [{ id: 'x', reps: 10, weight: 20 }] }], { isDeload: true }),
+  log('2026-03-11', [{ exerciseId: 'my-lift', name: 'My Lift', performed: false, sets: [{ id: 'x', reps: 10, weight: 50 }] }]),
+  log('2026-03-09', [
+    { exerciseId: 'my-lift', name: 'My Lift', sets: [{ id: 'x', reps: 10, weight: 50 }, { id: 'y', reps: 9, weight: 50 }] },
+    { exerciseId: seeded.id, name: seeded.name, sets: [{ id: 'z', reps: 8, weight: 80 }] },
+  ]),
+];
+
+const sessionLibrary = {
+  [seeded.id]: { name: seeded.name, muscleGroup: seeded.muscleGroup, progressiveOverload: '6-8 reps', exerciseSetup: 'Flat', loadIncrementKg: 2.5 },
+  'my-lift': { name: 'My Lift', muscleGroup: 'Back', progressiveOverload: '8-10 reps', warmup: { template: 'MACHINE_COMPOUND' }, dumbbellLoad: 'perHand' },
+};
+
+test('get_current_workout: the open log with done sets, the next exercise and each target', async () => {
+  const { tools, calls } = fakeRepo({ logs: [openSession('2026-03-16'), ...history], library: sessionLibrary, profile: { language: 'es' } });
+  const out = body(await tools.get_current_workout({}));
+  assert.equal(out.today, '2026-03-16');
+  const session = out.session;
+  assert.equal(session.date, '2026-03-16');
+  assert.equal(session.routineId, 'push-day');
+  assert.equal(session.routineName, 'Push Day');
+  assert.equal(session.sessionOpen, true);
+  assert.equal(session.notes, 'tired');
+  // The first exercise that is still planned.
+  assert.equal(session.next, 'my-lift');
+  // Whole minutes since the start, rounded down.
+  assert.equal(session.elapsedMin, 44);
+
+  const [first, second, third] = session.exercises;
+  assert.deepEqual(first, {
+    exerciseId: seeded.id,
+    name: seeded.name,
+    displayName: seededEs,
+    muscleGroup: seeded.muscleGroup,
+    setStructure: 'superset',
+    group: 1,
+    status: 'performed',
+    sets: [{ setNumber: 1, reps: 8, weight: 82.5 }, { setNumber: 2, reps: 6, weight: 82.5 }],
+    exerciseSetup: 'Flat',
+    progressiveOverload: '6-8 reps',
+    repRange: { min: 6, max: 8 },
+    loadIncrementKg: 2.5,
+    lastSession: { date: '2026-03-09', sets: [{ reps: 8, weight: 80 }] },
+  });
+  // A planned exercise has no sets of its own: the stored ones are a copy. The override is the structure.
+  assert.deepEqual(second, {
+    exerciseId: 'my-lift',
+    name: 'My Lift',
+    muscleGroup: 'Back',
+    setStructure: 'superset',
+    group: 1,
+    status: 'planned',
+    progressiveOverload: '8-10 reps',
+    repRange: { min: 8, max: 10 },
+    warmupTemplate: 'MACHINE_COMPOUND',
+    dumbbellLoad: 'perHand',
+    lastSession: { date: '2026-03-09', sets: [{ reps: 10, weight: 50 }, { reps: 9, weight: 50 }] },
+  });
+  // Gone from the library: the log's copy of the range, and no last session.
+  assert.deepEqual(third, {
+    exerciseId: 'gone',
+    name: 'Gone Lift',
+    muscleGroup: 'Legs',
+    setStructure: 'normal',
+    status: 'planned',
+    progressiveOverload: '5-8 reps',
+    repRange: { min: 5, max: 8 },
+    inLibrary: false,
+    lastSession: null,
+  });
+
+  assert.deepEqual(calls[0], ['getLogsBetween', '2026-03-15', '2026-03-16', 2]);
+  // The history read is bounded: 180 days back from the session day.
+  assert.deepEqual(calls.find(c => c[0] === 'getLogsSince'), ['getLogsSince', '2025-09-17', 181]);
+});
+
+test('get_current_workout: a session started yesterday is still the current one; next is null when nothing is planned', async () => {
+  const session = openSession('2026-03-15');
+  const exercises = (session.data.exercises as Record<string, unknown>[]).map(ex => ({ ...ex, performed: true }));
+  const { tools } = fakeRepo({ logs: [{ id: session.id, data: { ...session.data, exercises } }], library: sessionLibrary });
+  const out = body(await tools.get_current_workout({}));
+  assert.equal(out.today, '2026-03-16');
+  assert.equal(out.session.date, '2026-03-15');
+  assert.equal(out.session.next, null);
+  assert.equal(out.session.exercises.every((ex: { status: string }) => ex.status === 'performed'), true);
+});
+
+test('get_current_workout: with an open log on both days, today wins', async () => {
+  const { tools } = fakeRepo({ logs: [openSession('2026-03-15'), openSession('2026-03-16')], library: sessionLibrary });
+  assert.equal(body(await tools.get_current_workout({})).session.date, '2026-03-16');
+});
+
+test('get_current_workout: a repo failure is a generic error result', async () => {
+  const result = await fakeRepo({ fail: true }).tools.get_current_workout({});
+  assert.equal(result.isError, true);
+  assert.doesNotMatch(result.content[0].text, /secret|users\//);
+});
+
+test('get_current_workout: elapsedMin is null when the log has no readable start or the start is in the future', async () => {
+  for (const startedAt of [undefined, 'soon', Date.parse('2026-03-15T23:40:00Z')]) {
+    const session = openSession('2026-03-16');
+    const { tools } = fakeRepo({ logs: [{ id: session.id, data: { ...session.data, startedAt } }], library: sessionLibrary });
+    assert.equal(body(await tools.get_current_workout({})).session.elapsedMin, null);
   }
 });

@@ -13,7 +13,7 @@
  * - updatePerformanceEntryOnLogDelete: Updates an exercise's performance entry (PR, last sets) if sourced from a deleted log, attempting to fall back to the next newest log. Deletes entry if it becomes empty.
  */
 import { db } from '@/lib/firebaseConfig';
-import type { WorkoutLog, LoggedSet, LoggedExercise, ExercisePerformanceEntry, PerformanceSet, PerformedSession } from '@/types';
+import type { WorkoutLog, LoggedSet, ExercisePerformanceEntry, PerformanceSet, PerformedSession } from '@/types';
 import {
   doc,
   setDoc,
@@ -31,8 +31,8 @@ import {
 } from 'firebase/firestore';
 import { parseISO, startOfMonth, endOfMonth, format as fmt } from 'date-fns';
 import { stripUndefinedDeep } from '@/lib/sanitize';
-import { validWorkingSets, pickBestSet, isBetterPR } from '@/lib/pr';
-import { snapToHalf } from '@/lib/rounding';
+import { bestPRFromLogs, needsPRRescan, planPerformanceEntry } from '@/lib/performanceEntryPlan';
+import { buildWorkoutLogDoc } from '@/lib/workoutLogDoc';
 import { cachedFetch, invalidateCache } from '@/lib/sessionCache';
 
 const getUserWorkoutLogsCollectionPath = (userId: string) => `users/${userId}/workoutLogs`;
@@ -44,98 +44,22 @@ const getUserPerformanceEntriesCollectionPath = (userId: string) => `users/${use
 const logsCachePrefix = (userId: string) => `wl:${userId}`;
 const perfCacheKey = (userId: string, exerciseId: string) => `${logsCachePrefix(userId)}:perf:${exerciseId}`;
 
-const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(min, n));
-
 export const saveWorkoutLog = async (userId: string, date: string, workoutLogPayload: WorkoutLog): Promise<void> => {
   if (!userId) throw new Error("User ID is required.");
   if (!date) throw new Error("Date is required to save a workout log.");
 
-  const exerciseIds = workoutLogPayload.exercises.map(ex => ex.exerciseId);
-
-  const payloadForFirestore: WorkoutLog = {
-    ...workoutLogPayload,
-    id: date,
-    date: date,
-    exerciseIds: exerciseIds,
-    exercises: workoutLogPayload.exercises.map(ex => {
-      // Destructure to remove UI-only fields before saving
-      const { personalRecordDisplay, isProvisional, currentPR, prefill, progressionStepKg, repeatStreak, ...restOfEx } = ex;
-
-      // Clean up optional fields that might be null or undefined on the exercise
-      const exerciseToSave: { [key: string]: any } = { ...restOfEx };
-      if (exerciseToSave.setStructure === 'normal' || !exerciseToSave.setStructure) {
-        delete exerciseToSave.setStructure;
-      }
-      if (!exerciseToSave.setStructureOverride) {
-        delete exerciseToSave.setStructureOverride;
-      }
-      // `performed` IS persisted (unlike the UI-only flags destructured above):
-      // a planned exercise stores the last session's sets, so this flag is the
-      // only thing that lets a later PR rescan tell a real lift from a pre-fill.
-      // Written as an explicit boolean because the doc is merged — an absent key
-      // would leave a stale `true` from a previous save in place.
-      exerciseToSave.performed = restOfEx.performed !== false;
-
-      return {
-        ...exerciseToSave,
-        sets: ex.sets
-          // Drop fully-empty sets instead of persisting them as 0x0 rows
-          .filter(s => s.reps != null || s.weight != null)
-          .map(s => {
-            const { isProvisional, ...restOfSet } = s;
-
-            // reps: 0..99 integer
-            const repsNum = Number(restOfSet.reps);
-            const reps =
-              Number.isFinite(repsNum) ? clamp(Math.trunc(Math.abs(repsNum)), 0, 99) : 0;
-
-            // weight: 0..999 snapped to .0/.5 only
-            const wNum = Number(restOfSet.weight);
-            let weight = Number.isFinite(wNum) ? clamp(Math.abs(wNum), 0, 999) : 0;
-            weight = snapToHalf(weight) ?? 0;
-
-            return {
-              id: restOfSet.id,
-              reps,
-              weight,
-            };
-          })
-      } as LoggedExercise;
-    })
-  };
-
-  // Clean up optional fields on the root log object before saving. The doc is
-  // written with merge:true, so absent keys must be explicitly deleted or the
+  // The stored shape comes from the builder the MCP workout tools also use. The doc
+  // is written with merge:true, so absent keys must be explicitly deleted or the
   // previous value (e.g. a cleared routine) survives in Firestore.
+  const { doc: logDoc, clearFields } = buildWorkoutLogDoc(date, workoutLogPayload);
   const fieldsToClear: Record<string, ReturnType<typeof deleteField>> = {};
-  if (payloadForFirestore.routineId === undefined || payloadForFirestore.routineId === null) {
-    delete (payloadForFirestore as any).routineId;
-    fieldsToClear.routineId = deleteField();
-  }
-  if (payloadForFirestore.routineName === undefined || payloadForFirestore.routineName === null) {
-    delete (payloadForFirestore as any).routineName;
-    fieldsToClear.routineName = deleteField();
-  }
-  if (payloadForFirestore.duration === undefined || payloadForFirestore.duration === null) {
-    delete (payloadForFirestore as any).duration;
-    fieldsToClear.duration = deleteField();
-  }
-
-  // Always set isDeload to a boolean for consistent querying
-  payloadForFirestore.isDeload = !!payloadForFirestore.isDeload;
-  if (!payloadForFirestore.isDeload) {
-    delete (payloadForFirestore as any).deloadParams;
-    fieldsToClear.deloadParams = deleteField();
-  }
-
-  payloadForFirestore.notes = payloadForFirestore.notes || '';
-
+  for (const field of clearFields) fieldsToClear[field] = deleteField();
 
   const logDocRef = doc(db, getUserWorkoutLogsCollectionPath(userId), date);
   try {
-    // deleteField() sentinels are added AFTER sanitizing — stripUndefinedDeep
-    // would otherwise clone them into plain objects and break the sentinel.
-    const sanitizedPayload = { ...stripUndefinedDeep(payloadForFirestore), ...fieldsToClear };
+    // deleteField() sentinels are added AFTER sanitizing (the builder sanitizes) —
+    // stripUndefinedDeep would otherwise clone them into plain objects and break the sentinel.
+    const sanitizedPayload = { ...logDoc, ...fieldsToClear };
     await setDoc(logDocRef, sanitizedPayload, { merge: true });
     invalidateCache(logsCachePrefix(userId));
   } catch (error: any) {
@@ -324,24 +248,14 @@ const recomputePRFromLogs = async (
 ): Promise<PersonalRecordValue> => {
   const logsCol = collection(db, getUserWorkoutLogsCollectionPath(userId));
   const snap = await getDocs(query(logsCol, where("exerciseIds", "array-contains", exerciseId)));
-  let best: PersonalRecordValue = null;
-  snap.forEach(docSnap => {
-    if (docSnap.id === excludeLogId) return;
-    const log = docSnap.data() as WorkoutLog;
-    if (opts.skipDeload && log?.isDeload === true) return;
-    const exerciseInLog = (log.exercises ?? []).find(e => e.exerciseId === exerciseId);
-    if (!exerciseInLog) return;
-    // A planned exercise persists the last session's sets, so counting it would
-    // credit a PR to a day the lift never happened. `undefined` means the log
-    // predates the flag — treat it as performed, or every historical PR would
-    // vanish on the first rescan.
-    if (exerciseInLog.performed === false) return;
-    const candidate = pickBestSet(exerciseInLog.sets ?? []);
-    if (isBetterPR(candidate, best)) {
-      best = { reps: candidate!.reps, weight: candidate!.weight, date: logDateToMs(docSnap.id), logId: docSnap.id };
-    }
-  });
-  return best;
+  // The scan rule (planned exercises never count; no flag means performed) is shared with the MCP.
+  return bestPRFromLogs(
+    snap.docs.map(docSnap => ({ id: docSnap.id, data: docSnap.data() })),
+    exerciseId,
+    excludeLogId,
+    opts,
+    logDateToMs,
+  );
 };
 
 /**
@@ -367,40 +281,18 @@ export const saveExercisePerformanceEntries = async (
         const snap = await getDoc(ref);
         const existing = snap.exists() ? (snap.data() as ExercisePerformanceEntry) : null;
 
-        const bestToday = pickBestSet(sets);
-        const updatePayload: Partial<ExercisePerformanceEntry> = {};
-
-        // Only refresh "last performed" when this log is at least as recent as
-        // the stored one — back-filling an older day must not overwrite it.
-        const existingLastDate = existing?.lastPerformedDate ?? null;
-        if (existingLastDate === null || achievedAtMs >= existingLastDate) {
-          updatePayload.lastPerformedSets = validWorkingSets(sets);
-          updatePayload.lastPerformedDate = achievedAtMs;
-        }
-
-        const existingPR = existing?.personalRecord ?? null;
-        let clearPR = false;
-        if (existingPR && existingPR.logId === logDate) {
-          // The PR's source log is being edited: recompute it. If today's best
-          // still matches/beats the old PR no other log can top it; otherwise
-          // scan the remaining logs, since one of them may now hold the best set.
-          let recomputed: PersonalRecordValue = bestToday
-            ? { reps: bestToday.reps, weight: bestToday.weight, date: achievedAtMs, logId: logDate }
-            : null;
-          if (!bestToday || isBetterPR(existingPR, bestToday)) {
-            const fromOthers = await recomputePRFromLogs(userId, exerciseId, logDate);
-            if (isBetterPR(fromOthers, recomputed)) recomputed = fromOthers;
-          }
-          if (recomputed) updatePayload.personalRecord = recomputed;
-          else clearPR = true;
-        } else if (isBetterPR(bestToday, existingPR)) {
-          updatePayload.personalRecord = {
-            reps: bestToday!.reps,
-            weight: bestToday!.weight,
-            date: achievedAtMs,
-            logId: logDate,
-          };
-        }
+        // The decision is shared with the MCP workout tools. The other logs are
+        // scanned only when the PR's source log is being edited and no longer backs it.
+        const prFromOtherLogs = needsPRRescan(existing, sets, logDate)
+          ? await recomputePRFromLogs(userId, exerciseId, logDate)
+          : null;
+        const { fields: updatePayload, clearPR } = planPerformanceEntry({
+          existing,
+          sets,
+          logDate,
+          achievedAtMs,
+          prFromOtherLogs,
+        });
         // deleteField() is added after sanitizing so stripUndefinedDeep doesn't
         // clone the sentinel into a plain object.
         const payload = clearPR

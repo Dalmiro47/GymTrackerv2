@@ -60,23 +60,28 @@ const initialize = {
 };
 
 const READ_TOOLS = [
-  'get_exercise_history', 'get_profile', 'get_recent_logs', 'get_routine', 'get_week_status', 'list_exercises',
-  'list_routines',
+  'get_current_workout', 'get_exercise_history', 'get_profile', 'get_recent_logs', 'get_routine', 'get_week_status',
+  'list_exercises', 'list_routines',
 ];
 // Write tool -> destructiveHint.
 const WRITE_TOOLS: Record<string, boolean> = {
   add_exercise_to_routine: false,
   create_exercise: false,
   create_routine: false,
+  finish_workout: false,
+  log_set: false,
   remove_exercise_from_routine: true,
   reorder_routine_exercises: false,
   replace_exercise_in_routine: true,
   set_routine_set_structure: true,
   set_schedule_day: true,
+  start_workout: false,
   update_exercise: true,
 };
+// A set is logged while the owner lifts: this tool carries no "ask first" note.
+const NO_CONFIRM_NOTE = ['log_set'];
 
-test('HTTP: initialize, then tools/list returns exactly the seven read tools and the nine write tools', async () => {
+test('HTTP: initialize, then tools/list returns exactly the eight read tools and the twelve write tools', async () => {
   const handler = createMcpRouteHandler(deps());
 
   const initRes = await handler(post(KEY, initialize), ctx(KEY));
@@ -93,10 +98,10 @@ test('HTTP: initialize, then tools/list returns exactly the seven read tools and
   const tools: Array<{
     name: string;
     description?: string;
-    annotations?: { readOnlyHint?: boolean; destructiveHint?: boolean };
+    annotations?: { readOnlyHint?: boolean; destructiveHint?: boolean; idempotentHint?: boolean };
     inputSchema: { properties?: object };
   }> = list.result.tools;
-  assert.equal(tools.length, 16);
+  assert.equal(tools.length, 20);
   assert.deepEqual(tools.map(t => t.name).sort(), [...READ_TOOLS, ...Object.keys(WRITE_TOOLS)].sort());
   for (const tool of tools) {
     if (READ_TOOLS.includes(tool.name)) {
@@ -104,7 +109,12 @@ test('HTTP: initialize, then tools/list returns exactly the seven read tools and
     } else {
       assert.equal(tool.annotations?.readOnlyHint, false, `${tool.name} is a write tool`);
       assert.equal(tool.annotations?.destructiveHint, WRITE_TOOLS[tool.name], `${tool.name} destructiveHint`);
-      assert.match(tool.description ?? '', /only after the user confirmed this exact change/);
+      if (NO_CONFIRM_NOTE.includes(tool.name)) {
+        assert.doesNotMatch(tool.description ?? '', /only after the user confirmed/);
+        assert.equal(tool.annotations?.idempotentHint, true, `${tool.name} is safe to repeat`);
+      } else {
+        assert.match(tool.description ?? '', /only after the user confirmed this exact change/);
+      }
     }
     for (const key of Object.keys(tool.inputSchema.properties ?? {})) {
       assert.doesNotMatch(key, /uid|user|owner/i, `${tool.name} must not take ${key}`);
@@ -130,6 +140,10 @@ test('HTTP: a write tool call with invalid input never reaches the db', async ()
     { name: 'create_routine', arguments: { name: 'Pull Day', exerciseIds: [] } },
     { name: 'add_exercise_to_routine', arguments: { routineId: 'a/b', exerciseId: 'row_back' } },
     { name: 'replace_exercise_in_routine', arguments: { routineId: 'push-day', index: 0, newExerciseId: 'row_back' } },
+    { name: 'start_workout', arguments: { routineId: 'a/b' } },
+    { name: 'log_set', arguments: { exerciseId: 'row_back', setNumber: 1, weight: 80.3, reps: 8 } },
+    { name: 'log_set', arguments: { exerciseId: 'row_back', setNumber: 0, weight: 80, reps: 8 } },
+    { name: 'finish_workout', arguments: { coachNotes: '' } },
   ];
   for (const [i, params] of calls.entries()) {
     const res = await handler(post(KEY, { jsonrpc: '2.0', id: 10 + i, method: 'tools/call', params }), ctx(KEY));

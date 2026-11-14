@@ -7,7 +7,7 @@
 // exerciseDoc, routineHistoryPlan), so the app and the MCP store the same shape.
 import { z } from 'zod4';
 import type { McpServer } from '@modelcontextprotocol/server';
-import type { Exercise, ExerciseData, MuscleGroup, RoutineExercise } from '@/types';
+import type { Exercise, ExerciseData, ExercisePerformanceEntry, LoggedSet, MuscleGroup, PersonalRecord, RoutineExercise, WarmupConfig, WorkoutLog } from '@/types';
 import type { RoutineVersion } from '@/types/routineHistory';
 import { MUSCLE_GROUPS_LIST, WARMUP_TEMPLATES } from '@/lib/constants';
 import { buildExerciseDoc } from '@/lib/exerciseDoc';
@@ -16,16 +16,33 @@ import { buildExerciseDocId, toSlug } from '@/lib/ids';
 import { buildRoutineCreateFields, buildRoutineUpdateFields, type RoutineExerciseEntry } from '@/lib/routineDoc';
 import { addRoutineExerciseAt, removeRoutineExerciseAt, replaceRoutineExerciseAt } from '@/lib/routineEditing';
 import { planRoutineVersions } from '@/lib/routineHistoryPlan';
+import { bestPRFromLogs, needsPRRescan, planPerformanceEntry } from '@/lib/performanceEntryPlan';
+import { isBetterPR } from '@/lib/pr';
 import { parseRepRange } from '@/lib/repGoal';
 import { groupSizeOf, newIncompleteRuns } from '@/lib/setStructureGroups';
 import { slugify } from '@/lib/utils';
+import { buildWorkoutLogDoc, plannedLogExercise, prefillSetsFrom } from '@/lib/workoutLogDoc';
 import { SET_STRUCTURE_OPTIONS } from '@/types/setStructure';
 import { withTimeout } from './limits';
 import { isSafeDocId, type McpRepoWithWriteReads, type RawDoc } from './repo.server';
-import type { ExerciseFieldChange, McpWriteRepo, RoutineCascade } from './repo.write.server';
+import {
+  MAX_COACH_NOTES_LENGTH,
+  MAX_DURATION_MIN,
+  type ExerciseFieldChange,
+  type McpWriteRepo,
+  type PerformanceEntryWrite,
+  type RoutineCascade,
+} from './repo.write.server';
 import { errorResult, jsonResult, type ToolResult } from './results';
-import { MAX_ACTIVITY_LENGTH, MAX_SCHEDULE_ITEMS, SCHEDULE_DAYS_AHEAD, scheduleWindow, type ScheduleItem } from './schedule';
-import { WEEK_TIME_ZONE, berlinYmd, isRealYmd } from './week';
+import {
+  MAX_ACTIVITY_LENGTH,
+  MAX_SCHEDULE_ITEMS,
+  SCHEDULE_DAYS_AHEAD,
+  readScheduleItems,
+  scheduleWindow,
+  type ScheduleItem,
+} from './schedule';
+import { WEEK_TIME_ZONE, addDays, berlinMidnightMs, berlinYmd, isRealYmd } from './week';
 
 // ─── Limits (MCP only; the app has no upper bounds) ──────────────────
 
@@ -38,6 +55,17 @@ const MAX_REORDER_IDS = 100;
 export const MAX_LOAD_INCREMENT_KG = 25;
 const LOAD_INCREMENT_STEP_KG = 0.25;
 const DUMBBELL_LOADS = ['perHand', 'total'] as const;
+/** The most sets log_set stores for one exercise of a session. */
+export const MAX_SETS_PER_EXERCISE = 20;
+/** Same bounds as the app's save: reps 1 to 99, weight 0 to 999 in 0.5 steps. */
+const MAX_REPS = 99;
+const MAX_WEIGHT_KG = 999;
+const WEIGHT_STEP_KG = 0.5;
+/** How far back start_workout looks for the last session of an exercise before it reads the performance entry. */
+export const PREFILL_WINDOW_DAYS = 180;
+/** A computed session duration above this is not trusted: the session was probably left open. */
+export const SUSPECT_DURATION_MIN = 180;
+const MINUTE_MS = 60_000;
 
 // ─── Input schemas ───────────────────────────────────────────────────
 
@@ -130,6 +158,42 @@ export const writeToolSchemas = {
           '"activity" (anything else) or "rest"; "rest" must be the only item, and a routine can be listed once',
       ),
   }),
+  // Strict: the day is always today in Europe/Berlin, so a date key is refused, not dropped.
+  start_workout: z.strictObject({
+    routineId: docId.optional().describe('Routine id from list_routines; omit to use the one routine scheduled today'),
+  }),
+  log_set: z.strictObject({
+    exerciseId: docId.describe('Id of an exercise of the open session, from get_current_workout'),
+    setNumber: z
+      .number()
+      .int()
+      .min(1)
+      .max(MAX_SETS_PER_EXERCISE)
+      .describe('1-based number of the set within this exercise: the next one, or a logged one together with overwrite'),
+    weight: z
+      .number()
+      .min(0)
+      .max(MAX_WEIGHT_KG)
+      .multipleOf(WEIGHT_STEP_KG)
+      .describe('Weight in kg, 0 to 999 in steps of 0.5; 0 for a bodyweight set'),
+    reps: z.number().int().min(1).max(MAX_REPS).describe('Repetitions done, 1 to 99'),
+    overwrite: z.boolean().optional().describe('true replaces the values of a set that is already logged at setNumber'),
+  }),
+  finish_workout: z.strictObject({
+    coachNotes: z
+      .string()
+      .trim()
+      .min(1)
+      .max(MAX_COACH_NOTES_LENGTH)
+      .describe('The coach summary of the session for next time, 1 to 2000 characters'),
+    durationMin: z
+      .number()
+      .int()
+      .min(1)
+      .max(MAX_DURATION_MIN)
+      .optional()
+      .describe('How long the session took, in whole minutes, 1 to 300; omit to use the time since start_workout'),
+  }),
   // Strict: a key this tool does not edit (name, muscleGroup...) is refused, not dropped.
   update_exercise: z.strictObject({
     exerciseId: docId.describe('Exercise id from list_exercises'),
@@ -180,6 +244,16 @@ export type WriteErrorCode =
   | 'too_many_items'
   | 'rest_not_alone'
   | 'duplicate_routine'
+  | 'session_open'
+  | 'log_exists'
+  | 'no_scheduled_routine'
+  | 'ambiguous_schedule'
+  | 'no_session'
+  | 'not_in_log'
+  | 'ambiguous_exercise'
+  | 'set_number'
+  | 'set_exists'
+  | 'duration_suspect'
   | 'conflict'
   | 'write_failed';
 
@@ -222,8 +296,14 @@ const isNotFound = (error: unknown): boolean => {
   return code === 5 || code === 'not-found' || code === 'NOT_FOUND';
 };
 
-/** Runs the one batch of a tool. A batch is atomic: a failed commit writes nothing. */
-async function commit(name: string, write: () => Promise<void>): Promise<void> {
+const REREAD_ROUTINE = 'Read the routine or the exercise again before any retry.';
+const REREAD_SESSION = 'Call get_current_workout before any retry.';
+
+/**
+ * Runs the one batch of a tool. A batch is atomic: a failed commit writes nothing.
+ * `reread` tells the caller what to read before a retry.
+ */
+async function commit(name: string, write: () => Promise<void>, reread = REREAD_ROUTINE): Promise<void> {
   try {
     await write();
   } catch (error) {
@@ -234,7 +314,7 @@ async function commit(name: string, write: () => Promise<void>): Promise<void> {
       refuse('conflict', `The document to change was removed at the same time. ${NOTHING_WRITTEN} Read the data again.`);
     }
     console.error(`[mcp] ${name}_commit_failed`);
-    refuse('write_failed', 'The write did not complete. Read the routine or the exercise again before any retry.');
+    refuse('write_failed', `The write did not complete. ${reread}`);
   }
 }
 
@@ -278,6 +358,23 @@ const routineOut = (id: string, name: string, description: string | undefined, e
   description: description || undefined,
   exercises: exercises.map(ex => ({ id: ex.id, name: ex.name, muscleGroup: ex.muscleGroup, setStructure: ex.setStructure })),
 });
+
+// ─── Workout session (stored logs are read as unknown) ───────────────
+
+type StoredLogExercise = Record<string, unknown> & { exerciseId: string };
+type StoredSet = { id?: unknown; reps?: unknown; weight?: unknown };
+/** The open log of today or yesterday. `date` is its id: the day the session started. */
+type OpenSession = { date: string; data: Record<string, unknown>; exercises: StoredLogExercise[] };
+
+const isOpenLog = (doc: RawDoc) => doc.data.sessionOpen === true;
+
+/** The first exercise that is still planned: what comes next in the session. */
+const nextPlanned = (exercises: Record<string, unknown>[]) => {
+  const next = exercises.find(ex => ex.performed === false);
+  return next ? { exerciseId: str(next.exerciseId) ?? '', name: str(next.name) ?? '' } : null;
+};
+
+const prOut = (pr: { reps: number; weight: number } | null) => (pr ? { weight: pr.weight, reps: pr.reps } : null);
 
 // ─── Handlers ────────────────────────────────────────────────────────
 
@@ -388,7 +485,297 @@ export function createWriteTools({ repo, writes, now = () => new Date() }: Write
     };
   }
 
+  /** The logs of yesterday and today in Berlin: where an open session can be. */
+  async function recentLogs(): Promise<{ today: string; rows: RawDoc[] }> {
+    const today = berlinYmd(now());
+    const list = await repo.getLogsBetween(addDays(today, -1), today, 2);
+    return { today, rows: list.rows };
+  }
+
+  /**
+   * The open session: the log of today, else of yesterday (a session that runs past
+   * midnight keeps the day it started on). An open log older than that is not a session.
+   */
+  async function loadOpenSession(): Promise<OpenSession> {
+    const { rows } = await recentLogs();
+    const doc = rows.filter(isOpenLog).sort((a, b) => b.id.localeCompare(a.id))[0];
+    if (!doc) return refuse('no_session', `No workout session is open. ${NOTHING_WRITTEN} Call start_workout first.`);
+    const raw: unknown[] = Array.isArray(doc.data.exercises) ? doc.data.exercises : [];
+    // The whole list is rewritten, so an entry this code cannot read must stop the tool.
+    const readable = raw.every(
+      (ex): ex is StoredLogExercise => typeof ex === 'object' && ex !== null && !!str((ex as { exerciseId?: unknown }).exerciseId),
+    );
+    if (!isRealYmd(doc.id) || !readable || raw.length === 0) {
+      return refuse('conflict', `The open workout log has an entry this tool cannot read. ${NOTHING_WRITTEN} Edit it in the app.`);
+    }
+    return { date: doc.id, data: doc.data, exercises: raw };
+  }
+
   return {
+    start_workout: ({ routineId: wanted }: Args<'start_workout'>) =>
+      run('start_workout', async () => {
+        const { today, rows } = await recentLogs();
+        const open = rows.find(isOpenLog);
+        if (open) {
+          refuse(
+            'session_open',
+            `A workout session is already open: the log of ${open.id}. ${NOTHING_WRITTEN} ` +
+              `Continue it with log_set, or close it with finish_workout.`,
+          );
+        }
+        if (rows.some(doc => doc.id === today)) {
+          refuse(
+            'log_exists',
+            `A workout log for ${today} already exists. ${NOTHING_WRITTEN} This tool never changes an existing log; use the app for that day.`,
+          );
+        }
+
+        let routineId = wanted;
+        if (!routineId) {
+          const schedule = await repo.getScheduleBetween(today, today, 1);
+          const scheduled = schedule.rows
+            .flatMap(doc => readScheduleItems(doc.data.items))
+            .flatMap(item => (item.kind === 'routine' ? [item.routineId] : []));
+          if (scheduled.length === 0) {
+            return refuse('no_scheduled_routine', `No routine is scheduled for ${today}. ${NOTHING_WRITTEN} Give a routineId from list_routines.`);
+          }
+          if (scheduled.length > 1) {
+            return refuse(
+              'ambiguous_schedule',
+              `${scheduled.length} routines are scheduled for ${today}: ${scheduled.map(id => `"${id}"`).join(', ')}. ` +
+                `${NOTHING_WRITTEN} Give the routineId of the one to start.`,
+            );
+          }
+          routineId = scheduled[0];
+        }
+
+        const routine = await loadRoutine(routineId);
+        if (routine.exercises.length === 0) {
+          refuse('conflict', `Routine "${routine.id}" has no exercise. ${NOTHING_WRITTEN}`);
+        }
+        const ids = routine.exercises.map(ex => ex.id);
+        const repeated = ids.find((id, i) => ids.indexOf(id) !== i);
+        if (repeated || !ids.every(isSafeDocId)) {
+          refuse(
+            'conflict',
+            `Routine "${routine.id}" holds an exercise more than once or with an id this tool cannot use. ${NOTHING_WRITTEN} Edit it in the app.`,
+          );
+        }
+
+        // Newest first; a log of today or later is not a past session.
+        const history = await repo.getLogsSince(addDays(today, -PREFILL_WINDOW_DAYS), PREFILL_WINDOW_DAYS + 1);
+        const past = history.rows.filter(doc => doc.id < today).map(doc => doc.data);
+        const nowMs = now().getTime();
+
+        // Same rules as the app when a routine is selected: every exercise is planned,
+        // with a copy of the sets of its last session that was not a deload.
+        const planned = await Promise.all(
+          routine.exercises.map(async (routineExercise, index) => {
+            const lib = await repo.getExercise(routineExercise.id);
+            const name = lib ? str(lib.data.name) : undefined;
+            const muscleGroup = lib ? str(lib.data.muscleGroup) : undefined;
+            const library =
+              lib && name && muscleGroup
+                ? {
+                    name,
+                    muscleGroup: muscleGroup as MuscleGroup,
+                    exerciseSetup: typeof lib.data.exerciseSetup === 'string' ? lib.data.exerciseSetup : undefined,
+                    progressiveOverload: typeof lib.data.progressiveOverload === 'string' ? lib.data.progressiveOverload : undefined,
+                    warmup: typeof lib.data.warmup === 'object' && lib.data.warmup !== null ? (lib.data.warmup as WarmupConfig) : undefined,
+                  }
+                : null;
+            let lastSets = prefillSetsFrom(past, routineExercise.id);
+            if (lastSets === null) {
+              const entry = await repo.getPerformanceEntry(routineExercise.id);
+              const stored = entry?.lastPerformedSets;
+              lastSets = Array.isArray(stored) && stored.length > 0 ? (stored as LoggedSet[]) : null;
+            }
+            return plannedLogExercise({ date: today, index, nowMs, routineExercise, library, lastSets });
+          }),
+        );
+
+        const payload: WorkoutLog = {
+          id: today,
+          date: today,
+          routineId: routine.id,
+          routineName: routine.name,
+          exercises: planned,
+          exerciseIds: planned.map(ex => ex.exerciseId),
+          notes: '',
+          isDeload: false,
+          deloadApplied: false,
+        };
+        // The stored shape comes from the builder the app's save uses.
+        const { doc } = buildWorkoutLogDoc(today, payload);
+        const exercises = doc.exercises as Record<string, unknown>[];
+        await commit(
+          'start_workout',
+          () =>
+            writes.createWorkoutLog(today, {
+              routineId: routine.id,
+              routineName: routine.name,
+              exercises,
+              exerciseIds: doc.exerciseIds as string[],
+              // Epoch milliseconds, like the dates of a performance entry; finish_workout reads it back.
+              startedAt: nowMs,
+            }),
+          REREAD_SESSION,
+        );
+        return {
+          ok: true,
+          date: today,
+          routineId: routine.id,
+          routineName: routine.name,
+          exercises: exercises.map(ex => ({
+            exerciseId: str(ex.exerciseId) ?? '',
+            name: str(ex.name) ?? '',
+            status: 'planned',
+            setStructure: str(ex.setStructure) ?? 'normal',
+          })),
+          next: nextPlanned(exercises),
+        };
+      }),
+
+    log_set: ({ exerciseId, setNumber, weight, reps, overwrite }: Args<'log_set'>) =>
+      run('log_set', async () => {
+        const session = await loadOpenSession();
+        const { date } = session;
+        const matches = session.exercises.filter(ex => ex.exerciseId === exerciseId);
+        if (matches.length === 0) {
+          refuse('not_in_log', `Exercise "${exerciseId}" is not in the open workout log of ${date}. ${NOTHING_WRITTEN} Call get_current_workout.`);
+        }
+        if (matches.length > 1) {
+          refuse(
+            'ambiguous_exercise',
+            `Exercise "${exerciseId}" is in the open workout log of ${date} ${matches.length} times, so the set has no single place. ` +
+              `${NOTHING_WRITTEN} Log this exercise in the app.`,
+          );
+        }
+        const exercise = matches[0];
+        const storedSets: StoredSet[] = Array.isArray(exercise.sets)
+          ? (exercise.sets as unknown[]).filter((s): s is StoredSet => typeof s === 'object' && s !== null)
+          : [];
+        // The sets of a planned exercise are a copy of the last session, not done sets: the first logged set replaces them.
+        const done = exercise.performed === false ? [] : storedSets;
+        const setsOut = (sets: StoredSet[]) => sets.map((s, i) => ({ setNumber: i + 1, weight: s.weight, reps: s.reps }));
+        const name = str(exercise.name) ?? '';
+
+        if (setNumber > done.length + 1) {
+          refuse(
+            'set_number',
+            `Set ${setNumber} of "${exerciseId}" cannot be logged: ${done.length} set(s) are logged, so the next one is set ${done.length + 1}. ${NOTHING_WRITTEN}`,
+          );
+        }
+
+        const existing = (await repo.getPerformanceEntry(exerciseId)) as Partial<ExercisePerformanceEntry> | null;
+        const existingPR = existing?.personalRecord ?? null;
+
+        let nextSets: StoredSet[];
+        if (setNumber <= done.length) {
+          const current = done[setNumber - 1];
+          if (current.reps === reps && current.weight === weight) {
+            // A retry of a call that already went through: nothing to write.
+            return {
+              ok: true,
+              changed: false,
+              date,
+              exercise: { exerciseId, name, sets: setsOut(done) },
+              personalRecord: prOut(existingPR),
+              newPersonalRecord: false,
+              next: nextPlanned(session.exercises),
+            };
+          }
+          if (!overwrite) {
+            refuse(
+              'set_exists',
+              `Set ${setNumber} of "${exerciseId}" is already logged as ${String(current.weight)} kg x ${String(current.reps)}. ` +
+                `${NOTHING_WRITTEN} To correct it, call again with overwrite true.`,
+            );
+          }
+          nextSets = done.map((s, i) => (i === setNumber - 1 ? { id: s.id, reps, weight } : s));
+        } else {
+          nextSets = [...done, { id: `set-${date}-${exerciseId}-${done.length}-${now().getTime()}`, reps, weight }];
+        }
+
+        const exercises = session.exercises.map(ex => (ex === exercise ? { ...ex, sets: nextSets, performed: true } : ex));
+        const exerciseIds = exercises.map(ex => ex.exerciseId);
+
+        // Same side effect as an app save: the performance entry of a performed
+        // exercise, and never from a deload log.
+        const entries: PerformanceEntryWrite[] = [];
+        let personalRecord: { reps: number; weight: number } | null = existingPR;
+        if (session.data.isDeload !== true) {
+          const sets = nextSets as LoggedSet[];
+          let prFromOtherLogs: PersonalRecord | null = null;
+          if (needsPRRescan(existing, sets, date)) {
+            // The set behind the PR was lowered: another log may now hold the best set.
+            const logs = await repo.listLogsWithExercise(exerciseId);
+            if (logs.truncated) {
+              refuse(
+                'conflict',
+                `There are too many logs of "${exerciseId}" to check its personal record again. ${NOTHING_WRITTEN} Correct this set in the app.`,
+              );
+            }
+            prFromOtherLogs = bestPRFromLogs(logs.rows, exerciseId, date, {}, berlinMidnightMs);
+          }
+          const plan = planPerformanceEntry({
+            existing,
+            sets,
+            logDate: date,
+            // The app stamps the local midnight of the log's day; on the server that is Berlin's.
+            achievedAtMs: berlinMidnightMs(date),
+            prFromOtherLogs,
+          });
+          entries.push({ exerciseId, fields: plan.fields, clearPR: plan.clearPR });
+          personalRecord = plan.clearPR ? null : (plan.fields.personalRecord ?? existingPR);
+        }
+
+        await commit('log_set', () => writes.setWorkoutLogExercises(date, { exercises, exerciseIds }, entries), REREAD_SESSION);
+        return {
+          ok: true,
+          changed: true,
+          date,
+          exercise: { exerciseId, name, sets: setsOut(nextSets) },
+          personalRecord: prOut(personalRecord),
+          newPersonalRecord: isBetterPR(personalRecord, existingPR),
+          next: nextPlanned(exercises),
+        };
+      }),
+
+    finish_workout: ({ coachNotes, durationMin }: Args<'finish_workout'>) =>
+      run('finish_workout', async () => {
+        const session = await loadOpenSession();
+        const notes = coachNotes.trim();
+
+        // The duration in whole minutes: the given one, else the time since start_workout.
+        let duration = durationMin;
+        if (duration === undefined) {
+          const startedAt = session.data.startedAt;
+          const elapsedMs = typeof startedAt === 'number' && Number.isFinite(startedAt) ? now().getTime() - startedAt : NaN;
+          const computed = Math.round(elapsedMs / MINUTE_MS);
+          if (!(elapsedMs >= 0)) {
+            return refuse(
+              'duration_suspect',
+              `The start time of the session of ${session.date} cannot be read, so its duration is unknown. ${NOTHING_WRITTEN} ` +
+                `Ask the user how long the session took, then call again with durationMin.`,
+            );
+          }
+          if (computed > SUSPECT_DURATION_MIN) {
+            return refuse(
+              'duration_suspect',
+              `The session of ${session.date} started ${computed} minutes ago, more than ${SUSPECT_DURATION_MIN}: it was probably ` +
+                `left open. ${NOTHING_WRITTEN} Ask the user how long the session took, then call again with durationMin.`,
+            );
+          }
+          duration = Math.max(1, computed);
+        }
+        const minutes = duration;
+
+        await commit('finish_workout', () => writes.finishWorkoutLog(session.date, notes, minutes), REREAD_SESSION);
+        const performed = session.exercises.filter(ex => ex.performed !== false).length;
+        return { ok: true, date: session.date, performed, planned: session.exercises.length - performed, duration: minutes, coachNotes: notes };
+      }),
+
     create_exercise: (args: Args<'create_exercise'>) =>
       run('create_exercise', async () => {
         const name = args.name.trim();
@@ -772,6 +1159,60 @@ export function registerWriteTools(server: McpServer, deps: WriteToolDeps) {
   const additive = { readOnlyHint: false, destructiveHint: false };
   const destructive = { readOnlyHint: false, destructiveHint: true };
   const guard = <A>(fn: (args: A) => Promise<ToolResult>) => withTimeout(fn, undefined, 'write');
+
+  server.registerTool(
+    'start_workout',
+    {
+      title: 'Start workout',
+      description:
+        `Starts a live workout session: it creates the workout log of today (${WEEK_TIME_ZONE}) from a routine, ` +
+        `the given one or the one routine scheduled today. Every exercise starts as planned, with a copy of the sets ` +
+        `of its last session. It is refused when today already has a log (log_exists) or a session of today or ` +
+        `yesterday is still open (session_open); it never changes an existing log. After it, call ` +
+        `get_current_workout for the targets, log_set for each set and finish_workout at the end. ` +
+        `${CONFIRM_NOTE} ${RESULT_NOTE}`,
+      inputSchema: writeToolSchemas.start_workout,
+      annotations: additive,
+    },
+    guard(tools.start_workout),
+  );
+
+  server.registerTool(
+    'log_set',
+    {
+      title: 'Log set',
+      description:
+        `Logs one set the owner just did, on the open workout session only. Weight in kg (0 for bodyweight), in ` +
+        `steps of 0.5. setNumber is the 1-based number of the set within the exercise and must be the next one. ` +
+        `The first set of an exercise replaces the copied sets and marks the exercise performed. A repeat of a ` +
+        `call with the same values writes nothing (changed false), so a retry is safe. A different value at a ` +
+        `logged set number is refused (set_exists) unless overwrite is true; use that to correct a set. The ` +
+        `personal record follows the sets, also down after a correction. Call it as soon as the owner reports a ` +
+        `set; no extra question is needed. The answer holds the sets of the exercise so far, the personal record ` +
+        `and the next planned exercise. ${RESULT_NOTE}`,
+      inputSchema: writeToolSchemas.log_set,
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+    },
+    guard(tools.log_set),
+  );
+
+  server.registerTool(
+    'finish_workout',
+    {
+      title: 'Finish workout',
+      description:
+        `Closes the open workout session and stores the coach summary for next time in coachNotes (at most ` +
+        `${MAX_COACH_NOTES_LENGTH} characters); get_recent_logs returns it. It also stores duration in whole ` +
+        `minutes: durationMin when given, else the time since start_workout. Without durationMin, a computed ` +
+        `duration above ${SUSPECT_DURATION_MIN} minutes or a start time that cannot be read is refused with ` +
+        `duration_suspect and nothing is written: ask the user how long the session took and call again with ` +
+        `durationMin. Exercises with no logged set stay planned. After it, log_set is refused. ` +
+        `${CONFIRM_NOTE} ${RESULT_NOTE}`,
+      inputSchema: writeToolSchemas.finish_workout,
+      annotations: additive,
+    },
+    guard(tools.finish_workout),
+  );
 
   server.registerTool(
     'create_exercise',

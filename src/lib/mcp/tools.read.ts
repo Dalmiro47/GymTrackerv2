@@ -10,11 +10,15 @@ import { displayExerciseName } from '@/lib/exerciseDisplay';
 import { DEFAULT_LANGUAGE, isLanguage, type Language } from '@/i18n';
 import { parseRepRange } from '@/lib/repGoal';
 import { groupMarks } from '@/lib/setStructureGroups';
+import { lastPerformedSession } from '@/lib/workoutLogDoc';
 import { withTimeout } from './limits';
 import { isSafeDocId, type McpRepo, type McpWriteReads, type RawDoc, type RawList } from './repo.server';
 import { errorResult, jsonResult, type ToolResult } from './results';
 import { readScheduleItems } from './schedule';
-import { WEEK_TIME_ZONE, berlinYmd, isoWeekOf, weekRange } from './week';
+import { WEEK_TIME_ZONE, addDays, berlinYmd, isoWeekOf, weekRange } from './week';
+
+/** How far back get_current_workout looks for the last session of each exercise. */
+const LAST_SESSION_WINDOW_DAYS = 180;
 
 /** What the read tools read: the base repo plus two single-purpose reads the write tools also use. */
 export type ReadToolsRepo = McpRepo & Pick<McpWriteReads, 'getExercise' | 'listRoutineHistory'>;
@@ -44,6 +48,7 @@ export const toolSchemas = {
     limit: z.number().int().min(1).max(30).default(10).describe('Most sessions to return, 1 to 30'),
   }),
   get_profile: z.object({}),
+  get_current_workout: z.object({}),
   get_week_status: z.object({
     week: z
       .string()
@@ -118,6 +123,9 @@ const setsOut = (v: unknown) =>
 const statusOf = (ex: Record<string, unknown>) => (ex.performed === false ? 'planned' : 'performed');
 
 const logDate = (doc: RawDoc) => str(doc.data.date) ?? doc.id;
+
+/** `sessionOpen: true` while a workout session started by start_workout is not finished; nothing otherwise. */
+const openMark = (doc: RawDoc) => (doc.data.sessionOpen === true ? { sessionOpen: true as const } : {});
 
 /** UTC calendar day `days` before `now`, as YYYY-MM-DD. */
 function cutoffYmd(now: Date, days: number): string {
@@ -260,6 +268,11 @@ export function createReadTools(repo: ReadToolsRepo, now: () => Date = () => new
           routineName: str(doc.data.routineName),
           isDeload: doc.data.isDeload === true,
           notes: str(doc.data.notes),
+          // Written by the workout tools: the coach summary, and the open marker only while the session is open.
+          coachNotes: str(doc.data.coachNotes),
+          // Whole minutes, stored by finish_workout.
+          duration: num(doc.data.duration) ?? undefined,
+          ...openMark(doc),
           exercises: records(doc.data.exercises).map(ex => ({
             exerciseId: str(ex.exerciseId) ?? '',
             ...names(str(ex.exerciseId), ex.name, language),
@@ -306,6 +319,79 @@ export function createReadTools(repo: ReadToolsRepo, now: () => Date = () => new
         const profile = await repo.getProfile();
         // toCoachProfile picks the coach fields only: no email, no name, no date of birth.
         return jsonResult({ ...toCoachProfile(profile), language: languageOf(profile) });
+      }),
+
+    get_current_workout: (_args: Args<'get_current_workout'>) =>
+      safe('get_current_workout', 'Could not read the workout session. Try again later.', async () => {
+        const today = berlinYmd(now());
+        // A session that runs past midnight keeps the day it started on, so yesterday counts too.
+        const recent = await repo.getLogsBetween(addDays(today, -1), today, 2);
+        const doc = recent.rows.filter(row => row.data.sessionOpen === true).sort((a, b) => b.id.localeCompare(a.id))[0];
+        if (!doc) return jsonResult({ today, timeZone: WEEK_TIME_ZONE, session: null });
+
+        const date = logDate(doc);
+        // Whole minutes since start_workout; null when the log has no readable start.
+        const startedAt = num(doc.data.startedAt);
+        const elapsedMs = startedAt === null ? -1 : now().getTime() - startedAt;
+        const elapsedMin = elapsedMs >= 0 ? Math.floor(elapsedMs / 60_000) : null;
+        const logged = records(doc.data.exercises);
+        const ids = [...new Set(logged.map(ex => str(ex.exerciseId)).filter(isSafeDocId))];
+        const [history, profile, library] = await Promise.all([
+          repo.getLogsSince(addDays(date, -LAST_SESSION_WINDOW_DAYS), LAST_SESSION_WINDOW_DAYS + 1),
+          repo.getProfile(),
+          Promise.all(ids.map(async id => [id, await repo.getExercise(id)] as const)).then(rows => new Map(rows)),
+        ]);
+        const language = languageOf(profile);
+        // Newest first; the session's own log and anything later is not a past session.
+        const past = history.rows.filter(row => logDate(row) < date).map(row => row.data);
+
+        const structures = logged.map(ex => ({
+          id: str(ex.exerciseId) ?? '',
+          setStructure: str(ex.setStructureOverride) ?? str(ex.setStructure) ?? 'normal',
+        }));
+        const marks = groupMarks(structures);
+
+        const exercises = logged.map((ex, i) => {
+          const exerciseId = structures[i].id;
+          const lib = library.get(exerciseId) ?? null;
+          const status = statusOf(ex);
+          const progressiveOverload = str(lib ? lib.data.progressiveOverload : ex.progressiveOverload);
+          const last = lastPerformedSession(past, exerciseId);
+          return {
+            exerciseId,
+            ...names(str(ex.exerciseId), ex.name, language),
+            muscleGroup: str(ex.muscleGroup) ?? '',
+            setStructure: structures[i].setStructure,
+            ...marks[i],
+            status,
+            // A planned exercise's sets are a copy of the last session, so they are left out.
+            ...(status === 'performed' ? { sets: setsOut(ex.sets).map((s, n) => ({ setNumber: n + 1, ...s })) } : {}),
+            exerciseSetup: str(lib ? lib.data.exerciseSetup : ex.exerciseSetup),
+            // The target: the rep range, and the sets of the last session that was lifted and was not a deload.
+            progressiveOverload,
+            repRange: parseRepRange(progressiveOverload),
+            ...(lib ? equipmentOf(lib.data) : {}),
+            // Only present when false: the exercise is gone from the library.
+            ...(lib ? {} : { inLibrary: false }),
+            lastSession: last ? { date: last.date, sets: setsOut(last.sets) } : null,
+          };
+        });
+
+        return jsonResult({
+          today,
+          timeZone: WEEK_TIME_ZONE,
+          session: {
+            date,
+            routineId: str(doc.data.routineId),
+            routineName: str(doc.data.routineName),
+            sessionOpen: true,
+            elapsedMin,
+            notes: str(doc.data.notes),
+            // The first exercise that is still planned, or null when every exercise has a logged set.
+            next: exercises.find(ex => ex.status === 'planned')?.exerciseId ?? null,
+            exercises,
+          },
+        });
       }),
 
     get_week_status: ({ week }: Args<'get_week_status'>) =>
@@ -391,6 +477,7 @@ export function createReadTools(repo: ReadToolsRepo, now: () => Date = () => new
               routineName: str(doc.data.routineName),
               isDeload: doc.data.isDeload === true,
               status: performed ? 'performed' : 'planned',
+              ...openMark(doc),
               routineBasis: plan?.basis,
               notes: str(doc.data.notes),
               exercises,
@@ -429,6 +516,8 @@ const GROUP_NOTE =
   'Supersets and trisets: exercises with the same `group` number are done together; groupIncomplete true marks a ' +
   'superset or triset that lacks a partner (a superset is exactly 2 exercises in a row, a triset exactly 3).';
 const UTC_NOTE ='The window is cut on the server\'s UTC date, so it can be one day wider than the local view.';
+const OPEN_NOTE =
+  'sessionOpen true marks a workout session that start_workout opened and finish_workout has not closed yet; it is absent otherwise.';
 const STATUS_NOTE =
   'status "planned" means the exercise was saved as a plan and its sets are a copy of the last session, not a lift.';
 
@@ -480,7 +569,8 @@ export function registerReadTools(server: McpServer, repo: ReadToolsRepo, now?: 
       title: 'Recent workout logs',
       description:
         `Workout logs of the last \`days\` days (default 14, max 90), newest first. Weights in kg. ` +
-        `${STATUS_NOTE} isDeload logs hold reduced weights and sets. ${UTC_NOTE} ${NAMES_NOTE}`,
+        `${STATUS_NOTE} isDeload logs hold reduced weights and sets. coachNotes is the coach summary and ` +
+        `duration the length in whole minutes that finish_workout stored for that session, when there is one. ${OPEN_NOTE} ${UTC_NOTE} ${NAMES_NOTE}`,
       inputSchema: toolSchemas.get_recent_logs,
       annotations,
     },
@@ -514,6 +604,24 @@ export function registerReadTools(server: McpServer, repo: ReadToolsRepo, now?: 
   );
 
   server.registerTool(
+    'get_current_workout',
+    {
+      title: 'Current workout',
+      description:
+        `The open workout session, started with start_workout: the log of today in Europe/Berlin, or of yesterday ` +
+        `when the session runs past midnight. session is null when none is open. Each exercise is performed (with ` +
+        `its logged sets, numbered from 1) or planned (no set logged yet). next is the id of the first planned ` +
+        `exercise. elapsedMin is the whole minutes since start_workout (null when unknown). The target of an exercise is its rep range (progressiveOverload, repRange) and lastSession: the ` +
+        `sets of the last session where it was lifted, not a deload, in the last 180 days (null when none). A ` +
+        `routine stores no set count; use the count of lastSession. Weights in kg. Log each set with log_set and ` +
+        `close the session with finish_workout. ${GROUP_NOTE} ${EQUIPMENT_NOTE} ${NAMES_NOTE}`,
+      inputSchema: toolSchemas.get_current_workout,
+      annotations,
+    },
+    withTimeout(tools.get_current_workout),
+  );
+
+  server.registerTool(
     'get_week_status',
     {
       title: 'Week status',
@@ -528,7 +636,7 @@ export function registerReadTools(server: McpServer, repo: ReadToolsRepo, now?: 
         `scheduled is the day's schedule, written with set_schedule_day and separate from session: null when ` +
         `nothing is scheduled, else a list of items of kind "routine" (routineId, and routineName as it was when ` +
         `the day was scheduled), "activity" (a short text) or "rest". ` +
-        `${NAMES_NOTE}`,
+        `${OPEN_NOTE} ${NAMES_NOTE}`,
       inputSchema: toolSchemas.get_week_status,
       annotations,
     },

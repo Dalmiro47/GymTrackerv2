@@ -7,7 +7,7 @@
 export type ReadSnapshot = { id: string; exists: boolean; data(): Record<string, unknown> | undefined };
 
 export type ReadQuery = {
-  where(field: string, op: '==' | '>=' | '<=', value: string): ReadQuery;
+  where(field: string, op: '==' | '>=' | '<=' | 'array-contains', value: string): ReadQuery;
   orderBy(field: string, direction?: 'asc' | 'desc'): ReadQuery;
   limit(n: number): ReadQuery;
   get(): Promise<{ docs: ReadSnapshot[] }>;
@@ -75,6 +75,13 @@ export type McpWriteReads = {
   findFreeDocId(collection: 'routines' | 'exercises', baseId: string): Promise<string | null>;
   /** Every stored version of one routine, in no order; the caller sorts. */
   listRoutineHistory(routineId: string): Promise<RawList>;
+  /** The performance entry of one exercise (last performed sets and PR), or null. */
+  getPerformanceEntry(exerciseId: string): Promise<Record<string, unknown> | null>;
+  /**
+   * Every log that holds the exercise, in no order, at most MAX_LOGS: the same read
+   * as the app's PR rescan. Past the bound the caller refuses instead of guessing a PR.
+   */
+  listLogsWithExercise(exerciseId: string): Promise<RawList>;
 };
 
 export type McpRepoWithWriteReads = McpRepo & McpWriteReads;
@@ -169,6 +176,18 @@ export function createRepo(db: ReadDb, uid: string): McpRepoWithWriteReads {
     async listRoutineHistory(routineId) {
       if (!isSafeDocId(routineId)) throw new Error('bad_id');
       return list(db.collection(`${root}/routineHistory`).where('routineId', '==', routineId), MAX_ROUTINE_HISTORY);
+    },
+
+    async getPerformanceEntry(exerciseId) {
+      if (!isSafeDocId(exerciseId)) throw new Error('bad_id');
+      const snap = await db.doc(`${root}/performanceEntries/${exerciseId}`).get();
+      return (snap.exists ? snap.data() : undefined) ?? null;
+    },
+
+    // One field and no orderBy on purpose: array-contains plus an orderBy would need a composite index.
+    async listLogsWithExercise(exerciseId) {
+      if (!isSafeDocId(exerciseId)) throw new Error('bad_id');
+      return list(db.collection(`${root}/workoutLogs`).where('exerciseIds', 'array-contains', exerciseId), MAX_LOGS);
     },
   };
 }
