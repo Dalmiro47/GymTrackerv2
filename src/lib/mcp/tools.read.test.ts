@@ -19,6 +19,9 @@ type Seed = {
   routine?: RawDoc | null;
   exercises?: RawDoc[];
   logs?: RawDoc[];
+  /** Schedule documents, one per day; the id is the date. */
+  schedule?: RawDoc[];
+  scheduleTruncated?: boolean;
   /** Exercise documents by id, for getExercise. */
   library?: Record<string, Record<string, unknown>>;
   /** Routine history rows by routine id. */
@@ -44,6 +47,14 @@ function fakeRepo(seed: Seed = {}, now: () => Date = NOW) {
       calls.push(['getLogsBetween', from, to, max]);
       guard();
       return list((seed.logs ?? []).filter(doc => doc.id >= from && doc.id <= to));
+    },
+    async getScheduleBetween(from, to, max) {
+      calls.push(['getScheduleBetween', from, to, max]);
+      guard();
+      return {
+        rows: (seed.schedule ?? []).filter(doc => doc.id >= from && doc.id <= to),
+        truncated: seed.scheduleTruncated ?? false,
+      };
     },
     async getProfile() { calls.push(['getProfile']); guard(); return seed.profile ?? null; },
     async getExercise(id) {
@@ -541,8 +552,12 @@ test('get_week_status: performed, planned, skipped and extra exercises; sets onl
         { exerciseId: 'c', name: 'Name c', status: 'skipped' },
       ],
     },
+    scheduled: null,
   });
-  assert.deepEqual(out.days.slice(1), ['10', '11', '12', '13', '14', '15'].map(d => ({ date: `2026-11-${d}`, session: null })));
+  assert.deepEqual(
+    out.days.slice(1),
+    ['10', '11', '12', '13', '14', '15'].map(d => ({ date: `2026-11-${d}`, session: null, scheduled: null })),
+  );
   assert.equal(out.daysPerWeekTarget, 4);
   assert.equal(out.sessionsDone, 1);
   assert.equal(out.sessionsRemaining, 3);
@@ -658,6 +673,81 @@ test('get_week_status: displayName for a seeded exercise on a Spanish profile, s
   assert.deepEqual(out.days[1].session.exercises, [
     { exerciseId: seeded.id, name: seeded.name, displayName: seededEs, status: 'skipped' },
   ]);
+});
+
+// ─── Schedule in the week status ─────────────────────────────────────
+
+const scheduleDay = (date: string, items: unknown): RawDoc => ({ id: date, data: { date, items, updatedAt: { _seconds: 1 } } });
+
+test('get_week_status: with no schedule every day has scheduled null, and the week is read once', async () => {
+  const { tools, calls } = fakeRepo({ logs: [log('2026-11-10', [lifted('a')])] }, FRIDAY);
+  const out = body(await tools.get_week_status({}));
+  assert.equal(out.days.length, 7);
+  for (const day of out.days) {
+    assert.deepEqual(Object.keys(day).sort(), ['date', 'scheduled', 'session']);
+    assert.equal(day.scheduled, null);
+  }
+  assert.deepEqual(calls.filter(c => c[0] === 'getScheduleBetween'), [['getScheduleBetween', '2026-11-09', '2026-11-15', 7]]);
+  // The schedule adds no top-level field.
+  assert.deepEqual(Object.keys(out).sort(), [
+    'days', 'daysPerWeekTarget', 'monday', 'routinesNotDone', 'sessionsDone', 'sessionsRemaining', 'sunday',
+    'timeZone', 'today', 'truncated', 'week',
+  ]);
+});
+
+test('get_week_status: scheduled holds the items of the day; empty or unreadable items read as null', async () => {
+  const { tools } = fakeRepo({
+    routines: [routine('push-day', 'Push Day', ['a'])],
+    logs: [log('2026-11-10', [lifted('a')], { routineId: 'push-day', routineName: 'Push Day' })],
+    schedule: [
+      // A day with a session: both are returned, and the stored name is not refreshed.
+      scheduleDay('2026-11-10', [{ kind: 'routine', routineId: 'push-day', routineName: 'Old Name', extra: 'x' }]),
+      scheduleDay('2026-11-11', [{ kind: 'rest' }]),
+      scheduleDay('2026-11-12', []),
+      scheduleDay('2026-11-13', [{ kind: 'gym' }, { kind: 'activity' }, 'rest']),
+      scheduleDay('2026-11-14', [
+        { kind: 'routine', routineId: 'gone-day', routineName: 'Gone Day' },
+        { kind: 'activity', activity: 'boxing' },
+        { kind: 'nonsense' },
+      ]),
+      // Outside the week: never returned.
+      scheduleDay('2026-11-16', [{ kind: 'rest' }]),
+    ],
+  }, FRIDAY);
+  const out = body(await tools.get_week_status({}));
+  const scheduled = Object.fromEntries(out.days.map((d: { date: string; scheduled: unknown }) => [d.date, d.scheduled]));
+  assert.deepEqual(scheduled, {
+    '2026-11-09': null,
+    '2026-11-10': [{ kind: 'routine', routineId: 'push-day', routineName: 'Old Name' }],
+    '2026-11-11': [{ kind: 'rest' }],
+    '2026-11-12': null,
+    '2026-11-13': null,
+    '2026-11-14': [
+      { kind: 'routine', routineId: 'gone-day', routineName: 'Gone Day' },
+      { kind: 'activity', activity: 'boxing' },
+    ],
+    '2026-11-15': null,
+  });
+  // The schedule changes nothing else: one session, done, on the 10th.
+  assert.equal(out.days[1].session.status, 'performed');
+  assert.equal(out.days[2].session, null);
+  assert.equal(out.sessionsDone, 1);
+  assert.deepEqual(out.routinesNotDone, []);
+  assert.equal(out.truncated, false);
+});
+
+test('get_week_status: an explicit week reads the schedule of that week; a cut-off schedule read sets truncated', async () => {
+  const { tools, calls } = fakeRepo({
+    schedule: [scheduleDay('2026-11-04', [{ kind: 'activity', activity: 'boxing' }]), scheduleDay('2026-11-11', [{ kind: 'rest' }])],
+    scheduleTruncated: true,
+  }, FRIDAY);
+  const out = body(await tools.get_week_status({ week: '2026-W45' }));
+  assert.deepEqual(calls.find(c => c[0] === 'getScheduleBetween'), ['getScheduleBetween', '2026-11-02', '2026-11-08', 7]);
+  assert.deepEqual(
+    out.days.filter((d: { scheduled: unknown }) => d.scheduled).map((d: { date: string; scheduled: unknown }) => [d.date, d.scheduled]),
+    [['2026-11-04', [{ kind: 'activity', activity: 'boxing' }]]],
+  );
+  assert.equal(out.truncated, true);
 });
 
 // ─── Profile ─────────────────────────────────────────────────────────

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { berlinYmd, isoWeekOf, weekRange } from './week';
+import { addDays, berlinYmd, isRealYmd, isoWeekOf, weekRange } from './week';
 
 const weekAt = (iso: string) => isoWeekOf(berlinYmd(new Date(iso)));
 
@@ -60,5 +60,23 @@ test('weekRange: Monday to Sunday, seven days', () => {
 test('weekRange: refuses ids that are not a real ISO week', () => {
   for (const bad of ['2025-W53', '2026-W54', '2026-W00', '2026-W1', '2026-46', '2026-w46', '0026-W10', 'W46', '']) {
     assert.equal(weekRange(bad), null, `should be refused: "${bad}"`);
+  }
+});
+
+test('addDays: across a month, a year, a leap day and the October clock change', () => {
+  assert.equal(addDays('2026-11-14', 28), '2026-12-12');
+  assert.equal(addDays('2026-12-31', 1), '2027-01-01');
+  assert.equal(addDays('2028-02-28', 1), '2028-02-29');
+  assert.equal(addDays('2026-10-24', 2), '2026-10-26');
+  assert.equal(addDays('2026-03-01', -1), '2026-02-28');
+  assert.equal(addDays('2026-11-14', 0), '2026-11-14');
+});
+
+test('isRealYmd: a real calendar day only', () => {
+  for (const good of ['2026-11-16', '2028-02-29', '2026-12-31']) {
+    assert.equal(isRealYmd(good), true, good);
+  }
+  for (const bad of ['2026-02-30', '2027-02-29', '2026-13-01', '2026-00-10', '2026-1-1', '2026-11-16T00:00', '0026-11-16', 'today', '', '..', 'a/b', 20261116, null, undefined]) {
+    assert.equal(isRealYmd(bad), false, `should be refused: ${String(bad)}`);
   }
 });

@@ -175,7 +175,45 @@ test('setRoutineExercises: one batch; a merge of exercises + updatedAt only, ver
   assert.deepEqual(store.get(`${ROOT}routines/push-day`), { name: 'Push Day', order: 3, createdAt: 'kept', exercises: entries, updatedAt: TS });
 });
 
-test('every write path is users/{owner}/ + one of the three collections + one id', async () => {
+test('setScheduleDay: one batch; a merge of date, items and updatedAt at users/{owner}/schedule/{date}', async () => {
+  const path = `${ROOT}schedule/2026-11-16`;
+  const { repo, batches, store } = fakeDb({ [path]: { date: '2026-11-16', items: [{ kind: 'rest' }], note: 'kept' } });
+  // An extra key on an item must not reach the document.
+  const items = [
+    { kind: 'routine', routineId: 'push-day', routineName: 'Push Day', order: 99 },
+    { kind: 'activity', activity: 'boxing', routineId: 'hacked' },
+  ] as unknown as Parameters<McpWriteRepo['setScheduleDay']>[1];
+  await repo.setScheduleDay('2026-11-16', items);
+  const stored = [
+    { kind: 'routine', routineId: 'push-day', routineName: 'Push Day' },
+    { kind: 'activity', activity: 'boxing' },
+  ];
+  assert.equal(batches.length, 1);
+  assert.equal(batches[0].commits, 1);
+  assert.deepEqual(batches[0].ops, [
+    { kind: 'set', path, data: { date: '2026-11-16', items: stored, updatedAt: TS }, options: { merge: true } },
+  ]);
+  // The items are replaced whole; a field this repo does not know stays.
+  assert.deepEqual(store.get(path), { date: '2026-11-16', items: stored, updatedAt: TS, note: 'kept' });
+
+  await repo.setScheduleDay('2026-11-16', []);
+  assert.deepEqual(store.get(path), { date: '2026-11-16', items: [], updatedAt: TS, note: 'kept' });
+});
+
+test('setScheduleDay: a date that is not a real day, or a bad item list, is refused before any batch is opened', async () => {
+  const { repo, batches, docPaths } = fakeDb();
+  for (const bad of ['', 'a/b', '..', 'today', 'push-day', '2026-1-1', '2026-02-30', '2026-11-16x', '2026-11-16/x']) {
+    await assert.rejects(repo.setScheduleDay(bad, [{ kind: 'rest' }]), `date should be refused: ${bad}`);
+  }
+  const rest = { kind: 'rest' } as const;
+  await assert.rejects(repo.setScheduleDay('2026-11-16', [rest, rest, rest, rest]));
+  await assert.rejects(repo.setScheduleDay('2026-11-16', [{ kind: 'routine', routineId: 'a/b', routineName: 'x' }]));
+  await assert.rejects(repo.setScheduleDay('2026-11-16', [{ kind: 'gym' }] as unknown as Parameters<McpWriteRepo['setScheduleDay']>[1]));
+  assert.equal(batches.length, 0);
+  assert.equal(docPaths.some(p => !/^users\/fake-owner\/schedule\/\d{4}-\d{2}-\d{2}$/.test(p)), false);
+});
+
+test('every write path is users/{owner}/ + one of the four collections + one id; a schedule id is a date', async () => {
   const { repo, batches, docPaths } = fakeDb();
   await repo.createExercise('cable-fly_chest', exercise);
   await repo.createRoutine('push-day', routine, [version('push-day', 10)]);
@@ -183,9 +221,10 @@ test('every write path is users/{owner}/ + one of the three collections + one id
   await repo.updateExerciseFields('cable-fly_chest', { targetNotes: 'Lower chest' }, [
     { id: 'push-day', exercises: entries, versions: [version('push-day', 12)] },
   ]);
-  const allowed = new RegExp(`^users/${OWNER}/(routines|exercises|routineHistory)/[^/]+$`);
+  await repo.setScheduleDay('2026-11-16', [{ kind: 'rest' }]);
+  const allowed = new RegExp(`^users/${OWNER}/((routines|exercises|routineHistory)/[^/]+|schedule/\\d{4}-\\d{2}-\\d{2})$`);
   const paths = [...docPaths, ...batches.flatMap(b => b.ops.map(op => op.path))];
-  assert.equal(paths.length, 16);
+  assert.equal(paths.length, 18);
   for (const path of paths) assert.match(path, allowed);
 });
 

@@ -3,6 +3,7 @@
 // when the id is taken), merge fields into a routine (`set` with merge) and change
 // the editable fields of an exercise (`update`, which fails when the document is
 // gone), and nothing else: the `WriteDb` type has no other write method to call.
+// A schedule day is a merge that always writes its three fields.
 // Every path is rooted at users/{uid}; the route passes MCP_OWNER_UID, never a
 // value from the request. This file has no read: the tools read through
 // repo.server.ts and validate before they call anything here.
@@ -10,6 +11,8 @@ import type { DumbbellLoad, ExerciseData, RoutineData, WarmupTemplate } from '@/
 import type { RoutineVersion } from '@/types/routineHistory';
 import type { RoutineExerciseEntry } from '@/lib/routineDoc';
 import { isSafeDocId } from './repo.server';
+import { MAX_SCHEDULE_ITEMS, type ScheduleItem } from './schedule';
+import { isRealYmd } from './week';
 
 export type WriteDocRef = { readonly path: string };
 
@@ -28,7 +31,7 @@ export type WriteDb = {
   doc(path: string): WriteDocRef;
 };
 
-const WRITE_COLLECTIONS = ['routines', 'exercises', 'routineHistory'] as const;
+const WRITE_COLLECTIONS = ['routines', 'exercises', 'routineHistory', 'schedule'] as const;
 type WriteCollection = (typeof WRITE_COLLECTIONS)[number];
 
 const EXERCISE_TEXT_FIELDS = ['targetNotes', 'exerciseSetup', 'progressiveOverload'] as const;
@@ -70,6 +73,11 @@ export type McpWriteRepo = {
    * history versions. The batch fails, and writes nothing, when the exercise is gone.
    */
   updateExerciseFields(id: string, change: ExerciseFieldChange, routines: RoutineCascade[]): Promise<void>;
+  /**
+   * One batch: `date`, `items` and `updatedAt` merged into the schedule document of
+   * that day. `items` is replaced whole; an empty list clears the day.
+   */
+  setScheduleDay(date: string, items: ScheduleItem[]): Promise<void>;
 };
 
 /**
@@ -90,6 +98,8 @@ export function createWriteRepo(
   const ref = (collection: WriteCollection, id: string): WriteDocRef => {
     if (!WRITE_COLLECTIONS.includes(collection)) throw new Error('bad_collection');
     if (!isSafeDocId(id)) throw new Error('bad_id');
+    // A schedule document is one calendar day: its id is a real YYYY-MM-DD and nothing else.
+    if (collection === 'schedule' && !isRealYmd(id)) throw new Error('bad_date');
     return db.doc(`${root}/${collection}/${id}`);
   };
 
@@ -152,6 +162,24 @@ export function createWriteRepo(
         batch.set(cascade.target, { exercises: cascade.exercises, updatedAt: serverTimestamp() }, { merge: true });
         for (const version of cascade.history) batch.create(version.ref, version.data);
       }
+      await batch.commit();
+    },
+
+    async setScheduleDay(date, items) {
+      const target = ref('schedule', date);
+      if (!Array.isArray(items) || items.length > MAX_SCHEDULE_ITEMS) throw new Error('bad_items');
+      // Only the keys named here reach the document, whatever the argument holds.
+      const stored = items.map((item): ScheduleItem => {
+        if (item.kind === 'routine') {
+          if (!isSafeDocId(item.routineId)) throw new Error('bad_id');
+          return { kind: 'routine', routineId: item.routineId, routineName: String(item.routineName ?? '') };
+        }
+        if (item.kind === 'activity') return { kind: 'activity', activity: String(item.activity) };
+        if (item.kind === 'rest') return { kind: 'rest' };
+        throw new Error('bad_items');
+      });
+      const batch = db.batch();
+      batch.set(target, { date, items: stored, updatedAt: serverTimestamp() }, { merge: true });
       await batch.commit();
     },
   };

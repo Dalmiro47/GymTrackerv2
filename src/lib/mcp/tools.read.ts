@@ -13,6 +13,7 @@ import { groupMarks } from '@/lib/setStructureGroups';
 import { withTimeout } from './limits';
 import { isSafeDocId, type McpRepo, type McpWriteReads, type RawDoc, type RawList } from './repo.server';
 import { errorResult, jsonResult, type ToolResult } from './results';
+import { readScheduleItems } from './schedule';
 import { WEEK_TIME_ZONE, berlinYmd, isoWeekOf, weekRange } from './week';
 
 /** What the read tools read: the base repo plus two single-purpose reads the write tools also use. */
@@ -315,13 +316,15 @@ export function createReadTools(repo: ReadToolsRepo, now: () => Date = () => new
         if (!range) return errorResult(`"${week}" is not an ISO week. Use YYYY-Www, for example ${currentWeek}.`);
 
         // One doc per day: a week holds at most seven.
-        const [logList, routineList, profile] = await Promise.all([
+        const [logList, scheduleList, routineList, profile] = await Promise.all([
           repo.getLogsBetween(range.monday, range.sunday, 7),
+          repo.getScheduleBetween(range.monday, range.sunday, 7),
           repo.listRoutines(),
           repo.getProfile(),
         ]);
         const language = languageOf(profile);
         const logsByDate = new Map(logList.rows.map(doc => [logDate(doc), doc]));
+        const scheduleByDate = new Map(scheduleList.rows.map(doc => [logDate(doc), readScheduleItems(doc.data.items)]));
 
         // History and, when the list does not hold it, the document of each routine used this week.
         const routineIds = [
@@ -345,7 +348,10 @@ export function createReadTools(repo: ReadToolsRepo, now: () => Date = () => new
 
         const days = range.days.map(date => {
           const doc = logsByDate.get(date);
-          if (!doc) return { date, session: null };
+          // A day with no schedule document and a day with no items read the same.
+          const items = scheduleByDate.get(date) ?? [];
+          const scheduled = items.length > 0 ? items : null;
+          if (!doc) return { date, session: null, scheduled };
 
           const routineId = str(doc.data.routineId);
           const reads = routineId ? routineReads.get(routineId) : undefined;
@@ -389,6 +395,7 @@ export function createReadTools(repo: ReadToolsRepo, now: () => Date = () => new
               notes: str(doc.data.notes),
               exercises,
             },
+            scheduled,
           };
         });
 
@@ -405,7 +412,7 @@ export function createReadTools(repo: ReadToolsRepo, now: () => Date = () => new
           routinesNotDone: routineList.rows
             .filter(doc => !performedRoutineIds.has(doc.id))
             .map(doc => ({ id: doc.id, name: str(doc.data.name) ?? '' })),
-          truncated: logList.truncated || routineList.truncated,
+          truncated: logList.truncated || scheduleList.truncated || routineList.truncated,
           days,
         });
       }),
@@ -518,6 +525,9 @@ export function registerReadTools(server: McpServer, repo: ReadToolsRepo, now?: 
         `routineBasis "unknown" means no version was found and nothing is marked skipped). sessionsDone counts ` +
         `days with at least one performed exercise; sessionsRemaining is the profile's days-per-week target ` +
         `minus that (null without a target); routinesNotDone lists routines with no performed session this week. ` +
+        `scheduled is the day's schedule, written with set_schedule_day and separate from session: null when ` +
+        `nothing is scheduled, else a list of items of kind "routine" (routineId, and routineName as it was when ` +
+        `the day was scheduled), "activity" (a short text) or "rest". ` +
         `${NAMES_NOTE}`,
       inputSchema: toolSchemas.get_week_status,
       annotations,
