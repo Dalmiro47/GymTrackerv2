@@ -28,6 +28,18 @@ const toUtcMs = (ymd: string) => {
   return Date.UTC(y, m - 1, d);
 };
 const fromUtcMs = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+const YMD = /^[1-9]\d{3}-\d{2}-\d{2}$/;
+
+/** True for a YYYY-MM-DD string that names a real calendar day: "2026-02-30" is refused. */
+export function isRealYmd(value: unknown): value is string {
+  return typeof value === 'string' && YMD.test(value) && fromUtcMs(toUtcMs(value)) === value;
+}
+
+/** The calendar day `days` after `ymd`, or before it when `days` is negative. */
+export function addDays(ymd: string, days: number): string {
+  return fromUtcMs(toUtcMs(ymd) + days * DAY_MS);
+}
+
 /** Monday = 0 ... Sunday = 6. */
 const isoWeekday = (ms: number) => (new Date(ms).getUTCDay() + 6) % 7;
 

@@ -1,6 +1,7 @@
 // server-only: src/lib/mcp/tools.write.ts
 // The write tools of the MCP endpoint: they add exercises and routines, edit the
-// exercise list of a routine and edit a few fields of an exercise. No tool takes
+// exercise list of a routine, edit a few fields of an exercise and set the
+// schedule of a day. No tool takes
 // a uid, and none removes a document. Every check runs before the batch is opened, so a refused call writes
 // nothing. Documents come only from the builders the app uses (routineDoc,
 // exerciseDoc, routineHistoryPlan), so the app and the MCP store the same shape.
@@ -23,6 +24,8 @@ import { withTimeout } from './limits';
 import { isSafeDocId, type McpRepoWithWriteReads, type RawDoc } from './repo.server';
 import type { ExerciseFieldChange, McpWriteRepo, RoutineCascade } from './repo.write.server';
 import { errorResult, jsonResult, type ToolResult } from './results';
+import { MAX_ACTIVITY_LENGTH, MAX_SCHEDULE_ITEMS, SCHEDULE_DAYS_AHEAD, scheduleWindow, type ScheduleItem } from './schedule';
+import { WEEK_TIME_ZONE, berlinYmd, isRealYmd } from './week';
 
 // ─── Limits (MCP only; the app has no upper bounds) ──────────────────
 
@@ -45,6 +48,16 @@ const docId = z
   .refine(isSafeDocId, { message: 'must be a plain id with no "/"' });
 
 const text = z.string().trim().max(MAX_TEXT_LENGTH).optional();
+
+// Strict: an item takes the keys of its kind only. The routine name is read from the routine, never from the input.
+const scheduleItem = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('routine'), routineId: docId.describe('Routine id from list_routines') }),
+  z.strictObject({
+    kind: z.literal('activity'),
+    activity: z.string().trim().min(1).max(MAX_ACTIVITY_LENGTH).describe('Short free text, e.g. "boxing", at most 40 characters'),
+  }),
+  z.strictObject({ kind: z.literal('rest') }),
+]);
 
 export const writeToolSchemas = {
   create_exercise: z.object({
@@ -104,6 +117,19 @@ export const writeToolSchemas = {
         'Ids of exercises of the routine, each once, in any order: exactly 2 for superset, exactly 3 for triset, 1 or more for the others',
       ),
   }),
+  set_schedule_day: z.object({
+    date: z
+      .string()
+      .refine(isRealYmd, { message: 'must be a calendar day like 2026-11-16' })
+      .describe('The day to schedule, "YYYY-MM-DD": Monday of the current week to 28 days from today (Europe/Berlin)'),
+    items: z
+      .array(scheduleItem)
+      .max(MAX_SCHEDULE_ITEMS)
+      .describe(
+        'Everything scheduled for that day, 0 to 3 items; [] clears the day. kind "routine" (a gym session), ' +
+          '"activity" (anything else) or "rest"; "rest" must be the only item, and a routine can be listed once',
+      ),
+  }),
   // Strict: a key this tool does not edit (name, muscleGroup...) is refused, not dropped.
   update_exercise: z.strictObject({
     exerciseId: docId.describe('Exercise id from list_exercises'),
@@ -150,6 +176,10 @@ export type WriteErrorCode =
   | 'incomplete_group'
   | 'id_unavailable'
   | 'no_fields'
+  | 'out_of_window'
+  | 'too_many_items'
+  | 'rest_not_alone'
+  | 'duplicate_routine'
   | 'conflict'
   | 'write_failed';
 
@@ -689,6 +719,44 @@ export function createWriteTools({ repo, writes, now = () => new Date() }: Write
         await commit('update_exercise', () => writes.updateExerciseFields(exerciseId, change, cascades));
         return { ok: true, changed, exercise: exerciseOut(doc.id, after), routinesUpdated };
       }),
+
+    set_schedule_day: ({ date, items }: Args<'set_schedule_day'>) =>
+      run('set_schedule_day', async () => {
+        const window = scheduleWindow(berlinYmd(now()));
+        if (!isRealYmd(date) || date < window.from || date > window.to) {
+          refuse(
+            'out_of_window',
+            `"${date}" is not a day from ${window.from} to ${window.to}: the schedule takes Monday of the current week ` +
+              `to ${SCHEDULE_DAYS_AHEAD} days from today (${WEEK_TIME_ZONE}). ${NOTHING_WRITTEN}`,
+          );
+        }
+        if (items.length > MAX_SCHEDULE_ITEMS) {
+          refuse('too_many_items', `A day holds at most ${MAX_SCHEDULE_ITEMS} items. ${NOTHING_WRITTEN}`);
+        }
+        if (items.length > 1 && items.some(item => item.kind === 'rest')) {
+          refuse('rest_not_alone', `A rest day has "rest" as its only item. ${NOTHING_WRITTEN}`);
+        }
+        const routineIds = items.flatMap(item => (item.kind === 'routine' ? [item.routineId] : []));
+        const repeated = routineIds.find((id, i) => routineIds.indexOf(id) !== i);
+        if (repeated) refuse('duplicate_routine', `Routine "${repeated}" is listed more than once. ${NOTHING_WRITTEN}`);
+
+        const stored: ScheduleItem[] = [];
+        for (const item of items) {
+          if (item.kind === 'routine') {
+            const doc = await repo.getRoutine(item.routineId);
+            if (!doc) return refuse('not_found', `No routine with id "${item.routineId}". ${NOTHING_WRITTEN}`);
+            // The name as it is now: the schedule keeps it even when the routine is renamed later.
+            stored.push({ kind: 'routine', routineId: doc.id, routineName: str(doc.data.name) ?? '' });
+          } else if (item.kind === 'activity') {
+            stored.push({ kind: 'activity', activity: item.activity.trim() });
+          } else {
+            stored.push({ kind: 'rest' });
+          }
+        }
+
+        await commit('set_schedule_day', () => writes.setScheduleDay(date, stored));
+        return { ok: true, date, scheduled: stored.length > 0 ? stored : null };
+      }),
   };
 }
 
@@ -821,5 +889,22 @@ export function registerWriteTools(server: McpServer, deps: WriteToolDeps) {
       annotations: destructive,
     },
     guard(tools.update_exercise),
+  );
+
+  server.registerTool(
+    'set_schedule_day',
+    {
+      title: 'Set schedule day',
+      description:
+        `Sets what the owner intends to do on one day: up to 3 items of kind "routine" (a gym session with one of ` +
+        `the routines), "activity" (a short free text, e.g. "boxing") or "rest". It replaces everything scheduled ` +
+        `for that day; items [] clears the day. "rest" must be the only item of its day and a routine can be listed ` +
+        `once. The day must be from Monday of the current week to ${SCHEDULE_DAYS_AHEAD} days from today ` +
+        `(${WEEK_TIME_ZONE}). The schedule is separate from the workout logs: it writes no log and no routine, and ` +
+        `get_week_status returns it as \`scheduled\` on each day. ${CONFIRM_NOTE} ${RESULT_NOTE}`,
+      inputSchema: writeToolSchemas.set_schedule_day,
+      annotations: destructive,
+    },
+    guard(tools.set_schedule_day),
   );
 }

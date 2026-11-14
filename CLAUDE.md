@@ -42,7 +42,7 @@ Next.js 15 App Router; Firebase is the sole backend, with no custom API server f
 - Coach provider (`LLMProvider`, `GroqProvider`, `DEFAULT_MODEL`): `src/lib/ai/llm-provider.ts`
 - Coach context serializers: `src/lib/ai/context-builders.ts`; system prompts (`SWAP_RANKING`, volume targets, overload logic, KNOWN EXERCISES): `src/lib/ai/chat-prompts.ts`
 - Coach UI (own fixed panel, `SegmentRenderer`): `src/components/coach/CoachChatSheet.tsx`
-- MCP server (owner's data, Admin SDK; 7 read tools, 8 write tools, 15 in total): `src/app/api/mcp/[key]/route.ts`, `src/lib/mcp/` (`auth.ts`, `repo.server.ts` reads, `repo.write.server.ts` writes, `tools.read.ts`, `tools.write.ts`, `week.ts` Berlin date and ISO week, `server.ts`); tests `*.test.ts` beside each module, run with `npm test`
+- MCP server (owner's data, Admin SDK; 7 read tools, 9 write tools, 16 in total): `src/app/api/mcp/[key]/route.ts`, `src/lib/mcp/` (`auth.ts`, `repo.server.ts` reads, `repo.write.server.ts` writes, `tools.read.ts`, `tools.write.ts`, `week.ts` Berlin date and ISO week, `schedule.ts` schedule items and window, `server.ts`); tests `*.test.ts` beside each module, run with `npm test`
 - Doc builders shared by the app services and the MCP write tools: `src/lib/routineDoc.ts`, `src/lib/exerciseDoc.ts`, `src/lib/routineHistoryPlan.ts`
 - Daily quota: `src/lib/usageQuota.ts`, `src/lib/limits.ts`, `src/lib/firebaseAdmin.ts`
 - Language state (`LanguageProvider`, `gt-lang` mirror, `<html lang>`; set from `UserNav`, or `LanguageToggle` on `/login`): `src/contexts/LanguageContext.tsx`
@@ -66,6 +66,7 @@ users/{userId}/
   workoutLogs/{YYYY-MM-DD} # Daily logs
   performanceEntries/{exerciseId} # PRs & last performance
   routineHistory/{routineId_epochMs} # Routine change snapshots (flat; outlives deleted routines)
+  schedule/{YYYY-MM-DD}   # Scheduled items of a day; only the MCP writes it today (no app UI yet)
   stats/usage             # Daily AI quota: client read-only, Admin SDK writes
 feedback/{docId}          # Top-level: anyone signed in may create, only the admin reads
 ```
@@ -79,6 +80,7 @@ feedback/{docId}          # Top-level: anyone signed in may create, only the adm
 - **performed**: `LoggedExercise.performed`, persisted; `false` = planned, never lifted; `undefined` = performed.
 - **PR**: the heaviest single working set (`isBetterPR`: weight first, reps break a tie only at equal weight).
 - **deload**: a session at reduced weight and set count, signalled by `--warning`.
+- **schedule**: what the owner intends to do on a day (`users/{uid}/schedule/{date}`: routine, activity or rest items). Never call it a plan: "planned" is a log status (saved, not lifted).
 - **coach modes**: `ChatMode`: `log-day`, `routine-review`, `dashboard`, `exercise-library`.
 - **nav title**: `NavItem.title` is a translation key, not display text.
 
@@ -126,6 +128,7 @@ feedback/{docId}          # Top-level: anyone signed in may create, only the adm
 - Exercise identity = name + muscleGroup, never name alone: `dedupeExercisesByNameAndMuscle` feeds the shared picker, and keying on name silently hid "Dips" (Triceps) behind "Dips" (Chest).
 - Compare a library exercise with `LoggedExercise.exerciseId`, never `.id` (row id): it never matches, so the filter is a silent no-op that still looks correct (shipped in the Replace picker).
 - MCP writes: a write tool runs only after the user's yes in the chat (no token); the write repo has no delete, and `update` only for an exercise's editable fields, so a deleted exercise fails the batch (`create` for new docs, `set` with merge for a routine's `exercises`); every routine write is ONE batch with its history version (source `'mcp'`; a backfilled baseline keeps `'backfill'`). The Admin SDK skips `firestore.rules`, so the path allowlist in `repo.write.server.ts` is the only scope.
+- `set_schedule_day` merges `{ date, items, updatedAt }` into `schedule/{date}` (the id must be a real date; window: Monday of the current Berlin week to today + 28; `[]` clears the day, no delete). "MCP only" is a convention, not a rule: the generic `firestore.rules` match lets the owner's client write `schedule` too, and the app UI will use that.
 - An MCP write does not reach an open app: `sessionCache` keeps routines and exercises per session, so the app shows old data until a reload (or the 5-min TTL), and a save from a stale routine editor overwrites the MCP change. A save from a stale exercise dialog overwrites the three text fields and the warmup template; `loadIncrementKg` and `dumbbellLoad` survive.
 - The app's routine editor does not validate superset/triset groups, so a lone superset can be stored from the UI. The MCP guard (`saveExercises` in `tools.write.ts`) refuses only an incomplete group a call creates or changes, and tolerates an untouched broken one. The chunking rule (2 per superset, 3 per triset, from the top of a run) lives in 3 places until the follow-up PR: `src/lib/setStructureGroups.ts` (MCP only), `SelectedRoutineExercisesList.tsx` and `ExerciseList.tsx`.
 - `src/lib/routineHistory.ts` holds a raw NUL byte (the hash separator, line 55): the Edit and Write tools refuse the file. Put new history code in another module, and never change the separator (every stored `snapshotHash` depends on it).

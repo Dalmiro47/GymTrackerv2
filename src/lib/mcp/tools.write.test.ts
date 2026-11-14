@@ -54,6 +54,8 @@ function fakeDb(
     failCommit?: boolean;
     /** The `code` of the error an `update` on a missing document throws; default the gRPC number. */
     notFoundCode?: unknown;
+    /** The clock of the tools; default NOW. */
+    now?: () => Date;
   } = {},
 ) {
   const store = new Map<string, Data>(Object.entries(seed).map(([path, data]) => [ROOT + path, data]));
@@ -140,7 +142,7 @@ function fakeDb(
     'db',
   );
 
-  const tools = createWriteTools({ repo: createRepo(db, OWNER), writes: createWriteRepo(db, OWNER, () => TS, () => REMOVE), now: NOW });
+  const tools = createWriteTools({ repo: createRepo(db, OWNER), writes: createWriteRepo(db, OWNER, () => TS, () => REMOVE), now: hooks.now ?? NOW });
   const ops = () => batches.flatMap(b => b.ops);
   const get = (path: string) => store.get(ROOT + path);
   return { tools, batches, ops, get, store };
@@ -196,7 +198,7 @@ const refused = (result: ToolResult, code: string, db: ReturnType<typeof fakeDb>
   assert.equal(db.batches.length, 0, `${code} must open no batch`);
 };
 
-const WRITE_PATH = new RegExp(`^users/${OWNER}/(routines|exercises|routineHistory)/[^/]+$`);
+const WRITE_PATH = new RegExp(`^users/${OWNER}/((routines|exercises|routineHistory)/[^/]+|schedule/\\d{4}-\\d{2}-\\d{2})$`);
 
 /** Exactly one batch with one commit; every path is the owner's, in an allowed collection. */
 const oneBatch = (db: ReturnType<typeof fakeDb>) => {
@@ -210,11 +212,11 @@ const versionsOf = (ops: Op[]) => ops.filter(op => op.path.startsWith(`${ROOT}ro
 
 // ─── Input validation ────────────────────────────────────────────────
 
-test('schemas: exactly the eight write tools, and none takes a uid', () => {
+test('schemas: exactly the nine write tools, and none takes a uid', () => {
   assert.deepEqual(Object.keys(writeToolSchemas).sort(), [
     'add_exercise_to_routine', 'create_exercise', 'create_routine',
     'remove_exercise_from_routine', 'reorder_routine_exercises', 'replace_exercise_in_routine',
-    'set_routine_set_structure', 'update_exercise',
+    'set_routine_set_structure', 'set_schedule_day', 'update_exercise',
   ]);
   for (const [name, schema] of Object.entries(writeToolSchemas)) {
     for (const key of Object.keys(schema.shape)) {
@@ -1215,6 +1217,157 @@ test('every routine tool: exactly one batch and one commit, owner paths only, ne
   }
 });
 
+// ─── set_schedule_day ────────────────────────────────────────────────
+
+// NOW is Friday 2027-01-15, 09:00 in Berlin: the window is Monday 2027-01-11 to 2027-02-12.
+const MONDAY = '2027-01-11';
+const TODAY = '2027-01-15';
+const LAST_DAY = '2027-02-12';
+
+test('schemas: set_schedule_day takes a real date and 0 to 3 strict items', () => {
+  const s = writeToolSchemas.set_schedule_day;
+  assert.deepEqual(
+    s.parse({ date: TODAY, items: [{ kind: 'routine', routineId: 'push-day' }, { kind: 'activity', activity: '  boxing ' }] }),
+    { date: TODAY, items: [{ kind: 'routine', routineId: 'push-day' }, { kind: 'activity', activity: 'boxing' }] },
+  );
+  assert.equal(s.safeParse({ date: TODAY, items: [] }).success, true);
+  assert.equal(s.safeParse({ date: TODAY, items: [{ kind: 'rest' }] }).success, true);
+  assert.equal(s.safeParse({ date: TODAY, items: [{ kind: 'activity', activity: 'x'.repeat(40) }] }).success, true);
+  const rest = { kind: 'rest' };
+  for (const bad of [
+    { items: [] },
+    { date: TODAY },
+    { date: '2027-02-30', items: [] },
+    { date: '2027-1-15', items: [] },
+    { date: 'tomorrow', items: [] },
+    { date: '2027-W02', items: [] },
+    { date: TODAY, items: [rest, rest, rest, rest] },
+    { date: TODAY, items: [{ kind: 'gym' }] },
+    { date: TODAY, items: [{}] },
+    { date: TODAY, items: [{ kind: 'routine' }] },
+    { date: TODAY, items: [{ kind: 'routine', routineId: 'a/b' }] },
+    // The name comes from the routine, never from the input.
+    { date: TODAY, items: [{ kind: 'routine', routineId: 'push-day', routineName: 'Hacked' }] },
+    { date: TODAY, items: [{ kind: 'activity' }] },
+    { date: TODAY, items: [{ kind: 'activity', activity: '   ' }] },
+    { date: TODAY, items: [{ kind: 'activity', activity: 'x'.repeat(41) }] },
+    { date: TODAY, items: [{ kind: 'rest', activity: 'boxing' }] },
+  ]) {
+    assert.equal(s.safeParse(bad).success, false, JSON.stringify(bad).slice(0, 80));
+  }
+});
+
+test('set_schedule_day: one batch, one merge at schedule/{date}; the routine name is the stored one', async () => {
+  const db = fakeDb(seed());
+  const out = ok(await db.tools.set_schedule_day({
+    date: TODAY,
+    items: [{ kind: 'routine', routineId: 'push-day' }, { kind: 'activity', activity: ' boxing ' }],
+  }));
+  const items = [
+    { kind: 'routine', routineId: 'push-day', routineName: 'Push Day' },
+    { kind: 'activity', activity: 'boxing' },
+  ];
+  assert.deepEqual(oneBatch(db), [
+    { kind: 'set', path: `${ROOT}schedule/${TODAY}`, data: { date: TODAY, items, updatedAt: TS }, options: { merge: true } },
+  ]);
+  assert.deepEqual(out, { ok: true, date: TODAY, scheduled: items });
+  // No routine, exercise, history or log document is touched.
+  assert.deepEqual(db.get('routines/push-day'), pushDay());
+});
+
+test('set_schedule_day: a second call replaces the items of the day and leaves other days alone', async () => {
+  const db = fakeDb(seed({
+    [`schedule/${TODAY}`]: { date: TODAY, items: [{ kind: 'rest' }], note: 'kept' },
+    [`schedule/${MONDAY}`]: { date: MONDAY, items: [{ kind: 'activity', activity: 'swim' }] },
+  }));
+  ok(await db.tools.set_schedule_day({ date: TODAY, items: [{ kind: 'routine', routineId: 'push-day' }, { kind: 'activity', activity: 'boxing' }] }));
+  ok(await db.tools.set_schedule_day({ date: TODAY, items: [{ kind: 'activity', activity: 'run' }] }));
+  assert.equal(db.batches.length, 2);
+  // Nothing of the first two states is left; a field the tool does not know stays (merge).
+  assert.deepEqual(db.get(`schedule/${TODAY}`), { date: TODAY, items: [{ kind: 'activity', activity: 'run' }], updatedAt: TS, note: 'kept' });
+  assert.deepEqual(db.get(`schedule/${MONDAY}`), { date: MONDAY, items: [{ kind: 'activity', activity: 'swim' }] });
+});
+
+test('set_schedule_day: empty items clear the day; the document stays, with no items', async () => {
+  const db = fakeDb(seed({ [`schedule/${TODAY}`]: { date: TODAY, items: [{ kind: 'rest' }] } }));
+  const out = ok(await db.tools.set_schedule_day({ date: TODAY, items: [] }));
+  assert.deepEqual(out, { ok: true, date: TODAY, scheduled: null });
+  assert.deepEqual(oneBatch(db), [
+    { kind: 'set', path: `${ROOT}schedule/${TODAY}`, data: { date: TODAY, items: [], updatedAt: TS }, options: { merge: true } },
+  ]);
+  assert.deepEqual(db.get(`schedule/${TODAY}`), { date: TODAY, items: [], updatedAt: TS });
+
+  // A rest day is one item.
+  const rest = fakeDb(seed());
+  assert.deepEqual(ok(await rest.tools.set_schedule_day({ date: TODAY, items: [{ kind: 'rest' }] })).scheduled, [{ kind: 'rest' }]);
+});
+
+test('set_schedule_day: the window is Monday of the current Berlin week to today + 28; outside it nothing is written', async () => {
+  const rest = [{ kind: 'rest' as const }];
+  for (const date of [MONDAY, '2027-01-13', TODAY, LAST_DAY]) {
+    const db = fakeDb(seed());
+    ok(await db.tools.set_schedule_day({ date, items: rest }));
+    assert.equal(oneBatch(db)[0].path, `${ROOT}schedule/${date}`);
+  }
+  for (const date of ['2027-01-10', '2027-02-13', '2026-01-15', '2028-01-15', '2027-02-30', 'today', '../routines/push-day']) {
+    const db = fakeDb(seed());
+    const result = await db.tools.set_schedule_day({ date, items: rest });
+    refused(result, 'out_of_window', db);
+    assert.match(result.content[0].text, /2027-01-11 to 2027-02-12/);
+  }
+
+  // 00:30 on a Monday in Berlin is still Sunday in UTC: the Berlin date decides.
+  const berlinMonday = { now: () => new Date('2026-03-15T23:30:00Z') };
+  for (const date of ['2026-03-16', '2026-04-13']) {
+    const db = fakeDb(seed(), berlinMonday);
+    ok(await db.tools.set_schedule_day({ date, items: rest }));
+  }
+  for (const date of ['2026-03-15', '2026-03-09', '2026-04-14']) {
+    const db = fakeDb(seed(), berlinMonday);
+    refused(await db.tools.set_schedule_day({ date, items: rest }), 'out_of_window', db);
+  }
+});
+
+test('set_schedule_day: an unknown routine writes nothing (not_found), also next to valid items', async () => {
+  const db = fakeDb(seed());
+  refused(await db.tools.set_schedule_day({ date: TODAY, items: [{ kind: 'routine', routineId: 'no-such-day' }] }), 'not_found', db);
+  refused(
+    await db.tools.set_schedule_day({
+      date: TODAY,
+      items: [{ kind: 'routine', routineId: 'push-day' }, { kind: 'activity', activity: 'boxing' }, { kind: 'routine', routineId: 'no-such-day' }],
+    }),
+    'not_found',
+    db,
+  );
+  assert.equal(db.get(`schedule/${TODAY}`), undefined);
+});
+
+test('set_schedule_day: rest next to another item, a routine listed twice or more than 3 items writes nothing', async () => {
+  const db = fakeDb(seed({ 'routines/pull-day': { name: 'Pull Day', order: 3, exercises: [] } }));
+  const push = { kind: 'routine' as const, routineId: 'push-day' };
+  const boxing = { kind: 'activity' as const, activity: 'boxing' };
+  const rest = { kind: 'rest' as const };
+  refused(await db.tools.set_schedule_day({ date: TODAY, items: [rest, boxing] }), 'rest_not_alone', db);
+  refused(await db.tools.set_schedule_day({ date: TODAY, items: [push, rest] }), 'rest_not_alone', db);
+  refused(await db.tools.set_schedule_day({ date: TODAY, items: [rest, rest] }), 'rest_not_alone', db);
+  refused(await db.tools.set_schedule_day({ date: TODAY, items: [push, boxing, push] }), 'duplicate_routine', db);
+  refused(await db.tools.set_schedule_day({ date: TODAY, items: [boxing, boxing, boxing, boxing] }), 'too_many_items', db);
+
+  // Two different routines and an activity on one day are fine.
+  const out = ok(await db.tools.set_schedule_day({ date: TODAY, items: [push, { kind: 'routine', routineId: 'pull-day' }, boxing] }));
+  assert.deepEqual(out.scheduled.map((item: { kind: string; routineName?: string }) => item.routineName ?? item.kind), ['Push Day', 'Pull Day', 'activity']);
+  oneBatch(db);
+});
+
+test('set_schedule_day: a failed commit is write_failed with no internal detail', async () => {
+  const db = fakeDb(seed(), { failCommit: true });
+  const result = await db.tools.set_schedule_day({ date: TODAY, items: [{ kind: 'rest' }] });
+  assert.equal(result.isError, true);
+  assert.match(result.content[0].text, /^write_failed: /);
+  assert.doesNotMatch(result.content[0].text, /secret|fake-owner|users\//);
+  assert.equal(db.get(`schedule/${TODAY}`), undefined);
+});
+
 // ─── Failures ────────────────────────────────────────────────────────
 
 test('a failed read is write_failed with no internal detail, and opens no batch', async () => {
@@ -1227,6 +1380,7 @@ test('a failed read is write_failed with no internal detail, and opens no batch'
     await db.tools.remove_exercise_from_routine({ routineId: 'push-day', exerciseId: 'dips_triceps' }),
     await db.tools.reorder_routine_exercises({ routineId: 'push-day', exerciseIds: ['dips_triceps', 'bench-press_chest'] }),
     await db.tools.update_exercise({ exerciseId: 'bench-press_chest', targetNotes: 'Upper chest' }),
+    await db.tools.set_schedule_day({ date: MONDAY, items: [{ kind: 'routine', routineId: 'push-day' }] }),
   ];
   for (const result of results) {
     assert.equal(result.isError, true);
