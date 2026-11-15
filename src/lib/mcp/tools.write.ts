@@ -1,13 +1,13 @@
 // server-only: src/lib/mcp/tools.write.ts
 // The write tools of the MCP endpoint: they add exercises and routines, edit the
-// exercise list of a routine, edit a few fields of an exercise and set the
-// schedule of a day. No tool takes
+// exercise list of a routine, edit a few fields of an exercise, set the
+// schedule of a day, and run and edit a live workout session. No tool takes
 // a uid, and none removes a document. Every check runs before the batch is opened, so a refused call writes
 // nothing. Documents come only from the builders the app uses (routineDoc,
 // exerciseDoc, routineHistoryPlan), so the app and the MCP store the same shape.
 import { z } from 'zod4';
 import type { McpServer } from '@modelcontextprotocol/server';
-import type { Exercise, ExerciseData, ExercisePerformanceEntry, LoggedSet, MuscleGroup, PersonalRecord, RoutineExercise, WarmupConfig, WorkoutLog } from '@/types';
+import type { Exercise, ExerciseData, ExercisePerformanceEntry, LoggedExercise, LoggedSet, MuscleGroup, PersonalRecord, RoutineExercise, WarmupConfig, WorkoutLog } from '@/types';
 import type { RoutineVersion } from '@/types/routineHistory';
 import { MUSCLE_GROUPS_LIST, WARMUP_TEMPLATES } from '@/lib/constants';
 import { buildExerciseDoc } from '@/lib/exerciseDoc';
@@ -16,12 +16,18 @@ import { buildExerciseDocId, toSlug } from '@/lib/ids';
 import { buildRoutineCreateFields, buildRoutineUpdateFields, type RoutineExerciseEntry } from '@/lib/routineDoc';
 import { addRoutineExerciseAt, removeRoutineExerciseAt, replaceRoutineExerciseAt } from '@/lib/routineEditing';
 import { planRoutineVersions } from '@/lib/routineHistoryPlan';
-import { bestPRFromLogs, needsPRRescan, planPerformanceEntry } from '@/lib/performanceEntryPlan';
+import { bestPRFromLogs, needsEntryRevert, needsPRRescan, planEntryRevert, planPerformanceEntry } from '@/lib/performanceEntryPlan';
 import { isBetterPR } from '@/lib/pr';
 import { parseRepRange } from '@/lib/repGoal';
-import { groupSizeOf, newIncompleteRuns } from '@/lib/setStructureGroups';
+import { groupMarks, groupSizeOf, newIncompleteRuns, sameGroups } from '@/lib/setStructureGroups';
 import { slugify } from '@/lib/utils';
-import { buildWorkoutLogDoc, plannedLogExercise, prefillSetsFrom } from '@/lib/workoutLogDoc';
+import {
+  buildWorkoutLogDoc,
+  lastPerformedSession,
+  plannedLogExercise,
+  prefillSetsFrom,
+  type PlannedLogExerciseInput,
+} from '@/lib/workoutLogDoc';
 import { SET_STRUCTURE_OPTIONS } from '@/types/setStructure';
 import { withTimeout } from './limits';
 import { isSafeDocId, type McpRepoWithWriteReads, type RawDoc } from './repo.server';
@@ -57,6 +63,8 @@ const LOAD_INCREMENT_STEP_KG = 0.25;
 const DUMBBELL_LOADS = ['perHand', 'total'] as const;
 /** The most sets log_set stores for one exercise of a session. */
 export const MAX_SETS_PER_EXERCISE = 20;
+/** The most exercises add_workout_exercise lets the open log hold: the routine limit. */
+export const MAX_LOG_EXERCISES = MAX_ROUTINE_EXERCISES;
 /** Same bounds as the app's save: reps 1 to 99, weight 0 to 999 in 0.5 steps. */
 const MAX_REPS = 99;
 const MAX_WEIGHT_KG = 999;
@@ -194,6 +202,47 @@ export const writeToolSchemas = {
       .optional()
       .describe('How long the session took, in whole minutes, 1 to 300; omit to use the time since start_workout'),
   }),
+  // The session edit tools are strict too: a key they do not take is refused, not dropped.
+  add_workout_exercise: z.strictObject({
+    exerciseId: docId.describe('Exercise id from list_exercises'),
+    index: z
+      .number()
+      .int()
+      .min(0)
+      .max(MAX_LOG_EXERCISES)
+      .optional()
+      .describe('0-based position in the open log to insert at; omit to add at the end'),
+  }),
+  remove_workout_exercise: z.strictObject({
+    exerciseId: docId.describe('Id of an exercise of the open session, from get_current_workout'),
+    confirm: z
+      .boolean()
+      .optional()
+      .describe('true also removes an exercise that has logged sets; send it only after the user said yes to losing them'),
+  }),
+  replace_workout_exercise: z.strictObject({
+    exerciseId: docId.describe('Id of a planned exercise of the open session, from get_current_workout'),
+    newExerciseId: docId.describe('Id of the exercise to put in its place, from list_exercises'),
+  }),
+  reorder_workout_exercises: z.strictObject({
+    exerciseIds: z
+      .array(docId)
+      .min(1)
+      .max(MAX_REORDER_IDS)
+      .describe('Every exercise id of the open session, once each, in the new order'),
+  }),
+  remove_last_set: z.strictObject({
+    exerciseId: docId.describe('Id of an exercise of the open session, from get_current_workout'),
+    setNumber: z
+      .number()
+      .int()
+      .min(1)
+      .max(MAX_SETS_PER_EXERCISE)
+      .describe('1-based number of the last logged set of this exercise: the set to remove'),
+  }),
+  repeat_last: z.strictObject({
+    exerciseId: docId.describe('Id of an exercise of the open session with no logged set, from get_current_workout'),
+  }),
   // Strict: a key this tool does not edit (name, muscleGroup...) is refused, not dropped.
   update_exercise: z.strictObject({
     exerciseId: docId.describe('Exercise id from list_exercises'),
@@ -254,6 +303,11 @@ export type WriteErrorCode =
   | 'set_number'
   | 'set_exists'
   | 'duration_suspect'
+  | 'already_in_log'
+  | 'log_full'
+  | 'has_logged_sets'
+  | 'no_logged_set'
+  | 'no_last_session'
   | 'conflict'
   | 'write_failed';
 
@@ -375,6 +429,32 @@ const nextPlanned = (exercises: Record<string, unknown>[]) => {
 };
 
 const prOut = (pr: { reps: number; weight: number } | null) => (pr ? { weight: pr.weight, reps: pr.reps } : null);
+
+const storedSetsOf = (ex: Record<string, unknown>): StoredSet[] =>
+  Array.isArray(ex.sets) ? (ex.sets as unknown[]).filter((s): s is StoredSet => typeof s === 'object' && s !== null) : [];
+
+/** The sets the owner lifted: none while the exercise is planned, whose sets are a copy of the last session. */
+const loggedSetsOf = (ex: Record<string, unknown>): StoredSet[] => (ex.performed === false ? [] : storedSetsOf(ex));
+
+const numberedSets = (sets: StoredSet[]) => sets.map((s, i) => ({ setNumber: i + 1, weight: s.weight, reps: s.reps }));
+
+/** The structure the log shows: the log's override, else the routine's, else normal. */
+const effectiveStructure = (ex: Record<string, unknown>) => str(ex.setStructureOverride) ?? str(ex.setStructure) ?? 'normal';
+
+const groupEntries = (exercises: StoredLogExercise[]) => exercises.map(ex => ({ id: ex.exerciseId, setStructure: effectiveStructure(ex) }));
+
+/** The exercises of the open log as the session edit tools answer them. */
+const sessionExercisesOut = (exercises: Record<string, unknown>[]) =>
+  exercises.map(ex => ({
+    exerciseId: str(ex.exerciseId) ?? '',
+    name: str(ex.name) ?? '',
+    status: ex.performed === false ? 'planned' : 'performed',
+    setStructure: effectiveStructure(ex),
+  }));
+
+/** A row of a log as it is stored: the builder the app's save uses. */
+const storedRow = (date: string, row: LoggedExercise): StoredLogExercise =>
+  (buildWorkoutLogDoc(date, { id: date, date, exercises: [row], exerciseIds: [], notes: '' }).doc.exercises as StoredLogExercise[])[0];
 
 // ─── Handlers ────────────────────────────────────────────────────────
 
@@ -511,6 +591,182 @@ export function createWriteTools({ repo, writes, now = () => new Date() }: Write
     return { date: doc.id, data: doc.data, exercises: raw };
   }
 
+  /** The one row of `exerciseId` in the open log. */
+  function sessionRow(session: OpenSession, exerciseId: string): { row: StoredLogExercise; index: number } {
+    const matches = session.exercises.filter(ex => ex.exerciseId === exerciseId);
+    if (matches.length === 0) {
+      refuse('not_in_log', `Exercise "${exerciseId}" is not in the open workout log of ${session.date}. ${NOTHING_WRITTEN} Call get_current_workout.`);
+    }
+    if (matches.length > 1) {
+      refuse(
+        'ambiguous_exercise',
+        `Exercise "${exerciseId}" is in the open workout log of ${session.date} ${matches.length} times, so the change has no single place. ` +
+          `${NOTHING_WRITTEN} Edit this exercise in the app.`,
+      );
+    }
+    return { row: matches[0], index: session.exercises.indexOf(matches[0]) };
+  }
+
+  /** Refuses a change that splits a superset or triset of the open log, or pairs its exercises differently. */
+  function checkLogGroups(before: StoredLogExercise[], after: StoredLogExercise[], hint: string) {
+    if (!sameGroups(groupEntries(before), groupEntries(after))) {
+      refuse(
+        'incomplete_group',
+        `This change would split a superset or triset of the open workout log, or pair its exercises differently. ` +
+          `A superset is exactly 2 exercises next to each other and a triset exactly 3. ${NOTHING_WRITTEN} ${hint}`,
+      );
+    }
+  }
+
+  const readEntry = async (exerciseId: string) =>
+    (await repo.getPerformanceEntry(exerciseId)) as Partial<ExercisePerformanceEntry> | null;
+
+  /** The library fields a planned row copies, or null when the exercise is gone from the library. */
+  function libraryOf(lib: RawDoc | null): PlannedLogExerciseInput['library'] {
+    const name = lib ? str(lib.data.name) : undefined;
+    const muscleGroup = lib ? str(lib.data.muscleGroup) : undefined;
+    return lib && name && muscleGroup
+      ? {
+          name,
+          muscleGroup: muscleGroup as MuscleGroup,
+          exerciseSetup: typeof lib.data.exerciseSetup === 'string' ? lib.data.exerciseSetup : undefined,
+          progressiveOverload: typeof lib.data.progressiveOverload === 'string' ? lib.data.progressiveOverload : undefined,
+          warmup: typeof lib.data.warmup === 'object' && lib.data.warmup !== null ? (lib.data.warmup as WarmupConfig) : undefined,
+        }
+      : null;
+  }
+
+  /** The logs before `day` in the prefill window, newest first. */
+  async function pastLogs(day: string): Promise<Record<string, unknown>[]> {
+    // Newest first; a log of the day or later is not a past session.
+    const history = await repo.getLogsSince(addDays(day, -PREFILL_WINDOW_DAYS), PREFILL_WINDOW_DAYS + 1);
+    return history.rows.filter(doc => doc.id < day).map(doc => doc.data);
+  }
+
+  /**
+   * The sets a planned exercise starts with, as the app copies them: those of the
+   * newest log that holds it and is not a deload, else the last sets of the
+   * performance entry (`entry`, read when not given), else null.
+   */
+  async function prefillFor(
+    exerciseId: string,
+    past: Record<string, unknown>[],
+    entry?: Record<string, unknown> | null,
+  ): Promise<PlannedLogExerciseInput['lastSets']> {
+    const fromLogs = prefillSetsFrom(past, exerciseId);
+    if (fromLogs !== null) return fromLogs;
+    const stored = (entry === undefined ? await repo.getPerformanceEntry(exerciseId) : entry)?.lastPerformedSets;
+    return Array.isArray(stored) && stored.length > 0 ? (stored as LoggedSet[]) : null;
+  }
+
+  /** A planned row for the open log at `index`, prefilled as start_workout does; `structure` gives its set structure. */
+  async function plannedRow(
+    session: OpenSession,
+    exerciseId: string,
+    index: number,
+    structure: Record<string, unknown>,
+  ): Promise<StoredLogExercise> {
+    const lib = await repo.getExercise(exerciseId);
+    if (!lib) return refuse('not_found', `No exercise with id "${exerciseId}" in the library. ${NOTHING_WRITTEN}`);
+    const library = libraryOf(lib);
+    if (!library) {
+      return refuse('conflict', `The stored exercise "${exerciseId}" has no name or muscle group. ${NOTHING_WRITTEN} Fix it in the app.`);
+    }
+    const lastSets = await prefillFor(exerciseId, await pastLogs(session.date));
+    const row = plannedLogExercise({
+      date: session.date,
+      index,
+      nowMs: now().getTime(),
+      routineExercise: {
+        id: exerciseId,
+        name: library.name,
+        muscleGroup: library.muscleGroup,
+        setStructure: (str(structure.setStructure) ?? 'normal') as LoggedExercise['setStructure'],
+      },
+      library,
+      lastSets,
+    });
+    const override = str(structure.setStructureOverride);
+    return storedRow(session.date, override ? { ...row, setStructureOverride: override as LoggedExercise['setStructure'] } : row);
+  }
+
+  /**
+   * The performance entry merge for the sets of one exercise of the open log, as an
+   * app save plans it. A deload log writes none.
+   */
+  async function entryForSets(
+    session: OpenSession,
+    exerciseId: string,
+    existing: Partial<ExercisePerformanceEntry> | null,
+    sets: LoggedSet[],
+  ): Promise<{ entries: PerformanceEntryWrite[]; personalRecord: PersonalRecord | null }> {
+    const existingPR = existing?.personalRecord ?? null;
+    if (session.data.isDeload === true) return { entries: [], personalRecord: existingPR };
+    const { date } = session;
+    let prFromOtherLogs: PersonalRecord | null = null;
+    if (needsPRRescan(existing, sets, date)) {
+      // The set behind the PR was lowered: another log may now hold the best set.
+      const logs = await repo.listLogsWithExercise(exerciseId);
+      if (logs.truncated) {
+        refuse(
+          'conflict',
+          `There are too many logs of "${exerciseId}" to check its personal record again. ${NOTHING_WRITTEN} Correct this set in the app.`,
+        );
+      }
+      prFromOtherLogs = bestPRFromLogs(logs.rows, exerciseId, date, {}, berlinMidnightMs);
+    }
+    const plan = planPerformanceEntry({
+      existing,
+      sets,
+      logDate: date,
+      // The app stamps the local midnight of the log's day; on the server that is Berlin's.
+      achievedAtMs: berlinMidnightMs(date),
+      prFromOtherLogs,
+    });
+    return {
+      entries: [{ exerciseId, fields: plan.fields, clearPR: plan.clearPR }],
+      personalRecord: plan.clearPR ? null : (plan.fields.personalRecord ?? existingPR),
+    };
+  }
+
+  /**
+   * The performance entry merge when the open log no longer holds a lifted session of
+   * the exercise: what this log day stamped goes back to the other logs (planEntryRevert).
+   * A deload log, or an entry this day did not stamp, writes none. `after` is the
+   * entry as it reads after the write.
+   */
+  async function revertEntry(
+    session: OpenSession,
+    exerciseId: string,
+    existing: Partial<ExercisePerformanceEntry> | null,
+  ): Promise<{ entries: PerformanceEntryWrite[]; personalRecord: PersonalRecord | null; after: Record<string, unknown> | null }> {
+    const existingPR = existing?.personalRecord ?? null;
+    const { date } = session;
+    if (session.data.isDeload === true || !needsEntryRevert(existing, date, berlinMidnightMs(date))) {
+      return { entries: [], personalRecord: existingPR, after: existing };
+    }
+    const logs = await repo.listLogsWithExercise(exerciseId);
+    if (logs.truncated) {
+      refuse(
+        'conflict',
+        `There are too many logs of "${exerciseId}" to restore its performance entry. ${NOTHING_WRITTEN} Edit this session in the app.`,
+      );
+    }
+    const plan = planEntryRevert({ existing, logs: logs.rows, exerciseId, logDate: date, logDateToMs: berlinMidnightMs });
+    const personalRecord = plan.clearPR ? null : (plan.fields.personalRecord ?? existingPR);
+    return {
+      entries: [{ exerciseId, fields: plan.fields, clearPR: plan.clearPR }],
+      personalRecord,
+      after: { ...existing, ...plan.fields, personalRecord },
+    };
+  }
+
+  /** The one batch of a session edit: the exercises of the open log, plus the performance entry merges. */
+  async function saveSession(tool: string, session: OpenSession, exercises: StoredLogExercise[], entries: PerformanceEntryWrite[]) {
+    const exerciseIds = exercises.map(ex => ex.exerciseId);
+    await commit(tool, () => writes.setWorkoutLogExercises(session.date, { exercises, exerciseIds }, entries), REREAD_SESSION);
+  }
+
   return {
     start_workout: ({ routineId: wanted }: Args<'start_workout'>) =>
       run('start_workout', async () => {
@@ -562,34 +818,15 @@ export function createWriteTools({ repo, writes, now = () => new Date() }: Write
           );
         }
 
-        // Newest first; a log of today or later is not a past session.
-        const history = await repo.getLogsSince(addDays(today, -PREFILL_WINDOW_DAYS), PREFILL_WINDOW_DAYS + 1);
-        const past = history.rows.filter(doc => doc.id < today).map(doc => doc.data);
+        const past = await pastLogs(today);
         const nowMs = now().getTime();
 
         // Same rules as the app when a routine is selected: every exercise is planned,
         // with a copy of the sets of its last session that was not a deload.
         const planned = await Promise.all(
           routine.exercises.map(async (routineExercise, index) => {
-            const lib = await repo.getExercise(routineExercise.id);
-            const name = lib ? str(lib.data.name) : undefined;
-            const muscleGroup = lib ? str(lib.data.muscleGroup) : undefined;
-            const library =
-              lib && name && muscleGroup
-                ? {
-                    name,
-                    muscleGroup: muscleGroup as MuscleGroup,
-                    exerciseSetup: typeof lib.data.exerciseSetup === 'string' ? lib.data.exerciseSetup : undefined,
-                    progressiveOverload: typeof lib.data.progressiveOverload === 'string' ? lib.data.progressiveOverload : undefined,
-                    warmup: typeof lib.data.warmup === 'object' && lib.data.warmup !== null ? (lib.data.warmup as WarmupConfig) : undefined,
-                  }
-                : null;
-            let lastSets = prefillSetsFrom(past, routineExercise.id);
-            if (lastSets === null) {
-              const entry = await repo.getPerformanceEntry(routineExercise.id);
-              const stored = entry?.lastPerformedSets;
-              lastSets = Array.isArray(stored) && stored.length > 0 ? (stored as LoggedSet[]) : null;
-            }
+            const library = libraryOf(await repo.getExercise(routineExercise.id));
+            const lastSets = await prefillFor(routineExercise.id, past);
             return plannedLogExercise({ date: today, index, nowMs, routineExercise, library, lastSets });
           }),
         );
@@ -702,33 +939,7 @@ export function createWriteTools({ repo, writes, now = () => new Date() }: Write
 
         // Same side effect as an app save: the performance entry of a performed
         // exercise, and never from a deload log.
-        const entries: PerformanceEntryWrite[] = [];
-        let personalRecord: { reps: number; weight: number } | null = existingPR;
-        if (session.data.isDeload !== true) {
-          const sets = nextSets as LoggedSet[];
-          let prFromOtherLogs: PersonalRecord | null = null;
-          if (needsPRRescan(existing, sets, date)) {
-            // The set behind the PR was lowered: another log may now hold the best set.
-            const logs = await repo.listLogsWithExercise(exerciseId);
-            if (logs.truncated) {
-              refuse(
-                'conflict',
-                `There are too many logs of "${exerciseId}" to check its personal record again. ${NOTHING_WRITTEN} Correct this set in the app.`,
-              );
-            }
-            prFromOtherLogs = bestPRFromLogs(logs.rows, exerciseId, date, {}, berlinMidnightMs);
-          }
-          const plan = planPerformanceEntry({
-            existing,
-            sets,
-            logDate: date,
-            // The app stamps the local midnight of the log's day; on the server that is Berlin's.
-            achievedAtMs: berlinMidnightMs(date),
-            prFromOtherLogs,
-          });
-          entries.push({ exerciseId, fields: plan.fields, clearPR: plan.clearPR });
-          personalRecord = plan.clearPR ? null : (plan.fields.personalRecord ?? existingPR);
-        }
+        const { entries, personalRecord } = await entryForSets(session, exerciseId, existing, nextSets as LoggedSet[]);
 
         await commit('log_set', () => writes.setWorkoutLogExercises(date, { exercises, exerciseIds }, entries), REREAD_SESSION);
         return {
@@ -774,6 +985,287 @@ export function createWriteTools({ repo, writes, now = () => new Date() }: Write
         await commit('finish_workout', () => writes.finishWorkoutLog(session.date, notes, minutes), REREAD_SESSION);
         const performed = session.exercises.filter(ex => ex.performed !== false).length;
         return { ok: true, date: session.date, performed, planned: session.exercises.length - performed, duration: minutes, coachNotes: notes };
+      }),
+
+    add_workout_exercise: ({ exerciseId, index }: Args<'add_workout_exercise'>) =>
+      run('add_workout_exercise', async () => {
+        const session = await loadOpenSession();
+        const { date, exercises } = session;
+        const at = exercises.findIndex(ex => ex.exerciseId === exerciseId);
+        if (at >= 0) {
+          refuse('already_in_log', `Exercise "${exerciseId}" is already in the open workout log of ${date}, at index ${at}. ${NOTHING_WRITTEN}`);
+        }
+        if (exercises.length >= MAX_LOG_EXERCISES) {
+          refuse('log_full', `The open workout log of ${date} already holds ${exercises.length} exercises. ${NOTHING_WRITTEN}`);
+        }
+        if (index !== undefined && index > exercises.length) {
+          refuse(
+            'slot_mismatch',
+            `Index ${index} is past the end: the open workout log of ${date} has ${exercises.length} exercises. ${NOTHING_WRITTEN} Call get_current_workout.`,
+          );
+        }
+        const position = index ?? exercises.length;
+        const insert = (row: StoredLogExercise) => [...exercises.slice(0, position), row, ...exercises.slice(position)];
+        // A new exercise is normal, as in the app: inside a group it would split it.
+        checkLogGroups(exercises, insert({ exerciseId, setStructure: 'normal' }), 'Use an index before or after the group.');
+
+        const row = await plannedRow(session, exerciseId, position, {});
+        const next = insert(row);
+        await saveSession('add_workout_exercise', session, next, []);
+        return {
+          ok: true,
+          changed: true,
+          date,
+          added: { exerciseId, name: str(row.name) ?? '', index: position },
+          exercises: sessionExercisesOut(next),
+          next: nextPlanned(next),
+        };
+      }),
+
+    remove_workout_exercise: ({ exerciseId, confirm }: Args<'remove_workout_exercise'>) =>
+      run('remove_workout_exercise', async () => {
+        const session = await loadOpenSession();
+        const { date, exercises } = session;
+        const { row, index } = sessionRow(session, exerciseId);
+        if (exercises.length === 1) {
+          refuse('last_exercise', `"${exerciseId}" is the only exercise of the open workout log of ${date}. ${NOTHING_WRITTEN} A whole log is deleted in the app.`);
+        }
+        const logged = loggedSetsOf(row);
+        if (logged.length > 0 && confirm !== true) {
+          refuse(
+            'has_logged_sets',
+            `"${exerciseId}" has ${logged.length} logged set(s) in the open workout log of ${date}. ${NOTHING_WRITTEN} ` +
+              `Ask the user first; after their yes, call again with confirm true to remove the exercise and its sets.`,
+          );
+        }
+
+        // The rest of its superset or triset is set to normal in this log; the routine does not change.
+        const marks = groupMarks(groupEntries(exercises));
+        const group = marks[index].group;
+        const ungrouped: string[] = [];
+        const next = exercises.flatMap((ex, i): StoredLogExercise[] => {
+          if (i === index) return [];
+          if (group === undefined || marks[i].group !== group) return [ex];
+          ungrouped.push(ex.exerciseId);
+          return [{ ...ex, setStructureOverride: 'normal' }];
+        });
+        checkLogGroups(exercises, next, 'Edit this session in the app.');
+
+        // A performed row may have stamped the performance entry, also with no set left (an app save).
+        const performed = row.performed !== false;
+        const revert = performed ? await revertEntry(session, exerciseId, await readEntry(exerciseId)) : null;
+        await saveSession('remove_workout_exercise', session, next, revert?.entries ?? []);
+        return {
+          ok: true,
+          changed: true,
+          date,
+          removed: { exerciseId, name: str(row.name) ?? '', setsRemoved: logged.length },
+          ungrouped,
+          ...(revert ? { personalRecord: prOut(revert.personalRecord) } : {}),
+          exercises: sessionExercisesOut(next),
+          next: nextPlanned(next),
+        };
+      }),
+
+    replace_workout_exercise: ({ exerciseId, newExerciseId }: Args<'replace_workout_exercise'>) =>
+      run('replace_workout_exercise', async () => {
+        const session = await loadOpenSession();
+        const { date, exercises } = session;
+        const newAt = exercises.findIndex(ex => ex.exerciseId === newExerciseId);
+        if (newAt >= 0 && !exercises.some(ex => ex.exerciseId === exerciseId)) {
+          // A retry of a call that already went through: nothing to write.
+          return {
+            ok: true,
+            changed: false,
+            date,
+            replaced: { exerciseId, newExerciseId, index: newAt },
+            exercises: sessionExercisesOut(exercises),
+            next: nextPlanned(exercises),
+          };
+        }
+        const { row, index } = sessionRow(session, exerciseId);
+        if (newAt >= 0) {
+          refuse('already_in_log', `Exercise "${newExerciseId}" is already in the open workout log of ${date}, at index ${newAt}. ${NOTHING_WRITTEN}`);
+        }
+        const logged = loggedSetsOf(row);
+        if (logged.length > 0) {
+          refuse(
+            'has_logged_sets',
+            `"${exerciseId}" has ${logged.length} logged set(s) in the open workout log of ${date}, so it cannot be replaced. ` +
+              `${NOTHING_WRITTEN} Remove it with remove_workout_exercise, then add the new one with add_workout_exercise.`,
+          );
+        }
+        // The slot keeps its position, set structure and override, as in the app.
+        const newRow = await plannedRow(session, newExerciseId, index, row);
+        const next = exercises.map((ex, i) => (i === index ? newRow : ex));
+        // The groups are compared with the new id already in the slot: a swap changes no group.
+        const groupsBefore = exercises.map((ex, i) => (i === index ? { ...ex, exerciseId: newExerciseId } : ex));
+        checkLogGroups(groupsBefore, next, 'Edit this session in the app.');
+        // A performed row with no set left (an app save) may have stamped the entry: it leaves the log, as with remove.
+        const revert = row.performed !== false ? await revertEntry(session, exerciseId, await readEntry(exerciseId)) : null;
+        await saveSession('replace_workout_exercise', session, next, revert?.entries ?? []);
+        return {
+          ok: true,
+          changed: true,
+          date,
+          replaced: { exerciseId, newExerciseId, index },
+          ...(revert ? { personalRecord: prOut(revert.personalRecord) } : {}),
+          exercises: sessionExercisesOut(next),
+          next: nextPlanned(next),
+        };
+      }),
+
+    reorder_workout_exercises: ({ exerciseIds }: Args<'reorder_workout_exercises'>) =>
+      run('reorder_workout_exercises', async () => {
+        const session = await loadOpenSession();
+        const { date, exercises } = session;
+        const storedIds = exercises.map(ex => ex.exerciseId);
+        const repeated = storedIds.find((id, i) => storedIds.indexOf(id) !== i);
+        if (repeated) {
+          refuse(
+            'ambiguous_exercise',
+            `Exercise "${repeated}" is in the open workout log of ${date} more than once, so a list of ids cannot order it. ` +
+              `${NOTHING_WRITTEN} Reorder this session in the app.`,
+          );
+        }
+        // The full id list doubles as a stale check: it must name exactly the exercises of the log.
+        const sameSet =
+          new Set(exerciseIds).size === exerciseIds.length &&
+          exerciseIds.length === storedIds.length &&
+          exerciseIds.every(id => storedIds.includes(id));
+        if (!sameSet) {
+          refuse(
+            'order_mismatch',
+            `exerciseIds must hold every exercise id of the open workout log of ${date} exactly once. ${NOTHING_WRITTEN} Call get_current_workout.`,
+          );
+        }
+        if (exerciseIds.every((id, i) => id === storedIds[i])) {
+          return { ok: true, changed: false, date, exercises: sessionExercisesOut(exercises), next: nextPlanned(exercises) };
+        }
+        const byId = new Map(exercises.map(ex => [ex.exerciseId, ex]));
+        const next = exerciseIds.map(id => byId.get(id)!);
+        checkLogGroups(exercises, next, 'Keep the exercises of each group next to each other, in the same groups.');
+        await saveSession('reorder_workout_exercises', session, next, []);
+        return { ok: true, changed: true, date, exercises: sessionExercisesOut(next), next: nextPlanned(next) };
+      }),
+
+    remove_last_set: ({ exerciseId, setNumber }: Args<'remove_last_set'>) =>
+      run('remove_last_set', async () => {
+        const session = await loadOpenSession();
+        const { date } = session;
+        const { row } = sessionRow(session, exerciseId);
+        const logged = loggedSetsOf(row);
+        if (logged.length === 0) {
+          refuse('no_logged_set', `"${exerciseId}" has no logged set in the open workout log of ${date}. ${NOTHING_WRITTEN}`);
+        }
+        if (setNumber !== logged.length) {
+          // Also a retry of a call that already went through: the last set is now another one.
+          refuse(
+            'set_number',
+            `Set ${setNumber} is not the last logged set of "${exerciseId}": ${logged.length} set(s) are logged, so the last one is set ` +
+              `${logged.length}. ${NOTHING_WRITTEN} Call get_current_workout.`,
+          );
+        }
+        const removed = logged[logged.length - 1];
+        const remaining = logged.slice(0, -1);
+        const existing = await readEntry(exerciseId);
+
+        let nextRow: StoredLogExercise;
+        let change: { entries: PerformanceEntryWrite[]; personalRecord: PersonalRecord | null };
+        if (remaining.length > 0) {
+          change = await entryForSets(session, exerciseId, existing, remaining as LoggedSet[]);
+          nextRow = { ...row, sets: remaining };
+        } else {
+          // Back to planned: the copied sets of the last session again, and the entry as the other logs hold it.
+          const revert = await revertEntry(session, exerciseId, existing);
+          change = revert;
+          const lastSets = await prefillFor(exerciseId, await pastLogs(date), revert.after);
+          const prefill = plannedLogExercise({
+            date,
+            index: 0,
+            nowMs: now().getTime(),
+            routineExercise: { id: exerciseId, name: str(row.name) ?? '', muscleGroup: row.muscleGroup as MuscleGroup },
+            library: null,
+            lastSets,
+          });
+          nextRow = { ...row, sets: storedRow(date, prefill).sets, performed: false };
+        }
+
+        const exercises = session.exercises.map(ex => (ex === row ? nextRow : ex));
+        await saveSession('remove_last_set', session, exercises, change.entries);
+        return {
+          ok: true,
+          changed: true,
+          date,
+          removedSet: { setNumber, weight: removed.weight, reps: removed.reps },
+          exercise: { exerciseId, name: str(row.name) ?? '', status: remaining.length > 0 ? 'performed' : 'planned', sets: numberedSets(remaining) },
+          personalRecord: prOut(change.personalRecord),
+          next: nextPlanned(exercises),
+        };
+      }),
+
+    repeat_last: ({ exerciseId }: Args<'repeat_last'>) =>
+      run('repeat_last', async () => {
+        const session = await loadOpenSession();
+        const { date } = session;
+        const { row } = sessionRow(session, exerciseId);
+        const name = str(row.name) ?? '';
+        // The target get_current_workout shows: the last session that was lifted and was not a deload.
+        const last = lastPerformedSession(await pastLogs(date), exerciseId);
+        // Only sets log_set would take: reps 1 to 99 and a weight of 0 to 999, at most 20 per exercise.
+        const copied = (last?.sets ?? [])
+          .filter(
+            (s): s is { reps: number; weight: number } =>
+              Number.isInteger(s.reps) && (s.reps as number) >= 1 && (s.reps as number) <= MAX_REPS &&
+              typeof s.weight === 'number' && s.weight >= 0 && s.weight <= MAX_WEIGHT_KG,
+          )
+          .slice(0, MAX_SETS_PER_EXERCISE);
+        const existing = await readEntry(exerciseId);
+        const existingPR = existing?.personalRecord ?? null;
+
+        const logged = loggedSetsOf(row);
+        if (logged.length > 0) {
+          const same = logged.length === copied.length && logged.every((s, i) => s.reps === copied[i].reps && s.weight === copied[i].weight);
+          if (!same || !last) {
+            refuse(
+              'has_logged_sets',
+              `"${exerciseId}" already has ${logged.length} logged set(s) in the open workout log of ${date}. ${NOTHING_WRITTEN} Log further sets with log_set.`,
+            );
+          }
+          // A retry of a call that already went through: nothing to write.
+          return {
+            ok: true,
+            changed: false,
+            date,
+            from: last!.date,
+            exercise: { exerciseId, name, sets: numberedSets(logged) },
+            personalRecord: prOut(existingPR),
+            newPersonalRecord: false,
+            next: nextPlanned(session.exercises),
+          };
+        }
+        if (!last || copied.length === 0) {
+          return refuse(
+            'no_last_session',
+            `No session of "${exerciseId}" in the last ${PREFILL_WINDOW_DAYS} days was lifted outside a deload. ${NOTHING_WRITTEN} Log the sets with log_set.`,
+          );
+        }
+
+        const nowMs = now().getTime();
+        const sets = copied.map((s, i) => ({ id: `set-${date}-${exerciseId}-${i}-${nowMs}`, reps: s.reps, weight: s.weight }));
+        const { entries, personalRecord } = await entryForSets(session, exerciseId, existing, sets);
+        const exercises = session.exercises.map(ex => (ex === row ? { ...row, sets, performed: true } : ex));
+        await saveSession('repeat_last', session, exercises, entries);
+        return {
+          ok: true,
+          changed: true,
+          date,
+          from: last.date,
+          exercise: { exerciseId, name, sets: numberedSets(sets) },
+          personalRecord: prOut(personalRecord),
+          newPersonalRecord: isBetterPR(personalRecord, existingPR),
+          next: nextPlanned(exercises),
+        };
       }),
 
     create_exercise: (args: Args<'create_exercise'>) =>
@@ -1153,6 +1645,9 @@ const CONFIRM_NOTE =
   'Call it only after the user confirmed this exact change in the conversation; describe the change first and wait for a yes.';
 const RESULT_NOTE =
   'On an error the text starts with a code (for example slot_mismatch or conflict) and nothing was written unless it says otherwise.';
+const SESSION_EDIT_NOTE =
+  'It works on the open session only (no_session otherwise; get_current_workout shows it) and needs no extra question, ' +
+  'like log_set. An exercise that is in the log twice is refused (ambiguous_exercise).';
 
 export function registerWriteTools(server: McpServer, deps: WriteToolDeps) {
   const tools = createWriteTools(deps);
@@ -1212,6 +1707,105 @@ export function registerWriteTools(server: McpServer, deps: WriteToolDeps) {
       annotations: additive,
     },
     guard(tools.finish_workout),
+  );
+
+  // The session edit tools run while the owner lifts, like log_set: no extra question,
+  // and each guards its own retry, so a repeat writes nothing more.
+  const sessionEdit = { readOnlyHint: false, destructiveHint: false, idempotentHint: true };
+
+  server.registerTool(
+    'add_workout_exercise',
+    {
+      title: 'Add workout exercise',
+      description:
+        `Adds one library exercise to the open workout session, at index (0-based) or at the end, as planned with ` +
+        `a copy of the sets of its last session, like start_workout. Its set structure is normal. An exercise can be ` +
+        `in the log only once (already_in_log); an index inside a superset or triset is refused (incomplete_group). ` +
+        `The routine does not change. The answer lists the exercises of the session. ${SESSION_EDIT_NOTE} ${RESULT_NOTE}`,
+      inputSchema: writeToolSchemas.add_workout_exercise,
+      annotations: sessionEdit,
+    },
+    guard(tools.add_workout_exercise),
+  );
+
+  server.registerTool(
+    'remove_workout_exercise',
+    {
+      title: 'Remove workout exercise',
+      description:
+        `Takes one exercise out of the open workout session. A planned exercise just goes. An exercise with logged sets ` +
+        `is refused (has_logged_sets) unless confirm is true, and then its logged sets are lost: ask the user first and ` +
+        `send confirm true only after their yes. Its personal record and last performance go back to what the other logs ` +
+        `hold. The other members of its superset or triset become normal in this log only (listed in ungrouped); the ` +
+        `routine does not change. The last exercise of the log cannot be removed (last_exercise). ${SESSION_EDIT_NOTE} ${RESULT_NOTE}`,
+      inputSchema: writeToolSchemas.remove_workout_exercise,
+      annotations: sessionEdit,
+    },
+    guard(tools.remove_workout_exercise),
+  );
+
+  server.registerTool(
+    'replace_workout_exercise',
+    {
+      title: 'Replace workout exercise',
+      description:
+        `Swaps a planned exercise of the open workout session for another library exercise: the new one takes its ` +
+        `position, set structure and group, as planned with a copy of the sets of its last session. An exercise with ` +
+        `logged sets is refused (has_logged_sets). For a replaced exercise that was performed with no set left, its ` +
+        `personal record and last performance go back to what the other logs hold. When exerciseId is no longer in the log and newExerciseId is, the ` +
+        `call answers changed false and writes nothing (a retry). The routine does not change. ${SESSION_EDIT_NOTE} ${RESULT_NOTE}`,
+      inputSchema: writeToolSchemas.replace_workout_exercise,
+      annotations: sessionEdit,
+    },
+    guard(tools.replace_workout_exercise),
+  );
+
+  server.registerTool(
+    'reorder_workout_exercises',
+    {
+      title: 'Reorder workout exercises',
+      description:
+        `Sets a new order for the exercises of the open workout session. exerciseIds must hold every exercise id of the ` +
+        `log exactly once (order_mismatch). A superset or triset moves as a whole and keeps its members; an order that ` +
+        `splits a group or pairs its exercises differently is refused (incomplete_group). The same order writes nothing ` +
+        `(changed false). The routine does not change. ${SESSION_EDIT_NOTE} ${RESULT_NOTE}`,
+      inputSchema: writeToolSchemas.reorder_workout_exercises,
+      annotations: sessionEdit,
+    },
+    guard(tools.reorder_workout_exercises),
+  );
+
+  server.registerTool(
+    'remove_last_set',
+    {
+      title: 'Remove last set',
+      description:
+        `Deletes the last logged set of one exercise of the open workout session; that logged set is lost. setNumber ` +
+        `must be the number of that last set, so a retry is refused (set_number) and writes nothing. To correct a set ` +
+        `instead, use log_set with overwrite. The personal record follows the sets, also down. When no set is left, the ` +
+        `exercise is planned again with the copied sets of its last session, and its personal record and last performance ` +
+        `go back to what the other logs hold. ${SESSION_EDIT_NOTE} ${RESULT_NOTE}`,
+      inputSchema: writeToolSchemas.remove_last_set,
+      annotations: sessionEdit,
+    },
+    guard(tools.remove_last_set),
+  );
+
+  server.registerTool(
+    'repeat_last',
+    {
+      title: 'Repeat last session',
+      description:
+        `Logs in one call the sets of the last session of one exercise: the last one lifted outside a deload in the last ` +
+        `${PREFILL_WINDOW_DAYS} days, the lastSession of get_current_workout, at most its first ${MAX_SETS_PER_EXERCISE} sets. ` +
+        `Use it when the owner did exactly that again. ` +
+        `Only for an exercise with no logged set (has_logged_sets); with none to copy it is refused (no_last_session). ` +
+        `A retry writes nothing (changed false). The personal record follows as with log_set; the answer has ` +
+        `newPersonalRecord. ${SESSION_EDIT_NOTE} ${RESULT_NOTE}`,
+      inputSchema: writeToolSchemas.repeat_last,
+      annotations: sessionEdit,
+    },
+    guard(tools.repeat_last),
   );
 
   server.registerTool(

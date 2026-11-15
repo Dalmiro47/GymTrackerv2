@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { groupMarks, groupSizeOf, incompleteRuns, newIncompleteRuns } from './setStructureGroups';
+import { groupMarks, groupSizeOf, incompleteRuns, newIncompleteRuns, sameGroups } from './setStructureGroups';
 
 /** `list('a:superset', 'b')`: ids with their structure; no structure means the field is absent. */
 const list = (...items: string[]) =>
@@ -78,4 +78,25 @@ test('groupMarks: a number per full chunk, a flag on every member of an incomple
     [{ group: 1, groupIncomplete: true }, { group: 1, groupIncomplete: true }, { groupIncomplete: true }, {}, { group: 2 }, { group: 2 }],
   );
   assert.deepEqual(groupMarks(list('a:superset', ...tri('b', 'c'))), [{ groupIncomplete: true }, { groupIncomplete: true }, { groupIncomplete: true }]);
+});
+
+test('sameGroups: a swap inside a group, a whole group that moves and an untouched incomplete group keep the groups', () => {
+  assert.equal(sameGroups(list(...ss('a', 'b')), list(...ss('b', 'a'))), true);
+  assert.equal(sameGroups(list(...tri('a', 'b', 'c'), 'x'), list('x', ...tri('c', 'a', 'b'))), true);
+  // A normal exercise can move between two full groups, and two pairs can change places.
+  assert.equal(sameGroups(list(...ss('a', 'b', 'c', 'd'), 'x'), list(...ss('a', 'b'), 'x', ...ss('c', 'd'))), true);
+  assert.equal(sameGroups(list(...ss('a', 'b', 'c', 'd')), list(...ss('c', 'd', 'a', 'b'))), true);
+  assert.equal(sameGroups(list('a:superset', 'x'), list('x', 'a:superset')), true);
+  // A group that is set to normal is no new group.
+  assert.equal(sameGroups(list(...ss('a', 'b'), 'x'), list('a:normal', 'b:normal', 'x')), true);
+});
+
+test('sameGroups: a change of pairs, a split group or a new group is refused', () => {
+  // (a,b) and (c,d) become (a,c) and (d,b): every group is full, but the pairs changed.
+  assert.equal(sameGroups(list(...ss('a', 'b'), 'x', ...ss('c', 'd')), list(...ss('a', 'c', 'd', 'b'), 'x')), false);
+  assert.equal(sameGroups(list(...tri('a', 'b', 'c', 'd', 'e', 'f')), list(...tri('a', 'b', 'd', 'c', 'e', 'f'))), false);
+  // A member moved away, or taken out of a triset.
+  assert.equal(sameGroups(list(...ss('a', 'b'), 'x'), list('a:superset', 'x', 'b:superset')), false);
+  assert.equal(sameGroups(list(...tri('a', 'b', 'c')), list(...tri('a', 'c'))), false);
+  assert.equal(sameGroups(list('a', 'b'), list(...ss('a', 'b'))), false);
 });

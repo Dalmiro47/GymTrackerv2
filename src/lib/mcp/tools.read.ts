@@ -614,7 +614,9 @@ export function registerReadTools(server: McpServer, repo: ReadToolsRepo, now?: 
         `exercise. elapsedMin is the whole minutes since start_workout (null when unknown). The target of an exercise is its rep range (progressiveOverload, repRange) and lastSession: the ` +
         `sets of the last session where it was lifted, not a deload, in the last 180 days (null when none). A ` +
         `routine stores no set count; use the count of lastSession. Weights in kg. Log each set with log_set and ` +
-        `close the session with finish_workout. ${GROUP_NOTE} ${EQUIPMENT_NOTE} ${NAMES_NOTE}`,
+        `close the session with finish_workout. ` +
+        `Edit the open session with add_workout_exercise, remove_workout_exercise, replace_workout_exercise, ` +
+        `reorder_workout_exercises, remove_last_set and repeat_last. ${GROUP_NOTE} ${EQUIPMENT_NOTE} ${NAMES_NOTE}`,
       inputSchema: toolSchemas.get_current_workout,
       annotations,
     },
