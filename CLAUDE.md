@@ -26,10 +26,11 @@ Tests: `npm test` (node:test through tsx; no env file, no network). Tests cover 
 - `OPEN_ROUTER_API_KEY`: DEV-ONLY, used by `npm run coach:eval` for the judges; the app never reads it, so do not add it to Vercel
 - `FIREBASE_CLIENT_EMAIL` / `FIREBASE_PRIVATE_KEY`: service account (Admin SDK), used ONLY to write the daily AI quota counter. Absent = the app runs but limits are silently unenforced; `isAdminConfigured()` reports it and `/admin` shows a banner
 - `MCP_ACCESS_KEY` / `MCP_OWNER_UID`: server-only, for the MCP endpoint; either one absent = every MCP request answers 401
+- `HEALTH_INGEST_KEY`: server-only, at least 32 chars, separate from `MCP_ACCESS_KEY`; sent in the `x-ingest-key` header to the health ingest route, which uses the same `MCP_OWNER_UID`. Absent = every ingest request answers 401
 
 ## Map
 
-Next.js 15 App Router; Firebase is the sole backend, with no custom API server for data. API routes exist only for the AI coach.
+Next.js 15 App Router; Firebase is the sole backend, with no custom API server for data. API routes exist only for the AI coach (`/api/coach/*`), the MCP server (`/api/mcp/*`) and the health ingest (`/api/health/ingest`).
 
 - Protected routes (auth-guarded via `src/hooks/use-require-auth.ts`): `src/app/(app)/`: `admin/`, `dashboard/`, `exercises/`, `log/`, `profile/`, `routines/`, `settings/profile/`
 - Public auth page: `src/app/login/`
@@ -44,6 +45,7 @@ Next.js 15 App Router; Firebase is the sole backend, with no custom API server f
 - Coach UI (own fixed panel, `SegmentRenderer`): `src/components/coach/CoachChatSheet.tsx`
 - MCP server (owner's data, Admin SDK; 8 read tools, 18 write tools, 26 in total): `src/app/api/mcp/[key]/route.ts`, `src/lib/mcp/` (`auth.ts`, `repo.server.ts` reads, `repo.write.server.ts` writes, `tools.read.ts`, `tools.write.ts`, `week.ts` Berlin date and ISO week, `schedule.ts` schedule items and window, `server.ts`); tests `*.test.ts` beside each module, run with `npm test`
 - Doc builders shared by the app services and the MCP write tools: `src/lib/routineDoc.ts`, `src/lib/exerciseDoc.ts`, `src/lib/routineHistoryPlan.ts`, `src/lib/workoutLogDoc.ts` (log shape), `src/lib/performanceEntryPlan.ts` (last sets, PR, PR rescan)
+- Health ingest (iOS Shortcut posts Apple Health and scale values; Admin SDK, one merge batch per request, no reader yet): `src/app/api/health/ingest/route.ts`, `src/lib/health/` (`ingest.ts` pure parsing, field ranges and rounding; `handler.ts` auth, limits, write); tests beside each module
 - Daily quota: `src/lib/usageQuota.ts`, `src/lib/limits.ts`, `src/lib/firebaseAdmin.ts`
 - Language state (`LanguageProvider`, `gt-lang` mirror, `<html lang>`; set from `UserNav`, or `LanguageToggle` on `/login`): `src/contexts/LanguageContext.tsx`
 - Dictionaries: `src/i18n/en.ts` (source of truth), `src/i18n/es.ts`; display helpers and `detectLanguage()`: `src/i18n/index.ts`
@@ -67,6 +69,7 @@ users/{userId}/
   performanceEntries/{exerciseId} # PRs & last performance
   routineHistory/{routineId_epochMs} # Routine change snapshots (flat; outlives deleted routines)
   schedule/{YYYY-MM-DD}   # Scheduled items of a day; only the MCP writes it today (no app UI yet)
+  health/{YYYY-MM-DD}     # Apple Health + scale values of a Berlin day; only /api/health/ingest writes it
   stats/usage             # Daily AI quota: client read-only, Admin SDK writes
 feedback/{docId}          # Top-level: anyone signed in may create, only the admin reads
 ```
