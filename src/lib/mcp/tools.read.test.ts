@@ -22,6 +22,9 @@ type Seed = {
   /** Schedule documents, one per day; the id is the date. */
   schedule?: RawDoc[];
   scheduleTruncated?: boolean;
+  /** Health documents, one per day; the id is the date. */
+  health?: RawDoc[];
+  healthTruncated?: boolean;
   /** Exercise documents by id, for getExercise. */
   library?: Record<string, Record<string, unknown>>;
   /** Routine history rows by routine id. */
@@ -54,6 +57,14 @@ function fakeRepo(seed: Seed = {}, now: () => Date = NOW) {
       return {
         rows: (seed.schedule ?? []).filter(doc => doc.id >= from && doc.id <= to),
         truncated: seed.scheduleTruncated ?? false,
+      };
+    },
+    async getHealthBetween(from, to, max) {
+      calls.push(['getHealthBetween', from, to, max]);
+      guard();
+      return {
+        rows: (seed.health ?? []).filter(doc => doc.id >= from && doc.id <= to),
+        truncated: seed.healthTruncated ?? false,
       };
     },
     async getProfile() { calls.push(['getProfile']); guard(); return seed.profile ?? null; },
@@ -98,9 +109,9 @@ const log = (date: string, exercises: Record<string, unknown>[], extra: Record<s
 
 // ─── Input validation ────────────────────────────────────────────────
 
-test('schemas: exactly the eight read tools, and none takes a uid', () => {
+test('schemas: exactly the nine read tools, and none takes a uid', () => {
   assert.deepEqual(Object.keys(toolSchemas).sort(), [
-    'get_current_workout', 'get_exercise_history', 'get_profile', 'get_recent_logs', 'get_routine', 'get_week_status',
+    'get_current_workout', 'get_exercise_history', 'get_health', 'get_profile', 'get_recent_logs', 'get_routine', 'get_week_status',
     'list_exercises', 'list_routines',
   ]);
   for (const [name, schema] of Object.entries(toolSchemas)) {
@@ -997,4 +1008,119 @@ test('get_current_workout: elapsedMin is null when the log has no readable start
     const { tools } = fakeRepo({ logs: [{ id: session.id, data: { ...session.data, startedAt } }], library: sessionLibrary });
     assert.equal(body(await tools.get_current_workout({})).session.elapsedMin, null);
   }
+});
+
+// ─── get_health ──────────────────────────────────────────────────────
+
+const healthDay = (date: string, data: Record<string, unknown> = {}): RawDoc => ({ id: date, data: { date, ...data } });
+
+test('schemas: get_health takes optional real YYYY-MM-DD dates only', () => {
+  const s = toolSchemas.get_health;
+  assert.deepEqual(s.parse({}), {});
+  assert.deepEqual(s.parse({ from: '2026-11-01', to: '2026-11-15' }), { from: '2026-11-01', to: '2026-11-15' });
+  for (const value of ['2026-1-5', '2026-02-30', '15.11.2026', '2026-11-15T00:00', '', 20261115, null]) {
+    assert.equal(s.safeParse({ from: value }).success, false, `from ${String(value)} should be refused`);
+    assert.equal(s.safeParse({ to: value }).success, false, `to ${String(value)} should be refused`);
+  }
+});
+
+test('get_health: the default is the last 30 Berlin days, not UTC ones', async () => {
+  // NOW is 2026-03-15T23:30Z, already 2026-03-16 in Berlin.
+  const { tools, calls } = fakeRepo();
+  const out = body(await tools.get_health({}));
+  assert.deepEqual(calls, [['getHealthBetween', '2026-02-15', '2026-03-16', 30]]);
+  assert.equal(out.from, '2026-02-15');
+  assert.equal(out.to, '2026-03-16');
+  assert.equal(out.today, '2026-03-16');
+  assert.equal(out.timeZone, 'Europe/Berlin');
+  assert.deepEqual(out.days, []);
+  assert.equal(out.returned, 0);
+  assert.equal(out.truncated, false);
+});
+
+test('get_health: only from reads up to today; only to reads the 30 days ending on to; both read that range', async () => {
+  const onlyFrom = fakeRepo();
+  body(await onlyFrom.tools.get_health({ from: '2026-03-01' }));
+  assert.deepEqual(onlyFrom.calls, [['getHealthBetween', '2026-03-01', '2026-03-16', 16]]);
+
+  const onlyTo = fakeRepo();
+  body(await onlyTo.tools.get_health({ to: '2026-01-31' }));
+  assert.deepEqual(onlyTo.calls, [['getHealthBetween', '2026-01-02', '2026-01-31', 30]]);
+
+  const both = fakeRepo();
+  body(await both.tools.get_health({ from: '2026-03-10', to: '2026-03-10' }));
+  assert.deepEqual(both.calls, [['getHealthBetween', '2026-03-10', '2026-03-10', 1]]);
+});
+
+test('get_health: from after to, and a span over 366 days, are error results that read nothing', async () => {
+  const reversed = fakeRepo();
+  const r1 = await reversed.tools.get_health({ from: '2026-03-10', to: '2026-03-09' });
+  assert.equal(r1.isError, true);
+  assert.match(r1.content[0].text, /2026-03-10 is after to 2026-03-09/);
+  assert.deepEqual(reversed.calls, []);
+
+  const future = fakeRepo();
+  const r2 = await future.tools.get_health({ from: '2026-04-01' });
+  assert.equal(r2.isError, true);
+  assert.deepEqual(future.calls, []);
+
+  const tooLong = fakeRepo();
+  const r3 = await tooLong.tools.get_health({ from: '2025-01-01', to: '2026-01-02' });
+  assert.equal(r3.isError, true);
+  assert.match(r3.content[0].text, /367 days; the most is 366/);
+  assert.deepEqual(tooLong.calls, []);
+
+  // Exactly 366 days passes (2024 is a leap year).
+  const max = fakeRepo();
+  body(await max.tools.get_health({ from: '2024-01-01', to: '2024-12-31' }));
+  assert.deepEqual(max.calls, [['getHealthBetween', '2024-01-01', '2024-12-31', 366]]);
+});
+
+test('get_health: only days with data, oldest first, missing and non-numeric fields left out, no updatedAt', async () => {
+  const { tools } = fakeRepo({
+    health: [
+      healthDay('2026-03-14', { steps: 9000, sleepMin: 431, weightKg: 81.95, updatedAt: { _seconds: 1 } }),
+      healthDay('2026-03-02', {
+        steps: 12000, activeKcal: 512.5, restingHr: 54, hrvMs: 48.2, respRate: 14.1, sleepMin: 402,
+        bodyFatPct: 18.4, updatedAt: { _seconds: 1 },
+      }),
+      healthDay('2026-03-08', { steps: 'many', restingHr: null, hrvMs: Number.NaN, respRate: 15 }),
+      healthDay('2026-01-01', { steps: 1 }),
+    ],
+  });
+  const out = body(await tools.get_health({}));
+  assert.equal(out.returned, 3);
+  assert.deepEqual(out.days, [
+    { date: '2026-03-02', steps: 12000, activeKcal: 512.5, restingHr: 54, hrvMs: 48.2, respRate: 14.1, sleepMin: 402, bodyFatPct: 18.4 },
+    { date: '2026-03-08', respRate: 15 },
+    { date: '2026-03-14', steps: 9000, sleepMin: 431, weightKg: 81.95 },
+  ]);
+});
+
+test('get_health: weighInAt is Berlin local time with its offset, winter and summer', async () => {
+  const { tools } = fakeRepo({
+    health: [
+      healthDay('2026-01-10', { weightKg: 82.1, weighInAt: Date.parse('2026-01-10T06:42:10Z') }),
+      healthDay('2026-02-20', { weightKg: 81.8, weighInAt: Date.parse('2026-02-19T23:30:00Z') }),
+    ],
+  }, () => new Date('2026-07-20T10:00:00Z'));
+  const winter = body(await tools.get_health({ from: '2026-01-01', to: '2026-02-28' }));
+  assert.deepEqual(winter.days.map((d: { weighInAt: string }) => d.weighInAt), [
+    '2026-01-10T07:42:10+01:00',
+    '2026-02-20T00:30:00+01:00',
+  ]);
+
+  const summer = fakeRepo({ health: [healthDay('2026-07-20', { weighInAt: Date.parse('2026-07-20T05:05:05Z') })] });
+  const out = body(await summer.tools.get_health({ from: '2026-07-01', to: '2026-07-31' }));
+  assert.deepEqual(out.days, [{ date: '2026-07-20', weighInAt: '2026-07-20T07:05:05+02:00' }]);
+});
+
+test('get_health: passes the truncated flag through; a repo failure is a generic error result', async () => {
+  const cut = fakeRepo({ health: [healthDay('2026-03-16', { steps: 10 })], healthTruncated: true });
+  assert.equal(body(await cut.tools.get_health({})).truncated, true);
+
+  const failing = fakeRepo({ fail: true });
+  const result = await failing.tools.get_health({});
+  assert.equal(result.isError, true);
+  assert.doesNotMatch(result.content[0].text, /secret|fake-owner|users\//);
 });
