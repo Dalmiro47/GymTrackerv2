@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createRepo, MAX_EXERCISES, MAX_LOGS, MAX_ROUTINES, MAX_SCHEDULE_DAYS, type ReadDb } from './repo.server';
+import { createRepo, MAX_EXERCISES, MAX_HEALTH_DAYS, MAX_LOGS, MAX_ROUTINES, MAX_SCHEDULE_DAYS, type ReadDb } from './repo.server';
 
 // Fake values only. The fake db records every path and query step, serves canned
 // documents, and throws on anything that is not a read (set, add, update, delete...).
@@ -204,6 +204,32 @@ test('getScheduleBetween: the schedule collection, both bounds on date, bounded;
   await assert.rejects(repo.getScheduleBetween('2026-11-15', '2026-11-09', 7));
   await assert.rejects(repo.getScheduleBetween('2026-11-09', '2026-11-15', 0));
   await assert.rejects(repo.getScheduleBetween('2026-11-09', '2026-11-15', MAX_SCHEDULE_DAYS + 1));
+  assert.equal(calls.length, before);
+});
+
+test('getHealthBetween: the health collection, both bounds on date, oldest first, bounded; a bad range or bound reads nothing', async () => {
+  const { db, calls } = fakeDb({ collections: { [`${ROOT}health`]: rows(31) } });
+  const repo = createRepo(db, OWNER);
+  const result = await repo.getHealthBetween('2026-10-17', '2026-11-15', 30);
+  assert.equal(calls[0].path, `${ROOT}health`);
+  assert.deepEqual(calls[0].ops, [
+    ['where', 'date', '>=', '2026-10-17'],
+    ['where', 'date', '<=', '2026-11-15'],
+    ['orderBy', 'date', 'asc'],
+    ['limit', 31],
+  ]);
+  assert.equal(result.rows.length, 30);
+  assert.equal(result.truncated, true);
+
+  const fits = await createRepo(fakeDb({ collections: { [`${ROOT}health`]: rows(2) } }).db, OWNER)
+    .getHealthBetween('2026-11-14', '2026-11-15', 2);
+  assert.equal(fits.truncated, false);
+
+  const before = calls.length;
+  await assert.rejects(repo.getHealthBetween('today', '2026-11-15', 30));
+  await assert.rejects(repo.getHealthBetween('2026-11-15', '2026-11-09', 30));
+  await assert.rejects(repo.getHealthBetween('2026-11-09', '2026-11-15', 0));
+  await assert.rejects(repo.getHealthBetween('2026-11-09', '2026-11-15', MAX_HEALTH_DAYS + 1));
   assert.equal(calls.length, before);
 });
 

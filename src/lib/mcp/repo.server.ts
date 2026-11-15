@@ -29,6 +29,8 @@ export const MAX_EXERCISES = 300;
 export const MAX_LOGS = 366;
 /** Upper bound for one schedule read (one doc per day; the schedule window is at most 35 days). */
 export const MAX_SCHEDULE_DAYS = 35;
+/** Upper bound for one health read (one doc per day; the get_health window is at most 366 days). */
+export const MAX_HEALTH_DAYS = 366;
 /** Upper bound for one routine's history read. Past it the write tools refuse instead of guessing the latest version. */
 export const MAX_ROUTINE_HISTORY = 500;
 /** How many ids (`base`, `base-2`, ...) a create tool tries before it gives up. */
@@ -60,6 +62,8 @@ export type McpRepo = {
   getLogsBetween(fromYmd: string, toYmd: string, max: number): Promise<RawList>;
   /** Schedule days with `fromYmd <= date <= toYmd`, oldest first, at most `max`. */
   getScheduleBetween(fromYmd: string, toYmd: string, max: number): Promise<RawList>;
+  /** Health days with `fromYmd <= date <= toYmd`, oldest first, at most `max`. */
+  getHealthBetween(fromYmd: string, toYmd: string, max: number): Promise<RawList>;
   getProfile(): Promise<Record<string, unknown> | null>;
 };
 
@@ -139,6 +143,16 @@ export function createRepo(db: ReadDb, uid: string): McpRepoWithWriteReads {
       // Same shape as getLogsBetween: one field, so no composite index is needed.
       return list(
         db.collection(`${root}/schedule`).where('date', '>=', fromYmd).where('date', '<=', toYmd).orderBy('date', 'asc'),
+        max,
+      );
+    },
+
+    async getHealthBetween(fromYmd, toYmd, max) {
+      if (!YMD.test(fromYmd) || !YMD.test(toYmd) || fromYmd > toYmd) throw new Error('bad_date');
+      if (!Number.isInteger(max) || max < 1 || max > MAX_HEALTH_DAYS) throw new Error('bad_bound');
+      // Same shape as getScheduleBetween: one field, so no composite index is needed.
+      return list(
+        db.collection(`${root}/health`).where('date', '>=', fromYmd).where('date', '<=', toYmd).orderBy('date', 'asc'),
         max,
       );
     },

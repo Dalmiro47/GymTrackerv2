@@ -60,8 +60,8 @@ const initialize = {
 };
 
 const READ_TOOLS = [
-  'get_current_workout', 'get_exercise_history', 'get_profile', 'get_recent_logs', 'get_routine', 'get_week_status',
-  'list_exercises', 'list_routines',
+  'get_current_workout', 'get_exercise_history', 'get_health', 'get_profile', 'get_recent_logs', 'get_routine',
+  'get_week_status', 'list_exercises', 'list_routines',
 ];
 // Write tool -> destructiveHint.
 const WRITE_TOOLS: Record<string, boolean> = {
@@ -90,7 +90,7 @@ const NO_CONFIRM_NOTE = [
   'reorder_workout_exercises', 'remove_last_set', 'repeat_last',
 ];
 
-test('HTTP: initialize, then tools/list returns exactly the eight read tools and the eighteen write tools', async () => {
+test('HTTP: initialize, then tools/list returns exactly the nine read tools and the eighteen write tools', async () => {
   const handler = createMcpRouteHandler(deps());
 
   const initRes = await handler(post(KEY, initialize), ctx(KEY));
@@ -110,7 +110,7 @@ test('HTTP: initialize, then tools/list returns exactly the eight read tools and
     annotations?: { readOnlyHint?: boolean; destructiveHint?: boolean; idempotentHint?: boolean };
     inputSchema: { properties?: object };
   }> = list.result.tools;
-  assert.equal(tools.length, 26);
+  assert.equal(tools.length, 27);
   assert.deepEqual(tools.map(t => t.name).sort(), [...READ_TOOLS, ...Object.keys(WRITE_TOOLS)].sort());
   for (const tool of tools) {
     if (READ_TOOLS.includes(tool.name)) {

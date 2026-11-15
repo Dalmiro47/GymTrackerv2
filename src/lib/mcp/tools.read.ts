@@ -12,13 +12,16 @@ import { parseRepRange } from '@/lib/repGoal';
 import { groupMarks } from '@/lib/setStructureGroups';
 import { lastPerformedSession } from '@/lib/workoutLogDoc';
 import { withTimeout } from './limits';
-import { isSafeDocId, type McpRepo, type McpWriteReads, type RawDoc, type RawList } from './repo.server';
+import { MAX_HEALTH_DAYS, isSafeDocId, type McpRepo, type McpWriteReads, type RawDoc, type RawList } from './repo.server';
 import { errorResult, jsonResult, type ToolResult } from './results';
 import { readScheduleItems } from './schedule';
-import { WEEK_TIME_ZONE, addDays, berlinYmd, isoWeekOf, weekRange } from './week';
+import { WEEK_TIME_ZONE, addDays, berlinYmd, isRealYmd, isoWeekOf, weekRange } from './week';
 
 /** How far back get_current_workout looks for the last session of each exercise. */
 const LAST_SESSION_WINDOW_DAYS = 180;
+
+/** get_health with no `from`: this many days, ending on `to`. */
+const DEFAULT_HEALTH_DAYS = 30;
 
 /** What the read tools read: the base repo plus two single-purpose reads the write tools also use. */
 export type ReadToolsRepo = McpRepo & Pick<McpWriteReads, 'getExercise' | 'listRoutineHistory'>;
@@ -30,6 +33,11 @@ const docId = z
   .min(1)
   .max(200)
   .refine(isSafeDocId, { message: 'must be a plain id with no "/"' });
+
+const ymd = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, { message: 'must be a date like 2026-11-15' })
+  .refine(v => isRealYmd(v), { message: 'must be a real calendar day' });
 
 export const toolSchemas = {
   list_routines: z.object({}),
@@ -55,6 +63,10 @@ export const toolSchemas = {
       .regex(/^\d{4}-W\d{2}$/, { message: 'must be an ISO week like 2026-W46' })
       .optional()
       .describe('ISO week "YYYY-Www"; default the current week in Europe/Berlin'),
+  }),
+  get_health: z.object({
+    from: ymd.optional().describe('First day, YYYY-MM-DD; default `to` minus 29 days'),
+    to: ymd.optional().describe('Last day, YYYY-MM-DD; default today in Europe/Berlin'),
   }),
 };
 
@@ -132,6 +144,36 @@ function cutoffYmd(now: Date, days: number): string {
   const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - days));
   return d.toISOString().slice(0, 10);
 }
+
+// ─── Health ──────────────────────────────────────────────────────────
+
+/** The numeric fields of a health day, as /api/health/ingest stores them. */
+const HEALTH_FIELDS = ['steps', 'activeKcal', 'restingHr', 'hrvMs', 'respRate', 'sleepMin', 'weightKg', 'bodyFatPct'] as const;
+
+const berlinClock = new Intl.DateTimeFormat('en-CA', {
+  timeZone: WEEK_TIME_ZONE,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hourCycle: 'h23',
+  timeZoneName: 'longOffset',
+});
+
+/** An instant as Berlin local time with its offset, e.g. "2026-11-15T07:42:10+01:00". */
+function berlinIso(ms: number): string {
+  const parts = berlinClock.formatToParts(new Date(ms));
+  const pick = (type: string) => parts.find(p => p.type === type)?.value ?? '';
+  // "GMT+01:00"; a zero offset prints as plain "GMT".
+  const offset = pick('timeZoneName').replace('GMT', '') || '+00:00';
+  return `${pick('year')}-${pick('month')}-${pick('day')}T${pick('hour')}:${pick('minute')}:${pick('second')}${offset}`;
+}
+
+/** Calendar days from `from` to `to`, both included. */
+const spanDays = (from: string, to: string) =>
+  Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000) + 1;
 
 // ─── Week status ─────────────────────────────────────────────────────
 
@@ -503,6 +545,42 @@ export function createReadTools(repo: ReadToolsRepo, now: () => Date = () => new
           days,
         });
       }),
+
+    get_health: ({ from, to }: Args<'get_health'>) =>
+      safe('get_health', 'Could not read the health data. Try again later.', async () => {
+        const today = berlinYmd(now());
+        const end = to ?? today;
+        const start = from ?? addDays(end, -(DEFAULT_HEALTH_DAYS - 1));
+        if (start > end) return errorResult(`from ${start} is after to ${end}.`);
+        const span = spanDays(start, end);
+        if (span > MAX_HEALTH_DAYS) {
+          return errorResult(`${start} to ${end} is ${span} days; the most is ${MAX_HEALTH_DAYS}.`);
+        }
+
+        // One doc per day, so the span is the bound.
+        const list = await repo.getHealthBetween(start, end, span);
+        const days = list.rows
+          .map(doc => {
+            const day: Record<string, string | number> = { date: logDate(doc) };
+            for (const field of HEALTH_FIELDS) {
+              const value = num(doc.data[field]);
+              if (value !== null) day[field] = value;
+            }
+            const weighInAt = num(doc.data.weighInAt);
+            if (weighInAt !== null) day.weighInAt = berlinIso(weighInAt);
+            return day;
+          })
+          .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+        return jsonResult({
+          from: start,
+          to: end,
+          today,
+          timeZone: WEEK_TIME_ZONE,
+          returned: days.length,
+          truncated: list.truncated,
+          days,
+        });
+      }),
   };
 }
 
@@ -643,5 +721,23 @@ export function registerReadTools(server: McpServer, repo: ReadToolsRepo, now?: 
       annotations,
     },
     withTimeout(tools.get_week_status),
+  );
+
+  server.registerTool(
+    'get_health',
+    {
+      title: 'Health data',
+      description:
+        `Apple Health and scale values per day, from \`from\` to \`to\` (YYYY-MM-DD, both included; default the ` +
+        `last 30 days ending today in Europe/Berlin; with only \`from\`, up to today; at most 366 days), oldest ` +
+        `first. Only days with data appear, and a missing field means no data for that day. Units: steps (count), ` +
+        `activeKcal (kcal), restingHr (bpm), hrvMs (ms), respRate (breaths/min), sleepMin (minutes asleep from 18:00 ` +
+        `of the previous day (Berlin) to the last send that day; usually the night that ends on that date), ` +
+        `weightKg (kg), bodyFatPct (%). weighInAt is the time of that day's weigh-in in Europe/Berlin with its ` +
+        `offset; weightKg and bodyFatPct come from the last weigh-in sent that day.`,
+      inputSchema: toolSchemas.get_health,
+      annotations,
+    },
+    withTimeout(tools.get_health),
   );
 }
