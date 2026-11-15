@@ -66,22 +66,31 @@ const READ_TOOLS = [
 // Write tool -> destructiveHint.
 const WRITE_TOOLS: Record<string, boolean> = {
   add_exercise_to_routine: false,
+  add_workout_exercise: false,
   create_exercise: false,
   create_routine: false,
   finish_workout: false,
   log_set: false,
   remove_exercise_from_routine: true,
+  remove_last_set: false,
+  remove_workout_exercise: false,
   reorder_routine_exercises: false,
+  reorder_workout_exercises: false,
+  repeat_last: false,
   replace_exercise_in_routine: true,
+  replace_workout_exercise: false,
   set_routine_set_structure: true,
   set_schedule_day: true,
   start_workout: false,
   update_exercise: true,
 };
-// A set is logged while the owner lifts: this tool carries no "ask first" note.
-const NO_CONFIRM_NOTE = ['log_set'];
+// These run while the owner lifts: they carry no "ask first" note.
+const NO_CONFIRM_NOTE = [
+  'log_set', 'add_workout_exercise', 'remove_workout_exercise', 'replace_workout_exercise',
+  'reorder_workout_exercises', 'remove_last_set', 'repeat_last',
+];
 
-test('HTTP: initialize, then tools/list returns exactly the eight read tools and the twelve write tools', async () => {
+test('HTTP: initialize, then tools/list returns exactly the eight read tools and the eighteen write tools', async () => {
   const handler = createMcpRouteHandler(deps());
 
   const initRes = await handler(post(KEY, initialize), ctx(KEY));
@@ -101,7 +110,7 @@ test('HTTP: initialize, then tools/list returns exactly the eight read tools and
     annotations?: { readOnlyHint?: boolean; destructiveHint?: boolean; idempotentHint?: boolean };
     inputSchema: { properties?: object };
   }> = list.result.tools;
-  assert.equal(tools.length, 20);
+  assert.equal(tools.length, 26);
   assert.deepEqual(tools.map(t => t.name).sort(), [...READ_TOOLS, ...Object.keys(WRITE_TOOLS)].sort());
   for (const tool of tools) {
     if (READ_TOOLS.includes(tool.name)) {

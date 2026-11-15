@@ -8,6 +8,7 @@
  */
 import type { ExercisePerformanceEntry, LoggedSet, PersonalRecord } from '@/types';
 import { isBetterPR, pickBestSet, validWorkingSets } from '@/lib/pr';
+import { lastPerformedSession } from '@/lib/workoutLogDoc';
 
 type StoredEntry = Partial<ExercisePerformanceEntry> | null;
 
@@ -114,4 +115,62 @@ export function bestPRFromLogs(
     }
   }
   return best;
+}
+
+// ─── Revert: the log day no longer holds a lifted session of the exercise ───
+
+/**
+ * True when the log of `logDate` stamped the entry: its last performance (dated
+ * `dayMs`, the log day's midnight) or its PR. Only then does a revert change anything.
+ */
+export function needsEntryRevert(existing: StoredEntry, logDate: string, dayMs: number): boolean {
+  if (!existing) return false;
+  return existing.lastPerformedDate === dayMs || existing.personalRecord?.logId === logDate;
+}
+
+export type EntryRevertInput = {
+  /** The stored entry, or null when there is none. */
+  existing: StoredEntry;
+  /** Every log that holds the exercise, in any order; the log of `logDate` is skipped. */
+  logs: StoredLogDoc[];
+  exerciseId: string;
+  /** The log whose sets of the exercise are gone (removed, or down to none). */
+  logDate: string;
+  /** Turns a log id into the midnight the entry stores. */
+  logDateToMs: (logId: string) => number;
+};
+
+/**
+ * Undoes what the log of `logDate` wrote into the entry, from the other logs. The
+ * entry keeps no previous value, so the last performance becomes the newest other
+ * session where the exercise was lifted outside a deload, or [] and null when there
+ * is none. A PR from that log is rescanned over the other logs, or cleared. A field
+ * the log did not stamp stays as stored. The entry document is never deleted.
+ */
+export function planEntryRevert({ existing, logs, exerciseId, logDate, logDateToMs }: EntryRevertInput): PerformanceEntryPlan {
+  const fields: PerformanceEntryPlan['fields'] = {};
+  let clearPR = false;
+  if (!existing) return { fields, clearPR };
+
+  if (existing.lastPerformedDate === logDateToMs(logDate)) {
+    const others = logs
+      .filter(log => log.id !== logDate)
+      .sort((a, b) => b.id.localeCompare(a.id))
+      .map(log => ({ ...log.data, date: log.id }));
+    const last = lastPerformedSession(others, exerciseId);
+    if (last) {
+      fields.lastPerformedSets = validWorkingSets(last.sets as LoggedSet[]);
+      fields.lastPerformedDate = logDateToMs(last.date);
+    } else {
+      fields.lastPerformedSets = [];
+      fields.lastPerformedDate = null;
+    }
+  }
+
+  if (existing.personalRecord?.logId === logDate) {
+    const best = bestPRFromLogs(logs, exerciseId, logDate, {}, logDateToMs);
+    if (best) fields.personalRecord = best;
+    else clearPR = true;
+  }
+  return { fields, clearPR };
 }

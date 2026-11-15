@@ -9,7 +9,7 @@ import { createWriteTools, MAX_ROUTINE_EXERCISES, writeToolSchemas } from './too
 import { berlinMidnightMs } from './week';
 import type { WorkoutLog } from '@/types';
 import { planPerformanceEntry } from '@/lib/performanceEntryPlan';
-import { buildWorkoutLogDoc } from '@/lib/workoutLogDoc';
+import { buildWorkoutLogDoc, warmupConfigFor } from '@/lib/workoutLogDoc';
 
 // Fake values only. The tools run on the real read repo and the real write repo,
 // over an in-memory fake db that records every call. The fake throws on anything
@@ -226,10 +226,11 @@ const versionsOf = (ops: Op[]) => ops.filter(op => op.path.startsWith(`${ROOT}ro
 
 // ─── Input validation ────────────────────────────────────────────────
 
-test('schemas: exactly the twelve write tools, and none takes a uid', () => {
+test('schemas: exactly the eighteen write tools, and none takes a uid', () => {
   assert.deepEqual(Object.keys(writeToolSchemas).sort(), [
-    'add_exercise_to_routine', 'create_exercise', 'create_routine', 'finish_workout', 'log_set',
-    'remove_exercise_from_routine', 'reorder_routine_exercises', 'replace_exercise_in_routine',
+    'add_exercise_to_routine', 'add_workout_exercise', 'create_exercise', 'create_routine', 'finish_workout', 'log_set',
+    'remove_exercise_from_routine', 'remove_last_set', 'remove_workout_exercise', 'reorder_routine_exercises',
+    'reorder_workout_exercises', 'repeat_last', 'replace_exercise_in_routine', 'replace_workout_exercise',
     'set_routine_set_structure', 'set_schedule_day', 'start_workout', 'update_exercise',
   ]);
   for (const [name, schema] of Object.entries(writeToolSchemas)) {
@@ -2073,4 +2074,491 @@ test('log_set: startedAt stays on the log', async () => {
   const db = fakeDb(startedMinutesAgo(30));
   ok(await db.tools.log_set({ exerciseId: BENCH, setNumber: 1, weight: 82.5, reps: 8 }));
   assert.equal(db.get(`workoutLogs/${TODAY}`)!.startedAt, NOW_MS - 30 * 60_000);
+});
+
+// ─── Session edits: add, remove, replace, reorder, remove_last_set, repeat_last ─
+
+const FLY = 'fly_chest';
+const CURL = 'curl_biceps';
+const PRESS = 'press_shoulders';
+const ROW = 'row_back';
+const ROW_LOG_DAY = '2027-01-10';
+
+/** A past log where row was lifted, so a new row exercise has sets to copy. */
+const rowLog = () => ({
+  id: ROW_LOG_DAY,
+  date: ROW_LOG_DAY,
+  notes: '',
+  isDeload: false,
+  exerciseIds: [ROW],
+  exercises: [{ id: 'old-row', exerciseId: ROW, name: 'Row', muscleGroup: 'Back', performed: true, sets: [{ id: 'r1', reps: 10, weight: 50 }] }],
+});
+
+const editSeed = (log: Data = openLog(), extra: Record<string, Data> = {}) =>
+  gymSeed({
+    [`exercises/${FLY}`]: { name: 'Fly', muscleGroup: 'Chest' },
+    [`exercises/${CURL}`]: { name: 'Curl', muscleGroup: 'Biceps' },
+    [`exercises/${PRESS}`]: { name: 'Press', muscleGroup: 'Shoulders' },
+    [`workoutLogs/${ROW_LOG_DAY}`]: rowLog(),
+    [`workoutLogs/${TODAY}`]: log,
+    ...extra,
+  });
+
+/** A stored row of the open log; planned with no set unless `over` says otherwise. */
+const logRow = (exerciseId: string, over: Data = {}): Data => ({
+  id: `${exerciseId}-row`,
+  exerciseId,
+  name: exerciseId,
+  muscleGroup: 'Chest',
+  notes: '',
+  sets: [],
+  performed: false,
+  ...over,
+});
+const logWith = (...rows: Data[]): Data => ({ ...openLog(), exercises: rows, exerciseIds: rows.map(row => row.exerciseId) });
+const ssRow = (id: string) => logRow(id, { setStructure: 'superset' });
+const triRow = (id: string) => logRow(id, { setStructure: 'triset' });
+const idsIn = (db: ReturnType<typeof fakeDb>) => db.get(`workoutLogs/${TODAY}`)!.exercises.map((ex: Data) => ex.exerciseId);
+/** Refused with `code`; earlier calls of the test may have written. */
+const failed = (result: ToolResult, code: string) => {
+  assert.equal(result.isError, true, `expected ${code}, got a success`);
+  assert.match(result.content[0].text, new RegExp(`^${code}: `));
+};
+/** The row stored for row_back at `index`, with the sets of rowLog. */
+const plannedRowRow = (index: number, over: Data = {}) => ({
+  id: `${ROW}-${TODAY}-${index}-${NOW_MS}`,
+  exerciseId: ROW,
+  name: 'Row',
+  muscleGroup: 'Back',
+  exerciseSetup: '',
+  progressiveOverload: '',
+  notes: '',
+  sets: [{ id: setId(TODAY, ROW, 0), reps: 10, weight: 50 }],
+  warmupConfig: warmupConfigFor({ name: 'Row' }),
+  performed: false,
+  ...over,
+});
+
+test('schemas: the session edit tools take strict keys with bounded numbers', () => {
+  const s = writeToolSchemas;
+  assert.deepEqual(s.add_workout_exercise.parse({ exerciseId: ROW, index: 0 }), { exerciseId: ROW, index: 0 });
+  assert.equal(s.add_workout_exercise.safeParse({ exerciseId: ROW, index: 30 }).success, true);
+  assert.deepEqual(s.remove_workout_exercise.parse({ exerciseId: BENCH, confirm: true }), { exerciseId: BENCH, confirm: true });
+  assert.deepEqual(s.replace_workout_exercise.parse({ exerciseId: BENCH, newExerciseId: ROW }), { exerciseId: BENCH, newExerciseId: ROW });
+  assert.deepEqual(s.reorder_workout_exercises.parse({ exerciseIds: [DIPS, BENCH] }), { exerciseIds: [DIPS, BENCH] });
+  assert.deepEqual(s.remove_last_set.parse({ exerciseId: BENCH, setNumber: 20 }), { exerciseId: BENCH, setNumber: 20 });
+  assert.deepEqual(s.repeat_last.parse({ exerciseId: BENCH }), { exerciseId: BENCH });
+  const bad: Array<[{ safeParse(v: unknown): { success: boolean } }, Data]> = [
+    [s.add_workout_exercise, { exerciseId: ROW, index: -1 }],
+    [s.add_workout_exercise, { exerciseId: ROW, index: 31 }],
+    [s.add_workout_exercise, { exerciseId: ROW, index: 1.5 }],
+    [s.add_workout_exercise, { exerciseId: ROW, position: 1 }],
+    [s.add_workout_exercise, { exerciseId: 'a/b' }],
+    [s.remove_workout_exercise, { exerciseId: BENCH, confirm: 'yes' }],
+    [s.remove_workout_exercise, { exerciseId: BENCH, date: TODAY }],
+    [s.replace_workout_exercise, { exerciseId: BENCH }],
+    [s.reorder_workout_exercises, { exerciseIds: [] }],
+    [s.remove_last_set, { exerciseId: BENCH }],
+    [s.remove_last_set, { exerciseId: BENCH, setNumber: 0 }],
+    [s.remove_last_set, { exerciseId: BENCH, setNumber: 21 }],
+    [s.repeat_last, { exerciseId: BENCH, overwrite: true }],
+  ];
+  for (const [schema, input] of bad) assert.equal(schema.safeParse(input).success, false, JSON.stringify(input));
+});
+
+test('add_workout_exercise: a planned row at the end, with the sets of its last session; one update and no performance entry', async () => {
+  const db = fakeDb(editSeed());
+  const out = ok(await db.tools.add_workout_exercise({ exerciseId: ROW }));
+  const ops = lastLogBatch(db, 1);
+  assert.deepEqual(ops.map(op => [op.kind, op.path]), [['update', `${ROOT}workoutLogs/${TODAY}`]]);
+  const stored = db.get(`workoutLogs/${TODAY}`)!;
+  assert.deepEqual(stored.exercises, [...openLog().exercises, plannedRowRow(2)]);
+  assert.deepEqual(stored.exerciseIds, [BENCH, DIPS, ROW]);
+  assert.deepEqual({ ...stored, exercises: null, exerciseIds: null }, { ...openLog(), exercises: null, exerciseIds: null });
+  assert.equal(db.get(`performanceEntries/${ROW}`), undefined);
+  assert.equal(out.changed, true);
+  assert.equal(out.date, TODAY);
+  assert.deepEqual(out.added, { exerciseId: ROW, name: 'Row', index: 2 });
+  assert.deepEqual(out.exercises.map((ex: Data) => [ex.exerciseId, ex.status]), [[BENCH, 'planned'], [DIPS, 'planned'], [ROW, 'planned']]);
+  assert.deepEqual(out.next, { exerciseId: BENCH, name: 'Bench Press' });
+});
+
+test('add_workout_exercise: at an index; the sets come from the performance entry when no log holds the exercise, else none', async () => {
+  const log = logWith(logRow(BENCH), logRow(DIPS));
+  const db = fakeDb(editSeed(log, { [`performanceEntries/${FLY}`]: { lastPerformedDate: 1, lastPerformedSets: [{ reps: 12, weight: 20 }] } }));
+  ok(await db.tools.add_workout_exercise({ exerciseId: FLY, index: 0 }));
+  ok(await db.tools.add_workout_exercise({ exerciseId: CURL, index: 1 }));
+  assert.deepEqual(idsIn(db), [FLY, CURL, BENCH, DIPS]);
+  const [fly, curl] = db.get(`workoutLogs/${TODAY}`)!.exercises;
+  assert.deepEqual(fly.sets, [{ id: setId(TODAY, FLY, 0), reps: 12, weight: 20 }]);
+  assert.deepEqual(curl.sets, []);
+  assert.equal(fly.performed, false);
+  assert.equal(curl.performed, false);
+  assert.equal('setStructure' in fly, false);
+});
+
+test('add_workout_exercise: an exercise already in the log, a full log, an index past the end or an unknown exercise writes nothing', async () => {
+  const db = fakeDb(editSeed());
+  const twice = await db.tools.add_workout_exercise({ exerciseId: DIPS });
+  refused(twice, 'already_in_log', db);
+  assert.match(twice.content[0].text, /index 1/);
+  refused(await db.tools.add_workout_exercise({ exerciseId: ROW, index: 3 }), 'slot_mismatch', db);
+  refused(await db.tools.add_workout_exercise({ exerciseId: 'nope' }), 'not_found', db);
+  const rows = Array.from({ length: MAX_ROUTINE_EXERCISES }, (_, i) => logRow(`ex-${i}`));
+  const full = fakeDb(editSeed(logWith(...rows)));
+  refused(await full.tools.add_workout_exercise({ exerciseId: ROW }), 'log_full', full);
+});
+
+test('add_workout_exercise: an index inside a superset or a triset writes nothing (incomplete_group); between the groups it is added', async () => {
+  const log = () => logWith(ssRow(BENCH), ssRow(FLY), triRow(CURL), triRow(PRESS), triRow(DIPS));
+  for (const index of [1, 3, 4]) {
+    const db = fakeDb(editSeed(log()));
+    const result = await db.tools.add_workout_exercise({ exerciseId: ROW, index });
+    refused(result, 'incomplete_group', db);
+    assert.match(result.content[0].text, /before or after the group/);
+  }
+  for (const index of [0, 2, 5]) {
+    const db = fakeDb(editSeed(log()));
+    ok(await db.tools.add_workout_exercise({ exerciseId: ROW, index }));
+    assert.equal(idsIn(db)[index], ROW);
+  }
+});
+
+test('remove_workout_exercise: a planned exercise goes in one update; no performance entry is written; a retry is not_in_log', async () => {
+  const db = fakeDb(editSeed());
+  const out = ok(await db.tools.remove_workout_exercise({ exerciseId: DIPS }));
+  const ops = lastLogBatch(db, 1);
+  assert.equal(ops.length, 1);
+  assert.deepEqual(db.get(`workoutLogs/${TODAY}`)!.exercises, [openLog().exercises[0]]);
+  assert.deepEqual(db.get(`workoutLogs/${TODAY}`)!.exerciseIds, [BENCH]);
+  assert.deepEqual(out.removed, { exerciseId: DIPS, name: 'Dips', setsRemoved: 0 });
+  assert.deepEqual(out.ungrouped, []);
+  assert.deepEqual(db.get(`performanceEntries/${BENCH}`), benchEntry());
+  failed(await db.tools.remove_workout_exercise({ exerciseId: DIPS }), 'not_in_log');
+  assert.equal(db.batches.length, 1);
+});
+
+test('remove_workout_exercise: logged sets need confirm true (has_logged_sets); with it the entry goes back to the last session', async () => {
+  const db = fakeDb(editSeed());
+  ok(await db.tools.log_set({ exerciseId: BENCH, setNumber: 1, weight: 85, reps: 8 }));
+  assert.equal(db.get(`performanceEntries/${BENCH}`)!.personalRecord.logId, TODAY);
+  const result = await db.tools.remove_workout_exercise({ exerciseId: BENCH });
+  failed(result, 'has_logged_sets');
+  assert.match(result.content[0].text, /confirm true/);
+  assert.equal(db.batches.length, 1);
+
+  const out = ok(await db.tools.remove_workout_exercise({ exerciseId: BENCH, confirm: true }));
+  const ops = lastLogBatch(db, 2);
+  assert.deepEqual(ops.map(op => [op.kind, op.path]), [
+    ['update', `${ROOT}workoutLogs/${TODAY}`],
+    ['set', `${ROOT}performanceEntries/${BENCH}`],
+  ]);
+  assert.deepEqual(idsIn(db), [DIPS]);
+  // Last week is the newest lifted session again: its sets, its date and its PR.
+  assert.deepEqual(db.get(`performanceEntries/${BENCH}`), benchEntry());
+  assert.deepEqual(out.removed, { exerciseId: BENCH, name: 'Bench Press', setsRemoved: 1 });
+  assert.deepEqual(out.personalRecord, { weight: 80, reps: 8 });
+});
+
+test('remove_workout_exercise: a performed exercise with no set, stamped today by an app save, gets its entry back; an entry of another day stays', async () => {
+  const stampedToday = { ...benchEntry(), lastPerformedDate: berlinMidnightMs(TODAY), lastPerformedSets: [] };
+  const log = () => logWith(logRow(BENCH, { performed: true, sets: [] }), logRow(DIPS));
+  const db = fakeDb(editSeed(log(), { [`performanceEntries/${BENCH}`]: stampedToday }));
+  // No logged set: no confirm is needed.
+  ok(await db.tools.remove_workout_exercise({ exerciseId: BENCH }));
+  assert.equal(lastLogBatch(db, 1).length, 2);
+  assert.deepEqual(db.get(`performanceEntries/${BENCH}`), benchEntry());
+
+  const other = fakeDb(editSeed(log()));
+  ok(await other.tools.remove_workout_exercise({ exerciseId: BENCH }));
+  assert.deepEqual(lastLogBatch(other, 1).map(op => op.path), [`${ROOT}workoutLogs/${TODAY}`]);
+  assert.deepEqual(other.get(`performanceEntries/${BENCH}`), benchEntry());
+});
+
+test('remove_workout_exercise: the rest of its superset or triset becomes normal in this log only', async () => {
+  const db = fakeDb(editSeed(logWith(logRow(BENCH), triRow(FLY), triRow(CURL), triRow(PRESS), logRow(DIPS))));
+  const out = ok(await db.tools.remove_workout_exercise({ exerciseId: CURL }));
+  const stored = db.get(`workoutLogs/${TODAY}`)!.exercises;
+  assert.deepEqual(stored, [logRow(BENCH), { ...triRow(FLY), setStructureOverride: 'normal' }, { ...triRow(PRESS), setStructureOverride: 'normal' }, logRow(DIPS)]);
+  assert.deepEqual(out.ungrouped, [FLY, PRESS]);
+  assert.deepEqual(out.exercises.map((ex: Data) => ex.setStructure), ['normal', 'normal', 'normal', 'normal']);
+  assert.deepEqual(db.get('routines/push-day'), pushDay());
+
+  // In a run of 4 supersets, the first pair loses its partner and the second pair stays.
+  const pairs = fakeDb(editSeed(logWith(ssRow(BENCH), ssRow(FLY), ssRow(CURL), ssRow(PRESS))));
+  ok(await pairs.tools.remove_workout_exercise({ exerciseId: BENCH }));
+  assert.deepEqual(pairs.get(`workoutLogs/${TODAY}`)!.exercises, [{ ...ssRow(FLY), setStructureOverride: 'normal' }, ssRow(CURL), ssRow(PRESS)]);
+});
+
+test('remove_workout_exercise: the last exercise, an unknown one or one twice writes nothing', async () => {
+  const last = fakeDb(editSeed(logWith(logRow(BENCH))));
+  refused(await last.tools.remove_workout_exercise({ exerciseId: BENCH }), 'last_exercise', last);
+  const db = fakeDb(editSeed());
+  refused(await db.tools.remove_workout_exercise({ exerciseId: ROW }), 'not_in_log', db);
+  const twice = fakeDb(editSeed(logWith(logRow(BENCH), logRow(DIPS), logRow(BENCH, { id: 'second' }))));
+  refused(await twice.tools.remove_workout_exercise({ exerciseId: BENCH }), 'ambiguous_exercise', twice);
+});
+
+test('remove_workout_exercise: on a deload log only the log changes', async () => {
+  const stamped = { lastPerformedDate: berlinMidnightMs(TODAY), lastPerformedSets: [{ reps: 8, weight: 100 }], personalRecord: { reps: 8, weight: 100, date: berlinMidnightMs(TODAY), logId: TODAY } };
+  const log = { ...logWith(logRow(BENCH, { performed: true, sets: [{ id: 's', reps: 8, weight: 100 }] }), logRow(DIPS)), isDeload: true };
+  const db = fakeDb(editSeed(log, { [`performanceEntries/${BENCH}`]: stamped }));
+  ok(await db.tools.remove_workout_exercise({ exerciseId: BENCH, confirm: true }));
+  assert.equal(lastLogBatch(db, 1).length, 1);
+  assert.deepEqual(db.get(`performanceEntries/${BENCH}`), stamped);
+});
+
+test('replace_workout_exercise: the new exercise takes the slot, its set structure and override, with copied sets; no performance entry', async () => {
+  const db = fakeDb(editSeed());
+  const out = ok(await db.tools.replace_workout_exercise({ exerciseId: BENCH, newExerciseId: ROW }));
+  assert.equal(lastLogBatch(db, 1).length, 1);
+  const stored = db.get(`workoutLogs/${TODAY}`)!;
+  assert.deepEqual(stored.exercises, [plannedRowRow(0, { setStructure: 'superset' }), openLog().exercises[1]]);
+  assert.deepEqual(stored.exerciseIds, [ROW, DIPS]);
+  assert.deepEqual(db.get(`performanceEntries/${BENCH}`), benchEntry());
+  assert.deepEqual(out.replaced, { exerciseId: BENCH, newExerciseId: ROW, index: 0 });
+
+  const override = fakeDb(editSeed(logWith(logRow(BENCH), ssRow(FLY), logRow(DIPS, { setStructure: 'superset', setStructureOverride: 'dropSet' }))));
+  ok(await override.tools.replace_workout_exercise({ exerciseId: DIPS, newExerciseId: ROW }));
+  const row = override.get(`workoutLogs/${TODAY}`)!.exercises[2];
+  assert.equal(row.setStructure, 'superset');
+  assert.equal(row.setStructureOverride, 'dropSet');
+});
+
+test('replace_workout_exercise: logged sets, a new id in the log or unknown ids write nothing; a retry answers changed false', async () => {
+  const db = fakeDb(editSeed());
+  ok(await db.tools.log_set({ exerciseId: BENCH, setNumber: 1, weight: 85, reps: 8 }));
+  failed(await db.tools.replace_workout_exercise({ exerciseId: BENCH, newExerciseId: ROW }), 'has_logged_sets');
+  failed(await db.tools.replace_workout_exercise({ exerciseId: DIPS, newExerciseId: BENCH }), 'already_in_log');
+  failed(await db.tools.replace_workout_exercise({ exerciseId: DIPS, newExerciseId: 'nope' }), 'not_found');
+  failed(await db.tools.replace_workout_exercise({ exerciseId: FLY, newExerciseId: ROW }), 'not_in_log');
+  assert.equal(db.batches.length, 1);
+
+  ok(await db.tools.replace_workout_exercise({ exerciseId: DIPS, newExerciseId: ROW }));
+  const before = structuredClone(db.get(`workoutLogs/${TODAY}`));
+  const again = ok(await db.tools.replace_workout_exercise({ exerciseId: DIPS, newExerciseId: ROW }));
+  assert.equal(again.changed, false);
+  assert.equal(db.batches.length, 2);
+  assert.deepEqual(db.get(`workoutLogs/${TODAY}`), before);
+});
+
+test('replace_workout_exercise: a performed exercise with no set, stamped today by an app save, gets its entry back; not on a deload log', async () => {
+  const stampedToday = { ...benchEntry(), lastPerformedDate: berlinMidnightMs(TODAY), lastPerformedSets: [] };
+  const log = logWith(logRow(BENCH, { performed: true, sets: [] }), logRow(DIPS));
+  const db = fakeDb(editSeed(log, { [`performanceEntries/${BENCH}`]: stampedToday }));
+  const out = ok(await db.tools.replace_workout_exercise({ exerciseId: BENCH, newExerciseId: ROW }));
+  assert.deepEqual(lastLogBatch(db, 1).map(op => [op.kind, op.path]), [
+    ['update', `${ROOT}workoutLogs/${TODAY}`],
+    ['set', `${ROOT}performanceEntries/${BENCH}`],
+  ]);
+  assert.deepEqual(idsIn(db), [ROW, DIPS]);
+  assert.deepEqual(db.get(`performanceEntries/${BENCH}`), benchEntry());
+  assert.deepEqual(out.personalRecord, { weight: 80, reps: 8 });
+
+  const deload = fakeDb(editSeed({ ...log, isDeload: true }, { [`performanceEntries/${BENCH}`]: stampedToday }));
+  ok(await deload.tools.replace_workout_exercise({ exerciseId: BENCH, newExerciseId: ROW }));
+  assert.equal(lastLogBatch(deload, 1).length, 1);
+  assert.deepEqual(deload.get(`performanceEntries/${BENCH}`), stampedToday);
+});
+
+test('reorder_workout_exercises: a new order in one update; the same order writes nothing', async () => {
+  const db = fakeDb(editSeed());
+  const out = ok(await db.tools.reorder_workout_exercises({ exerciseIds: [DIPS, BENCH] }));
+  assert.equal(lastLogBatch(db, 1).length, 1);
+  assert.deepEqual(db.get(`workoutLogs/${TODAY}`)!.exercises, [openLog().exercises[1], openLog().exercises[0]]);
+  assert.deepEqual(db.get(`workoutLogs/${TODAY}`)!.exerciseIds, [DIPS, BENCH]);
+  assert.equal(out.changed, true);
+  const again = ok(await db.tools.reorder_workout_exercises({ exerciseIds: [DIPS, BENCH] }));
+  assert.equal(again.changed, false);
+  assert.equal(db.batches.length, 1);
+});
+
+test('reorder_workout_exercises: a missing, extra or repeated id, or a log with an exercise twice, writes nothing', async () => {
+  const db = fakeDb(editSeed());
+  for (const exerciseIds of [[BENCH], [BENCH, DIPS, ROW], [BENCH, BENCH], [BENCH, ROW]]) {
+    refused(await db.tools.reorder_workout_exercises({ exerciseIds }), 'order_mismatch', db);
+  }
+  const twice = fakeDb(editSeed(logWith(logRow(BENCH), logRow(DIPS), logRow(BENCH, { id: 'second' }))));
+  refused(await twice.tools.reorder_workout_exercises({ exerciseIds: [BENCH, DIPS] }), 'ambiguous_exercise', twice);
+});
+
+test('reorder_workout_exercises: a split triset or new superset pairs write nothing (incomplete_group); a whole group can move', async () => {
+  const pairs = () => logWith(ssRow(BENCH), ssRow(FLY), logRow(DIPS), ssRow(CURL), ssRow(PRESS));
+  const repaired = fakeDb(editSeed(pairs()));
+  refused(await repaired.tools.reorder_workout_exercises({ exerciseIds: [BENCH, CURL, PRESS, FLY, DIPS] }), 'incomplete_group', repaired);
+  const trio = fakeDb(editSeed(logWith(triRow(BENCH), triRow(FLY), triRow(CURL), logRow(DIPS))));
+  refused(await trio.tools.reorder_workout_exercises({ exerciseIds: [BENCH, DIPS, FLY, CURL] }), 'incomplete_group', trio);
+  const moved = fakeDb(editSeed(pairs()));
+  ok(await moved.tools.reorder_workout_exercises({ exerciseIds: [DIPS, CURL, PRESS, FLY, BENCH] }));
+  assert.deepEqual(idsIn(moved), [DIPS, CURL, PRESS, FLY, BENCH]);
+});
+
+test('remove_last_set: the last set goes; when it held the PR the other logs are scanned and the PR goes down', async () => {
+  const db = fakeDb(editSeed());
+  ok(await db.tools.log_set({ exerciseId: BENCH, setNumber: 1, weight: 82.5, reps: 8 }));
+  ok(await db.tools.log_set({ exerciseId: BENCH, setNumber: 2, weight: 90, reps: 5 }));
+  assert.equal(db.get(`performanceEntries/${BENCH}`)!.personalRecord.weight, 90);
+  const out = ok(await db.tools.remove_last_set({ exerciseId: BENCH, setNumber: 2 }));
+  assert.equal(lastLogBatch(db, 3).length, 2);
+  const row = db.get(`workoutLogs/${TODAY}`)!.exercises[0];
+  assert.deepEqual(row.sets, [{ id: setId(TODAY, BENCH, 0), reps: 8, weight: 82.5 }]);
+  assert.equal(row.performed, true);
+  // 82.5 today still beats the 80 of last week.
+  assert.deepEqual(db.get(`performanceEntries/${BENCH}`), {
+    lastPerformedDate: berlinMidnightMs(TODAY),
+    lastPerformedSets: [{ reps: 8, weight: 82.5 }],
+    personalRecord: { reps: 8, weight: 82.5, date: berlinMidnightMs(TODAY), logId: TODAY },
+  });
+  assert.deepEqual(out.removedSet, { setNumber: 2, weight: 90, reps: 5 });
+  assert.deepEqual(out.exercise, { exerciseId: BENCH, name: 'Bench Press', status: 'performed', sets: [{ setNumber: 1, weight: 82.5, reps: 8 }] });
+  assert.deepEqual(out.personalRecord, { weight: 82.5, reps: 8 });
+});
+
+test('remove_last_set: a set number that is not the last one, or a retry, writes nothing (set_number); a planned exercise has none (no_logged_set)', async () => {
+  const db = fakeDb(editSeed());
+  refused(await db.tools.remove_last_set({ exerciseId: BENCH, setNumber: 1 }), 'no_logged_set', db);
+  ok(await db.tools.log_set({ exerciseId: BENCH, setNumber: 1, weight: 82.5, reps: 8 }));
+  ok(await db.tools.log_set({ exerciseId: BENCH, setNumber: 2, weight: 82.5, reps: 6 }));
+  failed(await db.tools.remove_last_set({ exerciseId: BENCH, setNumber: 1 }), 'set_number');
+  ok(await db.tools.remove_last_set({ exerciseId: BENCH, setNumber: 2 }));
+  failed(await db.tools.remove_last_set({ exerciseId: BENCH, setNumber: 2 }), 'set_number');
+  assert.equal(db.batches.length, 3);
+  assert.equal(db.get(`workoutLogs/${TODAY}`)!.exercises[0].sets.length, 1);
+});
+
+test('remove_last_set: at zero sets the exercise is planned again with its copied sets, and the entry goes back to the last session', async () => {
+  const db = fakeDb(editSeed());
+  ok(await db.tools.log_set({ exerciseId: BENCH, setNumber: 1, weight: 85, reps: 8 }));
+  const out = ok(await db.tools.remove_last_set({ exerciseId: BENCH, setNumber: 1 }));
+  assert.equal(lastLogBatch(db, 2).length, 2);
+  // The row reads as start_workout stored it.
+  assert.deepEqual(db.get(`workoutLogs/${TODAY}`), openLog());
+  assert.deepEqual(db.get(`performanceEntries/${BENCH}`), benchEntry());
+  assert.equal(out.exercise.status, 'planned');
+  assert.deepEqual(out.exercise.sets, []);
+  assert.deepEqual(out.personalRecord, { weight: 80, reps: 8 });
+  assert.deepEqual(out.next, { exerciseId: BENCH, name: 'Bench Press' });
+});
+
+test('remove_last_set: on a deload log only the log changes', async () => {
+  const log = { ...openLog(), isDeload: true };
+  const db = fakeDb(editSeed(log));
+  ok(await db.tools.log_set({ exerciseId: BENCH, setNumber: 1, weight: 100, reps: 8 }));
+  ok(await db.tools.remove_last_set({ exerciseId: BENCH, setNumber: 1 }));
+  assert.equal(lastLogBatch(db, 2).length, 1);
+  assert.deepEqual(db.get(`workoutLogs/${TODAY}`), log);
+  assert.deepEqual(db.get(`performanceEntries/${BENCH}`), benchEntry());
+});
+
+test('repeat_last: the sets of the last lifted session that is not a deload are logged in one call', async () => {
+  const deload = { ...lastWeekLog(), id: '2027-01-12', date: '2027-01-12', isDeload: true, exercises: [{ ...lastWeekLog().exercises[0], sets: [{ id: 'd', reps: 8, weight: 40 }] }], exerciseIds: [BENCH] };
+  const planned = { ...lastWeekLog(), id: '2027-01-11', date: '2027-01-11', exercises: [{ ...lastWeekLog().exercises[0], performed: false, sets: [{ id: 'p', reps: 8, weight: 200 }] }], exerciseIds: [BENCH] };
+  const db = fakeDb(editSeed(openLog(), { 'workoutLogs/2027-01-12': deload, 'workoutLogs/2027-01-11': planned }));
+  const out = ok(await db.tools.repeat_last({ exerciseId: BENCH }));
+  const ops = lastLogBatch(db, 1);
+  assert.deepEqual(ops.map(op => [op.kind, op.path]), [
+    ['update', `${ROOT}workoutLogs/${TODAY}`],
+    ['set', `${ROOT}performanceEntries/${BENCH}`],
+  ]);
+  const row = db.get(`workoutLogs/${TODAY}`)!.exercises[0];
+  assert.deepEqual(row.sets, [{ id: setId(TODAY, BENCH, 0), reps: 8, weight: 80 }, { id: setId(TODAY, BENCH, 1), reps: 7, weight: 80 }]);
+  assert.equal(row.performed, true);
+  assert.deepEqual(db.get(`performanceEntries/${BENCH}`), {
+    ...benchEntry(),
+    lastPerformedDate: berlinMidnightMs(TODAY),
+    lastPerformedSets: [{ reps: 8, weight: 80 }, { reps: 7, weight: 80 }],
+  });
+  assert.equal(out.changed, true);
+  assert.equal(out.from, LAST_WEEK);
+  assert.deepEqual(out.exercise.sets, [{ setNumber: 1, weight: 80, reps: 8 }, { setNumber: 2, weight: 80, reps: 7 }]);
+  assert.deepEqual(out.personalRecord, { weight: 80, reps: 8 });
+  assert.equal(out.newPersonalRecord, false);
+  assert.deepEqual(out.next, { exerciseId: DIPS, name: 'Dips' });
+});
+
+test('repeat_last: with no stored PR the best copied set is a new PR', async () => {
+  const noPR: Data = benchEntry();
+  delete noPR.personalRecord;
+  const db = fakeDb(editSeed(openLog(), { [`performanceEntries/${BENCH}`]: noPR }));
+  const out = ok(await db.tools.repeat_last({ exerciseId: BENCH }));
+  assert.equal(out.newPersonalRecord, true);
+  assert.deepEqual(db.get(`performanceEntries/${BENCH}`)!.personalRecord, { reps: 8, weight: 80, date: berlinMidnightMs(TODAY), logId: TODAY });
+});
+
+test('repeat_last: a retry answers changed false; other logged sets are has_logged_sets; no lifted session is no_last_session', async () => {
+  const db = fakeDb(editSeed());
+  ok(await db.tools.repeat_last({ exerciseId: BENCH }));
+  const again = ok(await db.tools.repeat_last({ exerciseId: BENCH }));
+  assert.equal(again.changed, false);
+  assert.equal(db.batches.length, 1);
+
+  const other = fakeDb(editSeed());
+  ok(await other.tools.log_set({ exerciseId: BENCH, setNumber: 1, weight: 85, reps: 8 }));
+  failed(await other.tools.repeat_last({ exerciseId: BENCH }), 'has_logged_sets');
+  assert.equal(other.batches.length, 1);
+
+  const none = fakeDb(editSeed(logWith(logRow(BENCH), logRow(FLY))));
+  refused(await none.tools.repeat_last({ exerciseId: FLY }), 'no_last_session', none);
+});
+
+test('repeat_last: at most the first 20 valid sets are copied, the limit of log_set', async () => {
+  // 25 sets, with an empty row first that is not a set.
+  const many = [{ id: 'z', reps: 0, weight: 80 }, ...Array.from({ length: 25 }, (_, i) => ({ id: `m${i}`, reps: i + 1, weight: 60 }))];
+  const db = fakeDb(editSeed(openLog(), { [`workoutLogs/${LAST_WEEK}`]: { ...lastWeekLog(), exercises: [{ ...lastWeekLog().exercises[0], sets: many }] } }));
+  const out = ok(await db.tools.repeat_last({ exerciseId: BENCH }));
+  const sets = db.get(`workoutLogs/${TODAY}`)!.exercises[0].sets;
+  assert.equal(sets.length, 20);
+  assert.deepEqual(sets[0], { id: setId(TODAY, BENCH, 0), reps: 1, weight: 60 });
+  assert.deepEqual(sets[19], { id: setId(TODAY, BENCH, 19), reps: 20, weight: 60 });
+  assert.equal(out.exercise.sets.length, 20);
+  // A retry compares with the same 20 sets and writes nothing.
+  assert.equal(ok(await db.tools.repeat_last({ exerciseId: BENCH })).changed, false);
+  assert.equal(db.batches.length, 1);
+});
+
+test('repeat_last: on a deload log the sets are logged and no performance entry is written', async () => {
+  const db = fakeDb(editSeed({ ...openLog(), isDeload: true }));
+  ok(await db.tools.repeat_last({ exerciseId: BENCH }));
+  assert.equal(lastLogBatch(db, 1).length, 1);
+  assert.equal(db.get(`workoutLogs/${TODAY}`)!.exercises[0].performed, true);
+  assert.deepEqual(db.get(`performanceEntries/${BENCH}`), benchEntry());
+});
+
+/** One call of each session edit tool, on a log where bench has a logged set and dips is planned. */
+const editCalls = (db: ReturnType<typeof fakeDb>) => [
+  () => db.tools.add_workout_exercise({ exerciseId: ROW }),
+  () => db.tools.remove_workout_exercise({ exerciseId: DIPS }),
+  () => db.tools.replace_workout_exercise({ exerciseId: DIPS, newExerciseId: ROW }),
+  () => db.tools.reorder_workout_exercises({ exerciseIds: [DIPS, BENCH] }),
+  () => db.tools.remove_last_set({ exerciseId: BENCH, setNumber: 1 }),
+  () => db.tools.repeat_last({ exerciseId: DIPS }),
+];
+
+test('session edit tools: no open session writes nothing (no_session); an exercise twice is ambiguous_exercise', async () => {
+  const none = fakeDb(gymSeed());
+  for (const call of editCalls(none)) refused(await call(), 'no_session', none);
+  const twice = fakeDb(editSeed(logWith(logRow(BENCH), logRow(DIPS), logRow(BENCH, { id: 'second' }))));
+  for (const call of [
+    () => twice.tools.remove_workout_exercise({ exerciseId: BENCH }),
+    () => twice.tools.replace_workout_exercise({ exerciseId: BENCH, newExerciseId: ROW }),
+    () => twice.tools.remove_last_set({ exerciseId: BENCH, setNumber: 1 }),
+    () => twice.tools.repeat_last({ exerciseId: BENCH }),
+  ]) {
+    refused(await call(), 'ambiguous_exercise', twice);
+  }
+});
+
+test('session edit tools: a log removed before the commit is a conflict; a failed read is write_failed with no internal detail', async () => {
+  const setup = (hooks: Parameters<typeof fakeDb>[1]) =>
+    fakeDb(editSeed(logWith(logRow(BENCH, { performed: true, sets: [{ id: 's', reps: 8, weight: 80 }] }), logRow(DIPS))), hooks);
+  for (let i = 0; i < 6; i++) {
+    const db = setup({ beforeCommit: store => store.delete(`${ROOT}workoutLogs/${TODAY}`) });
+    failed(await editCalls(db)[i](), 'conflict');
+    assert.equal(db.get(`workoutLogs/${TODAY}`), undefined);
+    assert.deepEqual(db.get(`performanceEntries/${BENCH}`), benchEntry());
+    const read = setup({ failRead: true });
+    const result = await editCalls(read)[i]();
+    refused(result, 'write_failed', read);
+    assert.doesNotMatch(result.content[0].text, /secret|users\//);
+  }
 });

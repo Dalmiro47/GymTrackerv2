@@ -7,7 +7,8 @@
  * size leaves a member without its partners: an incomplete group.
  *
  * Same chunking as the routine editor (SelectedRoutineExercisesList) and the
- * Training Log (ExerciseList), which still hold their own copy. Used by the MCP.
+ * Training Log (ExerciseList), which still hold their own copy. Used by the MCP,
+ * for routines and for the open workout log (with the log's effective structure).
  */
 
 type Entry = { id: string; setStructure?: string | null };
@@ -82,4 +83,28 @@ export function groupMarks(list: Entry[]): GroupMark[] {
     group += inFullChunks / run.size;
   }
   return marks;
+}
+
+/** One key per full chunk: its structure and its ids in any order. */
+function fullChunkKeys(list: Entry[]): string[] {
+  const chunks = new Map<number, { structure: string; ids: string[] }>();
+  groupMarks(list).forEach((mark, index) => {
+    if (mark.group === undefined) return;
+    const chunk = chunks.get(mark.group) ?? { structure: list[index].setStructure || 'normal', ids: [] };
+    chunk.ids.push(list[index].id);
+    chunks.set(mark.group, chunk);
+  });
+  return [...chunks.values()].map(chunk => JSON.stringify([chunk.structure, ...[...chunk.ids].sort()]));
+}
+
+/**
+ * True when `after` keeps the groups of `before`: every full chunk of `after` is a
+ * chunk of `before` with the same members (their order inside the chunk may change),
+ * and `after` adds no incomplete run. A group that is gone (set to normal) is allowed.
+ * `newIncompleteRuns` alone misses new pairs: (a,b),(c,d) reordered to a,c,d,b chunks
+ * as (a,c),(d,b), and both are full.
+ */
+export function sameGroups(before: Entry[], after: Entry[]): boolean {
+  const known = new Set(fullChunkKeys(before));
+  return fullChunkKeys(after).every(key => known.has(key)) && newIncompleteRuns(before, after).length === 0;
 }

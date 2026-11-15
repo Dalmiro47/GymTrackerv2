@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { ExercisePerformanceEntry, LoggedSet } from '@/types';
-import { bestPRFromLogs, needsPRRescan, planPerformanceEntry } from './performanceEntryPlan';
+import { bestPRFromLogs, needsEntryRevert, needsPRRescan, planEntryRevert, planPerformanceEntry } from './performanceEntryPlan';
 
 const DAY = '2027-01-15';
 const AT = 1_000_000;
@@ -90,4 +90,62 @@ test('bestPRFromLogs: a planned exercise never counts; a deload log is skipped o
   );
   assert.deepEqual(bestPRFromLogs(logs, 'bench', '', {}, toMs), { reps: 5, weight: 95, date: 7, logId: '2027-01-07' });
   assert.deepEqual(bestPRFromLogs(logs, 'bench', '', { skipDeload: true }, toMs), { reps: 8, weight: 80, date: 3, logId: '2027-01-03' });
+});
+
+// toMs(DAY) is 15: an entry stamped with 15 was written by the log of DAY.
+const benchLog = (id: string, setRows: Array<[number, number]>, over: Record<string, unknown> = {}, exercise: Record<string, unknown> = {}): [string, Record<string, unknown>] => [
+  id,
+  { date: id, isDeload: false, exercises: [{ exerciseId: 'bench', performed: true, sets: setRows.map(([reps, weight]) => ({ reps, weight })), ...exercise }], ...over },
+];
+const revert = (existing: Partial<ExercisePerformanceEntry> | null, logs: ReturnType<typeof logsOf>) =>
+  planEntryRevert({ existing, logs, exerciseId: 'bench', logDate: DAY, logDateToMs: toMs });
+
+test('planEntryRevert: an entry stamped by the log day goes back to the newest other lifted session; planned and deload logs are skipped', () => {
+  const existing = { lastPerformedDate: 15, lastPerformedSets: [{ reps: 5, weight: 90 }], personalRecord: { reps: 8, weight: 80, date: 1, logId: '2027-01-01' } };
+  const logs = logsOf(
+    benchLog('2027-01-01', [[8, 80]]),
+    benchLog(DAY, [[5, 90]]),
+    benchLog('2027-01-12', [[8, 100]], { isDeload: true }),
+    benchLog('2027-01-10', [[8, 95]], {}, { performed: false }),
+    benchLog('2027-01-08', [[8, 80], [0, 80], [7, 80]]),
+  );
+  assert.equal(needsEntryRevert(existing, DAY, 15), true);
+  // The PR came from another log: it stays.
+  assert.deepEqual(revert(existing, logs), {
+    fields: { lastPerformedSets: [{ reps: 8, weight: 80 }, { reps: 7, weight: 80 }], lastPerformedDate: 8 },
+    clearPR: false,
+  });
+});
+
+test('planEntryRevert: an entry another day stamped, or no entry, is left alone', () => {
+  const existing = entry({ lastPerformedDate: 8 });
+  const logs = logsOf(benchLog(DAY, [[5, 90]]), benchLog('2027-01-08', [[8, 80]]));
+  assert.equal(needsEntryRevert(existing, DAY, 15), false);
+  assert.deepEqual(revert(existing, logs), { fields: {}, clearPR: false });
+  assert.equal(needsEntryRevert(null, DAY, 15), false);
+  assert.deepEqual(revert(null, logs), { fields: {}, clearPR: false });
+});
+
+test('planEntryRevert: a PR from the log day is rescanned over the other logs, or cleared when none backs one', () => {
+  const existing = { lastPerformedDate: 15, lastPerformedSets: [{ reps: 5, weight: 90 }], personalRecord: { reps: 5, weight: 90, date: 15, logId: DAY } };
+  assert.deepEqual(revert(existing, logsOf(benchLog(DAY, [[5, 90]]), benchLog('2027-01-08', [[8, 80]]), benchLog('2027-01-03', [[6, 82.5]]))), {
+    fields: {
+      lastPerformedSets: [{ reps: 8, weight: 80 }],
+      lastPerformedDate: 8,
+      personalRecord: { reps: 6, weight: 82.5, date: 3, logId: '2027-01-03' },
+    },
+    clearPR: false,
+  });
+  // No other log: the last performance is empty and the PR goes.
+  assert.deepEqual(revert(existing, logsOf(benchLog(DAY, [[5, 90]]))), {
+    fields: { lastPerformedSets: [], lastPerformedDate: null },
+    clearPR: true,
+  });
+  // Only the PR came from the log day: the last performance stays.
+  const prOnly = { ...existing, lastPerformedDate: 16 };
+  assert.equal(needsEntryRevert(prOnly, DAY, 15), true);
+  assert.deepEqual(revert(prOnly, logsOf(benchLog(DAY, [[5, 90]]), benchLog('2027-01-08', [[8, 80]]))), {
+    fields: { personalRecord: { reps: 8, weight: 80, date: 8, logId: '2027-01-08' } },
+    clearPR: false,
+  });
 });
