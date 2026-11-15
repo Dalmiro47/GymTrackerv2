@@ -9,7 +9,10 @@ const MIN_KEY_LENGTH = 32;
  * never load an env file or the Admin SDK.
  */
 export type AuthDeps = {
-  /** `process.env` in the route; only MCP_ACCESS_KEY and MCP_OWNER_UID are read. */
+  /**
+   * `process.env` in the route; only the key named by the caller (MCP_ACCESS_KEY or
+   * HEALTH_INGEST_KEY) and MCP_OWNER_UID are read.
+   */
   env: Record<string, string | undefined>;
   /** `isAdminConfigured` from src/lib/firebaseAdmin.ts. */
   isAdminConfigured: () => boolean;
@@ -17,29 +20,38 @@ export type AuthDeps = {
 
 export type McpConfig = { accessKey: string; ownerUid: string };
 
+/** Which env key a route checks, and the tag its refusal logs carry. */
+export type KeySpec = { keyVar: 'MCP_ACCESS_KEY' | 'HEALTH_INGEST_KEY'; tag: string };
+
 /**
- * Reads and checks the MCP config. Returns null (fail closed) when anything is
- * missing, so a half-configured deployment rejects every request instead of
+ * Reads and checks one route's key config. Returns null (fail closed) when anything
+ * is missing, so a half-configured deployment rejects every request instead of
  * serving the wrong account. Logs a short code only: never the key or the uid.
+ * Every route serves the same owner, MCP_OWNER_UID.
  */
-export function readMcpConfig(deps: AuthDeps): McpConfig | null {
-  const accessKey = deps.env.MCP_ACCESS_KEY?.trim();
+export function readKeyConfig(deps: AuthDeps, spec: KeySpec): McpConfig | null {
+  const accessKey = deps.env[spec.keyVar]?.trim();
   const ownerUid = deps.env.MCP_OWNER_UID?.trim();
 
   if (!accessKey || accessKey.length < MIN_KEY_LENGTH) {
-    console.error('[mcp] refused: key_config');
+    console.error(`[${spec.tag}] refused: key_config`);
     return null;
   }
   // A uid is one path segment; a slash would let it address another document.
   if (!ownerUid || ownerUid.includes('/')) {
-    console.error('[mcp] refused: owner_config');
+    console.error(`[${spec.tag}] refused: owner_config`);
     return null;
   }
   if (!deps.isAdminConfigured()) {
-    console.error('[mcp] refused: admin_config');
+    console.error(`[${spec.tag}] refused: admin_config`);
     return null;
   }
   return { accessKey, ownerUid };
+}
+
+/** The MCP endpoint's config: MCP_ACCESS_KEY and MCP_OWNER_UID. */
+export function readMcpConfig(deps: AuthDeps): McpConfig | null {
+  return readKeyConfig(deps, { keyVar: 'MCP_ACCESS_KEY', tag: 'mcp' });
 }
 
 const digest = (s: string) => createHash('sha256').update(s, 'utf8').digest();

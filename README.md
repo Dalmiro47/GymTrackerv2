@@ -32,11 +32,13 @@ FIREBASE_CLIENT_EMAIL=firebase-adminsdk-xxxxx@YOUR_PROJECT.iam.gserviceaccount.c
 FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nMIIE...\n-----END PRIVATE KEY-----\n"
 # MCP_ACCESS_KEY= (optional, at least 32 characters)
 # MCP_OWNER_UID= (optional)
+# HEALTH_INGEST_KEY= (optional, at least 32 characters)
 ```
 
 - **Firebase web config**: Firebase Console, Project Settings, "Your apps", add a Web app (`</>`), and copy its values.
 - **Service account**: Project Settings, Service accounts, Generate new private key. It lets the server write the daily AI-usage counter, which the security rules keep read-only for clients. Keep the double quotes above; in the Vercel dashboard paste the same value **without** them, or the quotes become part of the key. Without these two the app still runs, but daily AI limits are silently not enforced (a banner on `/admin` says so).
 - **MCP endpoint** (optional): `MCP_ACCESS_KEY` and `MCP_OWNER_UID` turn on the MCP server at `/api/mcp/<MCP_ACCESS_KEY>`, which reads that one user's data, can add exercises and routines, edit a routine's exercises and edit an exercise's notes, rep range, warm-up template and load settings, set the schedule of a day, and run a live workout session that writes the workout log of the day, its sets and its personal records, and edits its exercises and sets while it is open (no deletes), and needs the service account. Without both it answers 401.
+- **Health ingest** (optional): `HEALTH_INGEST_KEY` and `MCP_OWNER_UID` turn on `POST /api/health/ingest`, where an iOS Shortcut sends Apple Health and scale values with the key in the `x-ingest-key` header; it stores one document per day for that user and needs the service account. Without both it answers 401.
 - **Google Sign-In**: Firebase Console, Authentication, Sign-in method: enable Google and add your project's support email.
 - **Cloud Firestore**: Firebase Console, Firestore Database: create the database and pick a location, then deploy the rules below before using it.
 
@@ -57,7 +59,7 @@ firebase deploy --only firestore:rules
 
 ## Where things live
 
-- `src/app/`: pages and layouts (App Router): `(app)/` authenticated routes, `login/` login page, `api/coach/` AI coach endpoints, `api/mcp/` MCP server (read and write tools)
+- `src/app/`: pages and layouts (App Router): `(app)/` authenticated routes, `login/` login page, `api/coach/` AI coach endpoints, `api/mcp/` MCP server (read and write tools), `api/health/ingest/` health ingest
 - `src/components/`: shared React components: `ui/` (ShadCN), `layout/` (desktop sidebar, header with the `AppBarActions` slot, mobile `BottomNav`), and one folder per feature (such as `exercises/`)
 - `src/contexts/`: React context providers (such as `AuthContext`)
 - `src/hooks/`: custom React hooks
