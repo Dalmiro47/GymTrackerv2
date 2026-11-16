@@ -10,6 +10,7 @@ npm run build      # Production build
 npm run lint       # Next.js ESLint
 npm run typecheck  # TypeScript check, no emit
 npm run coach:eval -- [caseFilter] [--repeat=N] [--no-explain]   # Exercise-coach eval (real Groq calls, costs credit)
+npm run health:backfill -- --export <export.xml> --out <dir> [--golden <json>]   # One-off Apple Health backfill, dry run; --verify-days and --write (owner only) in the script header
 firebase deploy --only firestore:rules   # Owner only, from their own terminal (see Destructive Operations)
 ```
 
@@ -24,7 +25,7 @@ Tests: `npm test` (node:test through tsx; no env file, no network). Tests cover 
 - `NEXT_PUBLIC_FIREBASE_*`: Firebase project config
 - `GROQ_API_KEY`: Groq API key (https://console.groq.com)
 - `OPEN_ROUTER_API_KEY`: DEV-ONLY, used by `npm run coach:eval` for the judges; the app never reads it, so do not add it to Vercel
-- `FIREBASE_CLIENT_EMAIL` / `FIREBASE_PRIVATE_KEY`: service account (Admin SDK), used ONLY to write the daily AI quota counter. Absent = the app runs but limits are silently unenforced; `isAdminConfigured()` reports it and `/admin` shows a banner
+- `FIREBASE_CLIENT_EMAIL` / `FIREBASE_PRIVATE_KEY`: service account (Admin SDK): the daily AI quota counter, the MCP server, the health ingest and the health backfill. Absent = the app runs but limits are silently unenforced; `isAdminConfigured()` reports it and `/admin` shows a banner
 - `MCP_ACCESS_KEY` / `MCP_OWNER_UID`: server-only, for the MCP endpoint; either one absent = every MCP request answers 401
 - `HEALTH_INGEST_KEY`: server-only, at least 32 chars, separate from `MCP_ACCESS_KEY`; sent in the `x-ingest-key` header to the health ingest route, which uses the same `MCP_OWNER_UID`. Absent = every ingest request answers 401
 
@@ -46,6 +47,7 @@ Next.js 15 App Router; Firebase is the sole backend, with no custom API server f
 - MCP server (owner's data, Admin SDK; 9 read tools, 18 write tools, 27 in total): `src/app/api/mcp/[key]/route.ts`, `src/lib/mcp/` (`auth.ts`, `repo.server.ts` reads, `repo.write.server.ts` writes, `tools.read.ts`, `tools.write.ts`, `week.ts` Berlin date and ISO week, `schedule.ts` schedule items and window, `server.ts`); tests `*.test.ts` beside each module, run with `npm test`
 - Doc builders shared by the app services and the MCP write tools: `src/lib/routineDoc.ts`, `src/lib/exerciseDoc.ts`, `src/lib/routineHistoryPlan.ts`, `src/lib/workoutLogDoc.ts` (log shape), `src/lib/performanceEntryPlan.ts` (last sets, PR, PR rescan)
 - Health ingest (iOS Shortcut posts Apple Health and scale values; Admin SDK, one merge batch per request; read by the MCP tool `get_health`, no app UI yet): `src/app/api/health/ingest/route.ts`, `src/lib/health/` (`ingest.ts` pure parsing, field ranges and rounding; `handler.ts` auth, limits, write); tests beside each module
+- Health backfill (one-off, Apple Health export to `health` days, `create` only, uid from `MCP_OWNER_UID`): `scripts/health-backfill/run.mts`, `src/lib/health/backfill.ts` (pure; tests beside it)
 - Daily quota: `src/lib/usageQuota.ts`, `src/lib/limits.ts`, `src/lib/firebaseAdmin.ts`
 - Language state (`LanguageProvider`, `gt-lang` mirror, `<html lang>`; set from `UserNav`, or `LanguageToggle` on `/login`): `src/contexts/LanguageContext.tsx`
 - Dictionaries: `src/i18n/en.ts` (source of truth), `src/i18n/es.ts`; display helpers and `detectLanguage()`: `src/i18n/index.ts`
@@ -69,7 +71,7 @@ users/{userId}/
   performanceEntries/{exerciseId} # PRs & last performance
   routineHistory/{routineId_epochMs} # Routine change snapshots (flat; outlives deleted routines)
   schedule/{YYYY-MM-DD}   # Scheduled items of a day; only the MCP writes it today (no app UI yet)
-  health/{YYYY-MM-DD}     # Apple Health + scale values of a Berlin day; only /api/health/ingest writes it
+  health/{YYYY-MM-DD}     # Apple Health + scale values of a Berlin day; /api/health/ingest writes it (plus the one-off backfill)
   stats/usage             # Daily AI quota: client read-only, Admin SDK writes
 feedback/{docId}          # Top-level: anyone signed in may create, only the admin reads
 ```
@@ -151,6 +153,7 @@ feedback/{docId}          # Top-level: anyone signed in may create, only the adm
 - `firebase-admin` v14 has ONLY modular entry points (`firebase-admin/app`, `firebase-admin/firestore`), and `.npmrc`'s `legacy-peer-deps=true` skips peer deps, so `@opentelemetry/api` must stay explicit or the dev server dies on `Cannot find module '@opentelemetry/api'` while `typecheck` and `lint` pass.
 - MCP tool schemas import `z` from `zod4` (an alias of zod 4): `@modelcontextprotocol/server` v2 rejects zod 3 schemas, and the rest of the app stays on zod 3.
 - Server code (`src/app/api/**`, `src/lib/mcp/`) must not import a `"use client"` module anywhere in its import chain, even for a pure helper: `npm test` (tsx) ignores the directive and only `next build` fails, on Vercel, after the merge.
+- A `.mts` script run by tsx cannot statically import named exports from repo `.ts` modules (no `"type": "module"`, so they load as CommonJS: "does not provide an export named"): import them dynamically and take `.default`, as `scripts/health-backfill/run.mts` does.
 - First-run onboarding gates on `onboardedAt` (or a pre-existing `goal`), NEVER on the profile doc existing: `ensureExercisesSeeded` writes `seedVersion` and a language switch writes `language` before the user answers anything.
 - Firestore rule matches are UNIONed: `users/{userId}/{collection}/{docId}` must keep `&& collection != 'stats'`, or it re-grants client write access to the quota doc, a silent security hole that tests green.
 - Never hide a control behind `overflow-x-auto` + `no-scrollbar`: wrap, or let ONE element flex and truncate (`min-w-0 flex-1`), as `/log` does. Spanish labels run ~30% longer than English; measure at 360px, not 390.
