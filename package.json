@@ -9,6 +9,7 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "coach:eval": "node --no-warnings scripts/coach-eval/run.mts",
+    "health:backfill": "tsx scripts/health-backfill/run.mts",
     "test": "tsx --test --test-reporter=spec \"src/**/*.test.ts\""
   },
   "dependencies": {
