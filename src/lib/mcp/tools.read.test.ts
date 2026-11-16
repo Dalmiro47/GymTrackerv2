@@ -1124,3 +1124,53 @@ test('get_health: passes the truncated flag through; a repo failure is a generic
   assert.equal(result.isError, true);
   assert.doesNotMatch(result.content[0].text, /secret|fake-owner|users\//);
 });
+
+test('get_health: vo2max is a number; sleepStartAt, sleepEndAt and vo2maxAt are Berlin ISO, winter and summer', async () => {
+  const { tools } = fakeRepo({
+    health: [
+      healthDay('2026-01-10', {
+        sleepStartAt: Date.parse('2026-01-09T22:15:00Z'),
+        sleepEndAt: Date.parse('2026-01-10T05:40:30Z'),
+        vo2max: 44.8,
+        vo2maxAt: Date.parse('2026-01-10T09:21:33Z'),
+      }),
+      healthDay('2026-07-20', {
+        sleepStartAt: Date.parse('2026-07-19T21:00:00Z'),
+        sleepEndAt: Date.parse('2026-07-20T04:30:00Z'),
+        vo2max: 45.1,
+        vo2maxAt: Date.parse('2026-07-20T16:00:00Z'),
+      }),
+    ],
+  }, () => new Date('2026-07-21T10:00:00Z'));
+  const out = body(await tools.get_health({ from: '2026-01-01', to: '2026-07-21' }));
+  assert.deepEqual(out.days, [
+    {
+      date: '2026-01-10',
+      vo2max: 44.8,
+      sleepStartAt: '2026-01-09T23:15:00+01:00',
+      sleepEndAt: '2026-01-10T06:40:30+01:00',
+      vo2maxAt: '2026-01-10T10:21:33+01:00',
+    },
+    {
+      date: '2026-07-20',
+      vo2max: 45.1,
+      sleepStartAt: '2026-07-19T23:00:00+02:00',
+      sleepEndAt: '2026-07-20T06:30:00+02:00',
+      vo2maxAt: '2026-07-20T18:00:00+02:00',
+    },
+  ]);
+});
+
+test('get_health: a missing or non-numeric new field is left out', async () => {
+  const { tools } = fakeRepo({
+    health: [
+      healthDay('2026-03-10', { steps: 10, vo2max: 'n/a', sleepStartAt: null, vo2maxAt: Number.NaN }),
+      healthDay('2026-03-11', { sleepEndAt: Date.parse('2026-03-11T05:00:00Z') }),
+    ],
+  });
+  const out = body(await tools.get_health({ from: '2026-03-10', to: '2026-03-11' }));
+  assert.deepEqual(out.days, [
+    { date: '2026-03-10', steps: 10 },
+    { date: '2026-03-11', sleepEndAt: '2026-03-11T06:00:00+01:00' },
+  ]);
+});
