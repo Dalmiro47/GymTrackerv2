@@ -148,7 +148,9 @@ function cutoffYmd(now: Date, days: number): string {
 // ─── Health ──────────────────────────────────────────────────────────
 
 /** The numeric fields of a health day, as /api/health/ingest stores them. */
-const HEALTH_FIELDS = ['steps', 'activeKcal', 'restingHr', 'hrvMs', 'respRate', 'sleepMin', 'weightKg', 'bodyFatPct'] as const;
+const HEALTH_FIELDS = ['steps', 'activeKcal', 'restingHr', 'hrvMs', 'respRate', 'sleepMin', 'weightKg', 'bodyFatPct', 'vo2max'] as const;
+/** The instants of a health day, stored as epoch ms and returned as Berlin ISO. */
+const HEALTH_TIMES = ['weighInAt', 'sleepStartAt', 'sleepEndAt', 'vo2maxAt'] as const;
 
 const berlinClock = new Intl.DateTimeFormat('en-CA', {
   timeZone: WEEK_TIME_ZONE,
@@ -566,8 +568,10 @@ export function createReadTools(repo: ReadToolsRepo, now: () => Date = () => new
               const value = num(doc.data[field]);
               if (value !== null) day[field] = value;
             }
-            const weighInAt = num(doc.data.weighInAt);
-            if (weighInAt !== null) day.weighInAt = berlinIso(weighInAt);
+            for (const field of HEALTH_TIMES) {
+              const ms = num(doc.data[field]);
+              if (ms !== null) day[field] = berlinIso(ms);
+            }
             return day;
           })
           .sort((a, b) => String(a.date).localeCompare(String(b.date)));
@@ -734,7 +738,10 @@ export function registerReadTools(server: McpServer, repo: ReadToolsRepo, now?: 
         `activeKcal (kcal), restingHr (bpm), hrvMs (ms), respRate (breaths/min), sleepMin (minutes asleep from 18:00 ` +
         `of the previous day (Berlin) to the last send that day; usually the night that ends on that date), ` +
         `weightKg (kg), bodyFatPct (%). weighInAt is the time of that day's weigh-in in Europe/Berlin with its ` +
-        `offset; weightKg and bodyFatPct come from the last weigh-in sent that day.`,
+        `offset; weightKg and bodyFatPct come from the last weigh-in sent that day. sleepStartAt and sleepEndAt ` +
+        `(Europe/Berlin with offset) are the start and end of the night that ends on that date, awake time ` +
+        `included, so the window is longer than sleepMin. vo2max (ml/kg/min) is the Apple Watch Cardio Fitness ` +
+        `estimate, recorded only on some days; vo2maxAt is the time of that sample.`,
       inputSchema: toolSchemas.get_health,
       annotations,
     },

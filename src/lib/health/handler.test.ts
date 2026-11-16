@@ -244,3 +244,35 @@ test('rate limit: the 11th request in a minute is a 429', async () => {
   for (let i = 0; i < 10; i++) assert.equal((await handler(post(SHORTCUT_BODY))).status, 200);
   assert.equal((await handler(post(SHORTCUT_BODY))).status, 429);
 });
+
+test('the sleep window and VO2 max reach the merge data as ms, with no null', async () => {
+  const { fake, handler } = setup();
+  const res = await handler(
+    post(
+      JSON.stringify({
+        v: 1,
+        today: {
+          date: '2026-11-15',
+          sleepStart: '2026-11-14T23:12:45+01:00',
+          sleepEnd: '2026-11-15T07:03:10+01:00',
+        },
+        vo2max: { value: '44,87', at: '2026-11-13T10:21:00+01:00' },
+      }),
+    ),
+  );
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), { ok: true, written: ['2026-11-13', '2026-11-15'], dropped: [] });
+  const ops = fake.batches[0].ops;
+  assert.deepEqual(ops[0].data, {
+    date: '2026-11-13',
+    vo2max: 44.9,
+    vo2maxAt: Date.parse('2026-11-13T10:21:00+01:00'),
+    updatedAt: TS,
+  });
+  assert.deepEqual(ops[1].data, {
+    date: '2026-11-15',
+    sleepStartAt: Date.parse('2026-11-14T23:12:45+01:00'),
+    sleepEndAt: Date.parse('2026-11-15T07:03:10+01:00'),
+    updatedAt: TS,
+  });
+});
