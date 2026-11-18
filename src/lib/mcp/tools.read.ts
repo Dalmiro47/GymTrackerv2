@@ -147,8 +147,11 @@ function cutoffYmd(now: Date, days: number): string {
 
 // ─── Health ──────────────────────────────────────────────────────────
 
-/** The numeric fields of a health day, as /api/health/ingest stores them. */
-const HEALTH_FIELDS = ['steps', 'activeKcal', 'restingHr', 'hrvMs', 'respRate', 'sleepMin', 'weightKg', 'bodyFatPct', 'vo2max'] as const;
+/** The numeric fields of a health day, as /api/health/ingest and the importer (stages, exerciseMin) store them. */
+const HEALTH_FIELDS = [
+  'steps', 'activeKcal', 'restingHr', 'hrvMs', 'respRate', 'sleepMin', 'weightKg', 'bodyFatPct', 'vo2max',
+  'sleepCoreMin', 'sleepDeepMin', 'sleepRemMin', 'sleepAwakeMin', 'exerciseMin',
+] as const;
 /** The instants of a health day, stored as epoch ms and returned as Berlin ISO. */
 const HEALTH_TIMES = ['weighInAt', 'sleepStartAt', 'sleepEndAt', 'vo2maxAt'] as const;
 
@@ -741,7 +744,11 @@ export function registerReadTools(server: McpServer, repo: ReadToolsRepo, now?: 
         `offset; weightKg and bodyFatPct come from the last weigh-in sent that day. sleepStartAt and sleepEndAt ` +
         `(Europe/Berlin with offset) are the start and end of the night that ends on that date, awake time ` +
         `included, so the window is longer than sleepMin. vo2max (ml/kg/min) is the Apple Watch Cardio Fitness ` +
-        `estimate, recorded only on some days; vo2maxAt is the time of that sample.`,
+        `estimate, recorded only on some days; vo2maxAt is the time of that sample. sleepCoreMin, sleepDeepMin and ` +
+        `sleepRemMin are the minutes of each sleep stage in the same night as sleepMin (Unspecified sleep is in no ` +
+        `stage, so they can add up to less than sleepMin); sleepAwakeMin is the minutes awake between the first and ` +
+        `the last asleep segment of that night. exerciseMin is the Apple Watch exercise minutes of the day. These ` +
+        `five come from a periodic Apple Health import, not the daily send, so the most recent days may lack them.`,
       inputSchema: toolSchemas.get_health,
       annotations,
     },

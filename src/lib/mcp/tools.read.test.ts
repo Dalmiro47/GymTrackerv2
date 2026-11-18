@@ -1097,6 +1097,22 @@ test('get_health: only days with data, oldest first, missing and non-numeric fie
   ]);
 });
 
+test('get_health: returns the sleep stage minutes and exerciseMin; non-numeric values are left out', async () => {
+  const { tools } = fakeRepo({
+    health: [
+      healthDay('2026-03-10', {
+        sleepMin: 410, sleepCoreMin: 280, sleepDeepMin: 60, sleepRemMin: 70, sleepAwakeMin: 12, exerciseMin: 30,
+      }),
+      healthDay('2026-03-11', { sleepCoreMin: '280', sleepDeepMin: null, exerciseMin: 0 }),
+    ],
+  });
+  const out = body(await tools.get_health({}));
+  assert.deepEqual(out.days, [
+    { date: '2026-03-10', sleepMin: 410, sleepCoreMin: 280, sleepDeepMin: 60, sleepRemMin: 70, sleepAwakeMin: 12, exerciseMin: 30 },
+    { date: '2026-03-11', exerciseMin: 0 },
+  ]);
+});
+
 test('get_health: weighInAt is Berlin local time with its offset, winter and summer', async () => {
   const { tools } = fakeRepo({
     health: [
