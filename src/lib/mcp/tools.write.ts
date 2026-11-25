@@ -1446,12 +1446,16 @@ export function createWriteTools({ repo, writes, now = () => new Date() }: Write
         }
         const byId = new Map(routine.exercises.map(ex => [ex.id, ex]));
         const next = exerciseIds.map(id => byId.get(id)!);
-        return saveExercises(
-          'reorder_routine_exercises',
-          routine,
-          next,
-          'Keep the exercises of a group next to each other, or set the group to normal with set_routine_set_structure first.',
-        );
+        const hint = 'Keep the exercises of a group next to each other, or set the group to normal with set_routine_set_structure first.';
+        // saveExercises only sees incomplete runs; an order that keeps every run full can still re-pair it.
+        if (!sameGroups(routine.exercises, next)) {
+          refuse(
+            'incomplete_group',
+            `The new order would split a superset or triset of routine "${routineId}", or pair its exercises differently. ` +
+              `A superset is exactly 2 exercises next to each other and a triset exactly 3. ${NOTHING_WRITTEN} ${hint}`,
+          );
+        }
+        return saveExercises('reorder_routine_exercises', routine, next, hint);
       }),
 
     set_routine_set_structure: ({ routineId, setStructure, exerciseIds }: Args<'set_routine_set_structure'>) =>
@@ -1879,6 +1883,7 @@ export function registerWriteTools(server: McpServer, deps: WriteToolDeps) {
       title: 'Reorder routine exercises',
       description:
         `Sets a new order for the exercises of one routine. exerciseIds must hold every exercise id of that routine exactly once. ` +
+        `The call is refused when the new order would split a superset or triset or pair its exercises differently. ` +
         `${CONFIRM_NOTE} ${RESULT_NOTE}`,
       inputSchema: writeToolSchemas.reorder_routine_exercises,
       annotations: additive,

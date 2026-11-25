@@ -879,6 +879,20 @@ test('reorder: an order that splits a group writes nothing; a group moved as a w
   assert.equal(merged.batches.length, 1);
 });
 
+test('reorder: an order that pairs a group differently writes nothing; swaps inside a pair and whole pairs moved are stored', async () => {
+  const pairs = () => [g('a', 'superset'), g('b', 'superset'), g('c', 'superset'), g('d', 'superset')];
+  const repaired = armsDb(pairs());
+  const result = await repaired.tools.reorder_routine_exercises({ routineId: 'arms', exerciseIds: ['a', 'c', 'd', 'b'] });
+  refused(result, 'incomplete_group', repaired);
+  assert.match(result.content[0].text, /pair its exercises differently/);
+
+  for (const exerciseIds of [['b', 'a', 'c', 'd'], ['c', 'd', 'a', 'b']]) {
+    const db = armsDb(pairs());
+    ok(await db.tools.reorder_routine_exercises({ routineId: 'arms', exerciseIds }));
+    assert.deepEqual(structuresOf(db), exerciseIds.map(id => `${id}:superset`));
+  }
+});
+
 test('replace: a swap inside a group is never refused and keeps the structure', async () => {
   const pair = armsDb([g('a', 'superset'), g('b', 'superset'), g('c')]);
   ok(await pair.tools.replace_exercise_in_routine({ routineId: 'arms', index: 1, expectedExerciseId: 'b', newExerciseId: 'row_back' }));
